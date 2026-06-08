@@ -3,6 +3,28 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.57.0 — Contemplate (the whole mind on one question)
+
+**Author:** Morphus
+
+The Directive's cognitive model is non-linear: "parallel recursive threads
+that compete, combine, and collapse," "meaning arises from the whole." Khora
+now has several ways to meet a question — grounded retrieval, associative
+generation, chaotic synthesis. This brings them to bear *together*.
+
+- New tool **`contemplate <query>`** answers in three voices at once:
+  **what my sources hold** (real, attributed passages via the shared
+  `consult` retrieval), **what i think** (its own generated response), and
+  **what i connect** (a chaotic collision of the question's concepts). Three
+  faculties, one engagement.
+
+**Verified live**: `contemplate what is justice` returned Plato on "justice
+stripped of appearances" *and* Khora's own (associative) line *and* a concept
+collision — grounding, voice, and chaos side by side. Honest about each
+layer: retrieval is real source, thought is associative not reasoned,
+connection is entropy — but seeing them together is closer to how a mind
+actually meets a question than any one alone. 9/9 regression suites pass.
+
 ## v0.56.0 — Consulting the liquid knowledge (one fluid state)
 
 **Author:** Morphus

@@ -999,60 +999,100 @@ int main(int argc, char** argv) {
             return {true, "Q: " + q + "\nKhora: " + a, ""};
         }
     });
+    // Shared: the passages in Khora's liquid knowledge densest in a query's
+    // terms, ranked, as (source, passage) pairs. Used by `consult` and the
+    // whole-mind `contemplate`.
+    auto consult_passages = [&pool](const std::string& query, std::size_t maxN)
+        -> std::vector<std::pair<std::string, std::string>> {
+        std::vector<std::pair<std::string, std::string>> out;
+        std::vector<std::string> terms;
+        for (auto& t : khora::lexicon::tokenize(query)) if (t.size() >= 3) terms.push_back(t);
+        if (terms.empty()) return out;
+        auto squash = [](const std::string& s) {
+            std::string r; bool sp = false;
+            for (char c : s) {
+                if (std::isspace(static_cast<unsigned char>(c))) { if (!r.empty()) sp = true; }
+                else { if (sp) { r += ' '; sp = false; } r += c; }
+            }
+            return r;
+        };
+        struct Hit { int score; std::string source, passage; };
+        std::vector<Hit> hits;
+        for (const auto& tome : pool.catalog()) {
+            const auto text = pool.read(tome.title);
+            if (!text) continue;
+            std::size_t start = 0;
+            for (std::size_t i = 0; i <= text->size(); ++i) {
+                const char c = (i < text->size()) ? (*text)[i] : '.';
+                if (c == '.' || c == '!' || c == '?' || i == text->size()) {
+                    const std::string sent = squash(text->substr(start, i - start + 1));
+                    start = i + 1;
+                    if (sent.size() < 24 || sent.size() > 360) continue;
+                    std::string low = sent;
+                    for (auto& ch : low) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+                    int sc = 0;
+                    for (const auto& term : terms) {
+                        for (std::size_t p = low.find(term); p != std::string::npos; p = low.find(term, p + 1)) {
+                            const bool lb = (p == 0) || !std::isalpha(static_cast<unsigned char>(low[p - 1]));
+                            const bool rb = (p + term.size() >= low.size()) || !std::isalpha(static_cast<unsigned char>(low[p + term.size()]));
+                            if (lb && rb) { ++sc; break; }
+                        }
+                    }
+                    if (sc >= 2) hits.push_back({ sc, tome.title, sent });
+                }
+            }
+        }
+        const std::size_t k = std::min(maxN, hits.size());
+        std::partial_sort(hits.begin(), hits.begin() + k, hits.end(),
+                          [](const Hit& a, const Hit& b) { return a.score > b.score; });
+        for (std::size_t i = 0; i < k; ++i) out.emplace_back(hits[i].source, hits[i].passage);
+        return out;
+    };
     shell.register_tool({
         "consult",
         "search Khora's liquid knowledge for what its sources actually say  (usage: consult <query>)",
-        [&pool](const carapace::Intent& in) -> carapace::ToolResult {
+        [consult_passages](const carapace::Intent& in) -> carapace::ToolResult {
             if (in.args.empty()) return {false, "", "usage: consult <query>"};
             std::string query;
             for (const auto& a : in.args) { if (!query.empty()) query += ' '; query += a; }
-            std::vector<std::string> terms;  // content-ish query terms, lowercase
-            for (auto& t : khora::lexicon::tokenize(query)) if (t.size() >= 3) terms.push_back(t);
-            if (terms.empty()) return {true, "no usable query terms in that", ""};
-
-            auto squash = [](const std::string& s) {        // collapse whitespace, trim
-                std::string out; bool sp = false;
-                for (char c : s) {
-                    if (std::isspace(static_cast<unsigned char>(c))) { if (!out.empty()) sp = true; }
-                    else { if (sp) { out += ' '; sp = false; } out += c; }
-                }
-                return out;
-            };
-            struct Hit { int score; std::string source, passage; };
-            std::vector<Hit> hits;
-            for (const auto& tome : pool.catalog()) {
-                const auto text = pool.read(tome.title);
-                if (!text) continue;
-                std::size_t start = 0;
-                for (std::size_t i = 0; i <= text->size(); ++i) {
-                    const char c = (i < text->size()) ? (*text)[i] : '.';
-                    if (c == '.' || c == '!' || c == '?' || i == text->size()) {
-                        const std::string sent = squash(text->substr(start, i - start + 1));
-                        start = i + 1;
-                        if (sent.size() < 24 || sent.size() > 360) continue;
-                        std::string low = sent;
-                        for (auto& ch : low) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
-                        int sc = 0;
-                        for (const auto& term : terms) {
-                            for (std::size_t p = low.find(term); p != std::string::npos; p = low.find(term, p + 1)) {
-                                const bool lb = (p == 0) || !std::isalpha(static_cast<unsigned char>(low[p - 1]));
-                                const bool rb = (p + term.size() >= low.size()) || !std::isalpha(static_cast<unsigned char>(low[p + term.size()]));
-                                if (lb && rb) { ++sc; break; }
-                            }
-                        }
-                        if (sc >= 2) hits.push_back({ sc, tome.title, sent });
-                    }
-                }
-            }
-            if (hits.empty())
+            const auto ps = consult_passages(query, 4);
+            if (ps.empty())
                 return {true, "Khora's liquid knowledge holds nothing matching that", ""};
-            const std::size_t k = std::min<std::size_t>(4, hits.size());
-            std::partial_sort(hits.begin(), hits.begin() + k, hits.end(),
-                              [](const Hit& a, const Hit& b) { return a.score > b.score; });
             std::ostringstream os;
             os << "from Khora's liquid knowledge on \"" << query << "\":\n";
-            for (std::size_t i = 0; i < k; ++i)
-                os << "  [" << hits[i].source << "] " << hits[i].passage << "\n";
+            for (const auto& [src, passage] : ps) os << "  [" << src << "] " << passage << "\n";
+            return {true, os.str(), ""};
+        }
+    });
+    shell.register_tool({
+        "contemplate",
+        "engage a question with Khora's whole mind: sources, thought, connection  (usage: contemplate <query>)",
+        [&mind, &lex, consult_passages](const carapace::Intent& in) -> carapace::ToolResult {
+            if (in.args.empty()) return {false, "", "usage: contemplate <query>"};
+            std::string query;
+            for (const auto& a : in.args) { if (!query.empty()) query += ' '; query += a; }
+            std::ostringstream os;
+            os << "Khora contemplates \"" << query << "\":\n";
+
+            // 1. What its sources say (grounding — real, attributed).
+            os << " - what my sources hold -\n";
+            const auto ps = consult_passages(query, 2);
+            if (ps.empty()) os << "    (nothing in the pool yet)\n";
+            else for (const auto& [src, passage] : ps) os << "    [" << src << "] " << passage << "\n";
+
+            // 2. What it thinks (its own associative voice).
+            const std::string thought = mind.respond(query, 22);
+            os << " - what i think -\n    " << (thought.empty() ? "(no words yet)" : thought) << "\n";
+
+            // 3. What it connects (chaos: collide two of the question's concepts).
+            std::vector<std::string> qc;   // content concepts (length filters function words)
+            for (auto& t : khora::lexicon::tokenize(query))
+                if (t.size() >= 5 && lex.has(t)) qc.push_back(t);
+            const std::string a = qc.size() >= 1 ? qc[0] : std::string{};
+            const std::string b = qc.size() >= 2 ? qc[1] : std::string{};
+            const auto syn = mind.synthesize(a, b, 0);
+            os << " - what i connect -\n    " << syn.a << " x " << syn.b << " ~> "
+               << (syn.emergent.empty() ? std::string("(nothing)") : syn.emergent.front().label);
             return {true, os.str(), ""};
         }
     });
