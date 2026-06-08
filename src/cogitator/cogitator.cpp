@@ -1257,4 +1257,31 @@ std::vector<std::string> Cogitator::infer_path(const std::string& start,
     return best_partial;   // the closest reasoned approach when no full path is found
 }
 
+Insight Cogitator::explain(const std::string& subject) const {
+    Insight ins;
+    ins.subject = subject;
+    if (!plexus_ || !plexus_->has(subject)) return ins;
+    ins.known = true;
+
+    // What the subject is about — its strongest mutual-information kin.
+    for (const auto& kv : plexus_->associates(subject, 7))
+        ins.defines.push_back(kv.first);
+
+    // Its KIND — the most coherent abstraction in the tower whose grounded leaves
+    // include the subject — and its kindred (the other leaves under that kind).
+    double best_coh = -1.0;
+    for (const auto& a : abstractions_) {
+        std::unordered_set<std::string> leaves;
+        ground_concept_(a.name, leaves, 0);
+        if (leaves.count(subject) && a.coherence > best_coh) {
+            best_coh = a.coherence;
+            ins.kind = a.name;
+            ins.kindred.clear();
+            for (const auto& l : leaves)
+                if (l != subject && !l.empty() && l[0] != '{') ins.kindred.push_back(l);
+        }
+    }
+    return ins;
+}
+
 } // namespace khora::cogitator

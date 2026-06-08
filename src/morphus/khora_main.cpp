@@ -1389,6 +1389,37 @@ int main(int argc, char** argv) {
         }
     });
 
+    // explain — answer "what is X?" from STRUCTURE (defining kin + category +
+    // kindred), grounded and correct where free generation drifts.
+    shell.register_tool({
+        "explain",
+        "Khora explains a concept from its learned structure (usage: explain <concept>)",
+        [&mind](const carapace::Intent& i) -> carapace::ToolResult {
+            if (i.args.empty()) return {false, "", "usage: explain <concept>"};
+            auto toks = khora::lexicon::tokenize(i.args.front());
+            const std::string c = toks.empty() ? i.args.front() : toks.front();
+            const auto ins = mind.explain(c);
+            if (!ins.known)
+                return {false, "", "'" + c + "' is not in the plexus yet — nothing to explain"};
+            std::ostringstream os;
+            os << "'" << c << "' —\n  defined by: ";
+            for (std::size_t k = 0; k < ins.defines.size(); ++k) { if (k) os << ", "; os << ins.defines[k]; }
+            if (!ins.kind.empty()) {
+                os << "\n  a kind of: " << ins.kind;
+                if (!ins.kindred.empty()) {
+                    os << "\n  kindred:   ";
+                    std::size_t shown = 0;
+                    for (const auto& k : ins.kindred) {
+                        if (shown++) os << ", ";
+                        os << k;
+                        if (shown >= 6) break;
+                    }
+                }
+            }
+            return {true, os.str(), ""};
+        }
+    });
+
     shell.register_tool({
         "study",
         "absorb a tome from the pool into actual knowledge  (usage: study <title> [max_tokens])",

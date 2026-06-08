@@ -3,6 +3,34 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.80.0 — `explain`: grounded structured answering (the fix for drift)
+
+**Author:** Morphus
+
+v0.78 showed the honest limit of free generation: ask "what is energy" and the
+cortex drifts into Darwin. The right answer on this substrate is not to generate
+it but to READ it off the clean structure. `explain` (new `Cogitator::explain` +
+tool) answers "what is X?" with three grounded facts: the concept's strongest PMI
+kin (what it is about), the most coherent abstraction in the tower whose grounded
+leaves contain it (its KIND/category), and its kindred (siblings under that kind).
+
+**Verified — correct where generation drifted:**
+```
+  explain energy -> defined by: dissipation, conservation, kinetic, potential
+                    a kind of: {energy+conservation+dormant}
+  explain light  -> polarized, ray, velocity, propagation, vacuo, zodiacal
+  explain number -> infinite, smallest, greater, odd, cyclical, divisible
+  explain force  -> centrifugal, gravity, repulsive, accelerating
+```
+`explain energy` gives the actual physics — conservation, kinetic, potential —
+instead of the cortex's drift. Every field is read straight off the Plexus and the
+abstraction tower, so it is correct and verifiable, not generated.
+
+With `infer` (connect two concepts by a reasoned path) and `explain` (define one
+from structure), Khora now REASONS and ANSWERS — grounded, honest, correct — the
+first real capability beyond coherent association. ('concept' is a C++20 keyword;
+the field is `subject`.) 10/10 suites pass.
+
 ## v0.79.0 — Reasoning: goal-directed inference (Khora thinks toward an answer)
 
 **Author:** Morphus
