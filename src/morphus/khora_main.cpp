@@ -15,6 +15,7 @@
 #include "khora/lattice/persistence.hpp"
 #include "khora/ballast/ballast.hpp"
 #include "khora/lexicon/lexicon.hpp"
+#include "khora/plexus/plexus.hpp"
 #include "khora/lodestone/lodestone.hpp"
 #include "khora/maelstrom/maelstrom.hpp"
 #include "khora/reservoir/aqueduct.hpp"
@@ -46,6 +47,7 @@ namespace {
 constexpr const char* kArchivePath          = "data/lattice_archive/main.klat";
 constexpr const char* kCortexArchivePrefix  = "data/cortex_archive/main";
 constexpr const char* kLexiconArchivePrefix = "data/lexicon_archive/main";
+constexpr const char* kPlexusArchivePrefix  = "data/plexus_archive/main";
 constexpr const char* kAttractorsPath       = "data/cogitator_archive/attractors.txt";
 constexpr const char* kAbstractionsPath     = "data/cogitator_archive/abstractions.txt";
 
@@ -73,6 +75,7 @@ int main(int argc, char** argv) {
     cortex::PredictiveColumn column(3);
     soma::SomaNexus nexus;
     lexicon::Lexicon lex;
+    plexus::Plexus    plex;   // associative graph memory — the hub-proof kin
     reverie::ReverieLoom dream(memory, column, nexus);
     cogitator::Cogitator mind(lex, memory, column, nexus);
 
@@ -84,7 +87,7 @@ int main(int argc, char** argv) {
 
     // The Curator — Khora decides for itself what to learn next. Studied
     // vocabulary is promoted into `memory` so cognition can think over it.
-    curator::Curator curator(pool, aqueduct, lex, column, &memory);
+    curator::Curator curator(pool, aqueduct, lex, column, &memory, &plex);
 
     // The Ballast — Khora is hard-capped at 4 GB of system RAM and backs
     // off when total system RAM crosses 90% (the operator's machine must
@@ -128,6 +131,18 @@ int main(int argc, char** argv) {
                           << " words, " << lex.total_observations() << " observations]\n";
             } catch (const lattice::PersistError& e) {
                 std::cout << "[warning: could not load lexicon archive: " << e.what() << "]\n";
+            }
+        }
+    }
+    {
+        fs::path plex_path = kPlexusArchivePrefix; plex_path += ".plexus";
+        if (fs::exists(plex_path)) {
+            try {
+                plex.load(kPlexusArchivePrefix);
+                std::cout << "[loaded plexus: " << plex.vocabulary_size()
+                          << " nodes, " << plex.edge_count() << " associative edges]\n";
+            } catch (const std::exception& e) {
+                std::cout << "[warning: could not load plexus archive: " << e.what() << "]\n";
             }
         }
     }
@@ -874,7 +889,7 @@ int main(int argc, char** argv) {
     shell.register_tool({
         "pursue",
         "direct Khora to investigate a topic: acquire, study, then think on it  (usage: pursue <topic>)",
-        [&aqueduct, &pool, &lex, &column, &memory, &mind](const carapace::Intent& i) -> carapace::ToolResult {
+        [&aqueduct, &pool, &lex, &column, &memory, &mind, &plex](const carapace::Intent& i) -> carapace::ToolResult {
             if (i.args.empty()) return {false, "", "usage: pursue <topic>"};
             const std::string topic = i.args[0];
             std::ostringstream os;
@@ -891,7 +906,7 @@ int main(int argc, char** argv) {
 
             // 2. Absorb it into living knowledge.
             if (!title.empty()) {
-                const auto o = khora::curator::study_tome(pool, lex, column, title, 60000, &memory);
+                const auto o = khora::curator::study_tome(pool, lex, column, title, 60000, &memory, &plex);
                 if (o.ok) os << "  studied: vocabulary " << o.vocab_before << " -> " << o.vocab_after
                              << " (+" << o.cooccurrences << " cooccurrences)\n";
                 else      os << "  (study failed: " << o.error << ")\n";
@@ -1320,7 +1335,7 @@ int main(int argc, char** argv) {
     shell.register_tool({
         "study",
         "absorb a tome from the pool into actual knowledge  (usage: study <title> [max_tokens])",
-        [&pool, &lex, &column, &memory](const carapace::Intent& i) -> carapace::ToolResult {
+        [&pool, &lex, &column, &memory, &plex](const carapace::Intent& i) -> carapace::ToolResult {
             if (i.args.empty()) return {false, "", "usage: study <title> [max_tokens]"};
             std::size_t max_tokens = 60000;
             std::size_t title_args = i.args.size();
@@ -1331,7 +1346,7 @@ int main(int argc, char** argv) {
             std::string title;
             for (std::size_t k = 0; k < title_args; ++k) { if (k) title += ' '; title += i.args[k]; }
 
-            const auto o = khora::curator::study_tome(pool, lex, column, title, max_tokens, &memory);
+            const auto o = khora::curator::study_tome(pool, lex, column, title, max_tokens, &memory, &plex);
             if (!o.ok) return {false, "", o.error};
             std::ostringstream os;
             os << "studied \"" << o.title << "\"\n"
@@ -1340,6 +1355,43 @@ int main(int argc, char** argv) {
                << "  (+" << o.cooccurrences << " cooccurrences)\n"
                << "  cortex recent_acc: " << o.acc_before << " -> " << o.acc_after << "\n"
                << "  learning yield   : " << o.yield << "  mastery -> " << o.mastery;
+            return {true, os.str(), ""};
+        }
+    });
+
+    // weave — the Plexus made visible. The hub-proof kin of a word: its
+    // strongest associates by pointwise mutual information, with the loud
+    // function-word hubs divided out by the mathematics itself. This is the
+    // direct proof that the hub problem yields to graph + PMI.
+    shell.register_tool({
+        "weave",
+        "the hub-proof kin of a word by mutual information (usage: weave <word> [k])",
+        [&plex](const carapace::Intent& i) -> carapace::ToolResult {
+            if (i.args.empty()) return {false, "", "usage: weave <word> [k]"};
+            std::size_t k = 10, nargs = i.args.size();
+            if (i.args.size() >= 2) {
+                try { k = std::stoul(i.args.back()); nargs = i.args.size() - 1; }
+                catch (...) {}
+            }
+            std::string word;
+            for (std::size_t a = 0; a < nargs; ++a) { if (a) word += ' '; word += i.args[a]; }
+            if (!plex.has(word)) {
+                auto toks = khora::lexicon::tokenize(word);
+                if (!toks.empty()) word = toks.front();
+            }
+            if (k == 0)  k = 10;
+            if (k > 50)  k = 50;
+            const auto kin = plex.associates(word, k);
+            if (kin.empty())
+                return {false, "", "no kin woven for '" + word +
+                        "' (unseen, or only noise-level co-occurrence). The plexus holds " +
+                        std::to_string(plex.vocabulary_size()) + " nodes over " +
+                        std::to_string(plex.total_tokens()) + " tokens — study more to thicken it."};
+            std::ostringstream os;
+            os << "the plexus weaves '" << word << "' (seen " << plex.occurrences(word)
+               << "x) to its true kin — hubs divided out by mutual information:\n";
+            for (const auto& [w, s] : kin)
+                os << "  " << w << "   (affinity " << s << ")\n";
             return {true, os.str(), ""};
         }
     });
@@ -1512,12 +1564,14 @@ int main(int argc, char** argv) {
     // Helper: persist lattice + cortex silently. Used both at
     // single-command exit and at interactive-loop exit so state actually
     // accumulates across runs.
-    auto persist_silently = [&memory, &column, &lex, &mind]() {
+    auto persist_silently = [&memory, &column, &lex, &mind, &plex]() {
         try { (void)lattice::save(memory, kArchivePath); }
         catch (...) { /* swallow — best effort */ }
         try { column.save(kCortexArchivePrefix); }
         catch (...) { /* swallow — best effort */ }
         try { lex.save(kLexiconArchivePrefix); }
+        catch (...) { /* swallow — best effort */ }
+        try { plex.save(kPlexusArchivePrefix); }
         catch (...) { /* swallow — best effort */ }
         try { mind.save_attractors(kAttractorsPath); }
         catch (...) { /* swallow — best effort */ }
@@ -1643,6 +1697,14 @@ int main(int argc, char** argv) {
                   << " words) to " << kLexiconArchivePrefix << ".*]\n";
     } catch (const std::exception& e) {
         std::cerr << "[lexicon save failed: " << e.what() << "]\n";
+    }
+    try {
+        plex.save(kPlexusArchivePrefix);
+        std::cout << "[saved plexus (" << plex.vocabulary_size()
+                  << " nodes, " << plex.edge_count() << " edges) to "
+                  << kPlexusArchivePrefix << ".plexus]\n";
+    } catch (const std::exception& e) {
+        std::cerr << "[plexus save failed: " << e.what() << "]\n";
     }
     try {
         mind.save_attractors(kAttractorsPath);

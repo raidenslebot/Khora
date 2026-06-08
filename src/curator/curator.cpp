@@ -15,7 +15,8 @@ using khora::reservoir::seed_catalog;
 StudyOutcome study_tome(Reservoir& pool, khora::lexicon::Lexicon& lex,
                         khora::cortex::PredictiveColumn& cortex,
                         const std::string& title, std::size_t max_tokens,
-                        khora::lattice::Lattice* concept_space) {
+                        khora::lattice::Lattice* concept_space,
+                        khora::plexus::Plexus* plexus) {
     StudyOutcome o;
     o.title = title;
     auto text = pool.read(title);   // bumps times_read
@@ -32,6 +33,12 @@ StudyOutcome study_tome(Reservoir& pool, khora::lexicon::Lexicon& lex,
         else                   cortex.learn(g);
     }
     o.cooccurrences = lex.expose_sequence(tokens, 3);
+
+    // The same token stream feeds the Plexus, which keeps the RAW co-occurrence
+    // counts the binarised lexicon throws away — the frequency information the
+    // hub-proof PMI similarity needs. One study, two memories: the distributional
+    // glyph and the explicit associative graph.
+    if (plexus) plexus->observe(tokens, 3);
 
     o.tokens      = tokens.size();
     o.acc_after   = cortex.recent_accuracy();
@@ -83,9 +90,10 @@ StudyOutcome study_tome(Reservoir& pool, khora::lexicon::Lexicon& lex,
 Curator::Curator(Reservoir& pool, Aqueduct& aqueduct,
                  khora::lexicon::Lexicon& lex,
                  khora::cortex::PredictiveColumn& cortex,
-                 khora::lattice::Lattice* concept_space)
+                 khora::lattice::Lattice* concept_space,
+                 khora::plexus::Plexus* plexus)
     : pool_(pool), aqueduct_(aqueduct), lex_(lex), cortex_(cortex),
-      concept_space_(concept_space) {}
+      concept_space_(concept_space), plexus_(plexus) {}
 
 Decision Curator::decide() const {
     const auto cat = pool_.catalog();
@@ -175,7 +183,7 @@ std::string Curator::act(std::size_t study_tokens) {
 
     switch (d.kind) {
         case Decision::Study: {
-            const auto o = study_tome(pool_, lex_, cortex_, d.title, study_tokens, concept_space_);
+            const auto o = study_tome(pool_, lex_, cortex_, d.title, study_tokens, concept_space_, plexus_);
             ++studies_;
             if (o.ok) {
                 os << "  STUDIED \"" << o.title << "\": " << o.tokens << " tokens, vocab "

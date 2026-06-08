@@ -33,3 +33,7 @@ add_test(NAME LexiconTest COMMAND lexicon_test)
 add_executable(reservoir_test reservoir_test.cpp)
 target_link_libraries(reservoir_test PRIVATE khora::reservoir)
 add_test(NAME ReservoirTest COMMAND reservoir_test)
+
+add_executable(plexus_test plexus_test.cpp)
+target_link_libraries(plexus_test PRIVATE khora::plexus)
+add_test(NAME PlexusTest COMMAND plexus_test)

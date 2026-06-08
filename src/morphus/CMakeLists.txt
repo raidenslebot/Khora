@@ -5,6 +5,7 @@ target_link_libraries(khora PRIVATE
     khora::carapace
     khora::reverie
     khora::lexicon
+    khora::plexus
     khora::cogitator
     khora::whetstone
     khora::reservoir

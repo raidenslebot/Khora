@@ -3,6 +3,50 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.68.0 — The Plexus: the hub problem falls to graph + PMI
+
+**Author:** Morphus
+
+The deepest bottleneck in the whole engine — the **hub problem** — is solved.
+Loud words ("the", "of", "is") keep company with everything, so under any
+overlap metric on the binary substrate they sit near everything, and every
+train of thought, every abstraction, every chaos collision collapses into them.
+Three honest attempts to fix it *inside* the hypervector substrate failed
+(strip common bits → none were concentrated; force fixed density → random rare
+words; cosine normalise → function words genuinely overlap everything, so cosine
+**rewarded** them). The fault was never the metric. The binarised glyph had
+**thrown away the frequency information** the cure needs.
+
+The **Plexus** (`khora::plexus`) is a new memory that keeps it: an explicit
+weighted associative graph built during study, every co-occurrence count
+preserved. Affinity is not overlap but **pointwise mutual information** —
+`PMI(a,b) = log2[ P(a,b) / (P(a)·P(b)) ]` — co-occurrence measured *against the
+chance of meeting at random*. A hub's loudness lives in `P(a)` and **divides
+straight out of every edge it owns**. This is the degree-normalisation the
+failed tweaks were groping toward, in its principled form — the same quantity
+modern embeddings implicitly factorise. Context is smoothed (`P(b)^0.75`) to
+blunt PMI's rare-word bias; single-meeting edges are floored as noise; memory is
+bounded (each node keeps its strongest ~160 kin by confidence-weighted PMI, so a
+35k vocabulary fits in tens of MB).
+
+- New subsystem `src/plexus` + `include/khora/plexus/plexus.hpp`: `observe`,
+  `affinity`, `associates`, persistence to a compact binary `.plexus`.
+- Threaded into **every** study path (`study_tome` + the autonomous Curator), so
+  the graph thickens with all training, manual and self-directed. Persists and
+  resumes across lives like every other faculty.
+- New `weave <word> [k]` tool: a word's hub-proof kin, surfaced directly.
+- New `PlexusTest` — **10/10 suites pass**. Its decisive check: on a corpus where
+  "the" sits beside everything, `cat`'s top associate is **dog** (true kin), not
+  "the" (the hub it co-occurs with most in raw counts). PMI suppresses the hub
+  by construction.
+
+Why this is the exponential lever and not just another tool: the Spire
+(abstraction), the cascade (chaos), rumination (cognition) and steered
+generation **all drink from the same well** — coherent concept structure. They
+were all starving on the hub-loose field (v0.67 showed the Spire refusing almost
+every abstraction). Clean kin unlocks all of them at once. Next: route the Spire
+and cognition through the Plexus so abstraction forms on sharp structure.
+
 ## v0.67.0 — Self-escalating standard (Khora demands more of itself)
 
 **Author:** Morphus

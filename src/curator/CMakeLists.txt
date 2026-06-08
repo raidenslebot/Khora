@@ -8,7 +8,7 @@ target_include_directories(khora_curator
 )
 
 target_link_libraries(khora_curator
-    PUBLIC khora::reservoir khora::lexicon khora::cortex
+    PUBLIC khora::reservoir khora::lexicon khora::cortex khora::plexus
 )
 
 add_library(khora::curator ALIAS khora_curator)
