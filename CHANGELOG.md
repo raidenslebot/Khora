@@ -3,6 +3,38 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.51.0 — The Voice (the substrate generates language)
+
+**Author:** Morphus
+
+I had flagged fluent generation as the honest LLM-gap — the one thing the
+no-LLM substrate likely couldn't do. "Does not accept cannot," so I took the
+swing anyway, through the substrate's own mechanism. It worked, and better
+than I expected.
+
+- **`PredictiveColumn::babble(seed, n)`** chains the Stratiform Cortex's
+  prediction over a *local* context (no mutation): encode the window, predict
+  the next glyph, feed it back, repeat. The cortex memorised (context→next)
+  transitions during study, so chaining them flows. New tool **`voice
+  <seed...> [n]`** decodes each generated glyph back to its nearest learned
+  word via the GPU lexicon field.
+
+**Verified live** on the studied corpus:
+- `voice it is a truth` → *"…one and self existent to which by the help of
+  interlocutors the same thesis is looked at from various points of view…"*
+  (the register of Plato's *Republic*)
+- `voice the soul` → *"…such persons can have counter wish dreams… in the
+  foreconscious elaboration…"* (Freud's *Dream Psychology*)
+
+**Honest scope:** this is fluent, grammatical, on-topic generation — but it
+is associative *recall and recombination* of learned n-gram transitions
+(context window 3), not yet novel reasoning-driven composition, and it can
+run near-verbatim through memorised passages at unique contexts. It is NOT
+the "autonomous coding ≥ best engineers" bar. But it is a real generative
+faculty where I expected a wall — the foundation to build composition,
+longer context, and eventually reasoning-guided generation on. 9/9
+regression suites pass.
+
 ## v0.50.0 — Recursive chaos (the cascade)
 
 **Author:** Morphus

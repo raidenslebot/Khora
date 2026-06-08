@@ -44,6 +44,37 @@ Glyph PredictiveColumn::predict() const {
     return val.value_or(Glyph::zero());
 }
 
+std::vector<Glyph> PredictiveColumn::babble(const std::vector<Glyph>& seed, std::size_t n) const {
+    std::vector<Glyph> out;
+    if (ctx_keys_.size() == 0) return out;
+    out.reserve(n);
+
+    std::deque<Glyph> ctx(seed.begin(), seed.end());
+    while (ctx.size() > context_window_) ctx.pop_front();
+
+    for (std::size_t i = 0; i < n; ++i) {
+        // Encode the local context exactly as current_context_() does.
+        Glyph c = Glyph::zero();
+        if (!ctx.empty()) {
+            std::vector<Glyph> ordered;
+            ordered.reserve(ctx.size());
+            int pos = 0;
+            for (auto it = ctx.rbegin(); it != ctx.rend(); ++it, ++pos)
+                ordered.push_back(permute(*it, pos * 137));
+            c = bundle(std::span<const Glyph>{ordered.data(), ordered.size()});
+        }
+        const auto m = ctx_keys_.query(c, 1);
+        if (m.empty()) break;
+        const auto val = ctx_vals_.recall(m[0].label);
+        if (!val) break;
+        out.push_back(*val);
+
+        ctx.push_back(*val);
+        while (ctx.size() > context_window_) ctx.pop_front();
+    }
+    return out;
+}
+
 PredictiveColumn::StepResult PredictiveColumn::step(const Glyph& input) {
     StepResult r;
     r.actual = input;

@@ -888,6 +888,46 @@ int main(int argc, char** argv) {
             return {true, os.str(), ""};
         }
     });
+    shell.register_tool({
+        "voice",
+        "Khora generates a sequence from the structure it learned  (usage: voice <seed...> [n])",
+        [&column, &lex](const carapace::Intent& i) -> carapace::ToolResult {
+            if (i.args.empty()) return {false, "", "usage: voice <seed...> [n]"};
+            std::size_t n = 16, seed_args = i.args.size();
+            if (i.args.size() >= 2) {
+                try { std::size_t v = std::stoul(i.args.back()); n = v; seed_args = i.args.size() - 1; }
+                catch (...) {}
+            }
+            if (n < 1) n = 1;
+            if (n > 60) n = 60;
+
+            std::vector<khora::lattice::Glyph> seedg;
+            std::string seedtext;
+            for (std::size_t k = 0; k < seed_args; ++k) {
+                for (auto& t : khora::lexicon::tokenize(i.args[k])) {
+                    seedg.push_back(lex.glyph_for(t));
+                    if (!seedtext.empty()) seedtext += ' ';
+                    seedtext += t;
+                }
+            }
+            if (seedg.empty()) return {false, "", "seed produced no tokens"};
+
+            const auto gen = column.babble(seedg, n);
+            if (gen.empty())
+                return {true, "Khora has not learned enough sequence structure to speak yet", ""};
+
+            // Decode each generated glyph back to its nearest learned word.
+            maelstrom::Resonator decoder(256);
+            decoder.build(lex.semantic_field());
+            std::ostringstream os;
+            os << seedtext << " ...";
+            for (const auto& g : gen) {
+                const auto h = decoder.query(g, 1);
+                os << ' ' << (h.empty() ? std::string("?") : h.front().label);
+            }
+            return {true, os.str(), ""};
+        }
+    });
 
     shell.register_tool({
         "study",

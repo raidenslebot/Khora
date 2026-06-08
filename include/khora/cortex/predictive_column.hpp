@@ -45,6 +45,14 @@ public:
     // Predict-without-learn — peek at what would come next.
     khora::lattice::Glyph predict() const;
 
+    // Generate a sequence by chaining prediction over a LOCAL context (does
+    // not mutate the column). Seed the context with `seed`, then repeatedly
+    // predict the next glyph and feed it back. This is the substrate's own
+    // honest generative mechanism — it tends to replay the (context->next)
+    // transitions it memorised, so output is locally coherent but not novel.
+    std::vector<khora::lattice::Glyph> babble(const std::vector<khora::lattice::Glyph>& seed,
+                                              std::size_t n) const;
+
     // Bounded associative memory (brain-like forgetting). When the number
     // of stored associations exceeds the cap, the oldest is evicted. This
     // keeps memory finite and per-step queries bounded. 0 = unbounded.
