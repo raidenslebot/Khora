@@ -3,6 +3,35 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.19.0 — Sharper semantics (IDF weighting + subsampling)
+
+**Author:** Morphus
+
+Fixed function-word pollution in the distributional semantics. Before:
+`enemy~the` (0.28) outranked `enemy~army` (0.25) — semantically wrong,
+because "the" co-occurs with everything. Two standard, principled
+techniques (no hardcoded stoplist — all corpus statistics):
+
+- **Inverse-frequency neighbour weighting** — each neighbour's
+  contribution to a context vector is scaled by `log(total/freq)`,
+  clamped to a small integer range. Rare, meaningful words carry more
+  signal than ubiquitous ones.
+- **Frequent-word subsampling** — ubiquitous words are probabilistically
+  dropped from the stream entirely (word2vec keep-probability), so they
+  neither pollute nor get polluted. Applied only once the corpus is
+  large enough (>2000 tokens) for meaningful statistics, so small
+  exposures are unaffected.
+
+Both frequencies persist across restarts (added to `.lexobs`).
+
+Result on a whole-book study of The Art of War: `enemy~army` (0.27) now
+correctly outranks `enemy~the` (0.25); "the"'s effective exposure fell
+3681 -> 486 (87% subsampled); content pairs like `general~soldiers`
+(0.19) rank sensibly above unrelated pairs. Single-book corpora stay
+noisy and sharpen as more is studied — but the ordering is now correct.
+
+9/9 regression suites pass.
+
 ## v0.18.0 — Substrate throughput (word-parallel ops)
 
 **Author:** Morphus

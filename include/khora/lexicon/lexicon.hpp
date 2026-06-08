@@ -79,11 +79,14 @@ private:
 
     Context& touch_(const std::string& token);
     static void add_index_(std::vector<std::int32_t>& acc,
-                           std::string_view source_token, int sign);
+                           std::string_view source_token, int weight);
+    int  weight_for_(const std::string& token) const;  // inverse-frequency weight
     khora::lattice::Glyph binarise_(const Context& c) const;
 
-    std::unordered_map<std::string, Context> ctx_;
-    std::size_t                              total_obs_ = 0;
+    std::unordered_map<std::string, Context>      ctx_;
+    std::unordered_map<std::string, std::uint32_t> freq_;   // global token frequency
+    std::size_t                                   total_obs_    = 0;
+    std::size_t                                   total_tokens_ = 0;
 };
 
 } // namespace khora::lexicon

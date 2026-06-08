@@ -5,7 +5,9 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <fstream>
+#include <random>
 #include <span>
 #include <sstream>
 #include <string>
@@ -93,16 +95,30 @@ Lexicon::Lexicon() = default;
 Glyph Lexicon::baseline_for(std::string_view token) { return encode_token(token); }
 
 void Lexicon::add_index_(std::vector<std::int32_t>& acc,
-                         std::string_view source_token, int sign) {
-    // The source token's sparse ternary index vector: K positions at +sign,
-    // K at -sign, chosen deterministically from its hash.
+                         std::string_view source_token, int weight) {
+    // The source token's sparse ternary index vector: K positions at
+    // +weight, K at -weight, chosen deterministically from its hash.
     std::uint64_t state = fnv1a(source_token);
     for (int k = 0; k < kIndexPairs; ++k) {
         const std::size_t p_plus  = static_cast<std::size_t>(splitmix64(state) % kGlyphBits);
         const std::size_t p_minus = static_cast<std::size_t>(splitmix64(state) % kGlyphBits);
-        acc[p_plus]  += sign;
-        acc[p_minus] -= sign;
+        acc[p_plus]  += weight;
+        acc[p_minus] -= weight;
     }
+}
+
+int Lexicon::weight_for_(const std::string& token) const {
+    // Inverse-frequency weight: rare, meaningful neighbours carry more
+    // signal than ubiquitous function words. idf = log(total / freq),
+    // scaled and clamped to a small positive integer range.
+    auto it = freq_.find(token);
+    const double f = (it == freq_.end()) ? 1.0 : static_cast<double>(it->second);
+    const double total = static_cast<double>(total_tokens_ > 0 ? total_tokens_ : 1);
+    const double idf = std::log((total + 1.0) / (f + 1.0));
+    int w = static_cast<int>(idf * 1.5 + 0.5);
+    if (w < 1)  w = 1;
+    if (w > 16) w = 16;
+    return w;
 }
 
 Lexicon::Context& Lexicon::touch_(const std::string& token) {
@@ -142,14 +158,45 @@ std::uint32_t Lexicon::exposures_for(std::string_view token) const {
 std::size_t Lexicon::expose_sequence(const std::vector<std::string>& tokens,
                                      std::size_t window) {
     if (window == 0) return 0;
+
+    // Pass 1: update global frequencies so weights + subsampling reflect
+    // the corpus including this sequence.
+    for (const auto& t : tokens) ++freq_[t];
+    total_tokens_ += tokens.size();
+
+    // Pass 2: subsample — drop ubiquitous words from the stream entirely
+    // (word2vec keep-probability). This stops function words like "the"
+    // from both polluting and being polluted, so meaning concentrates in
+    // content words. Only applied once the corpus is large enough to have
+    // meaningful frequency statistics.
+    std::vector<const std::string*> stream;
+    stream.reserve(tokens.size());
+    if (total_tokens_ < 2000) {
+        for (const auto& t : tokens) stream.push_back(&t);
+    } else {
+        std::mt19937 rng(0x5EED ^ static_cast<unsigned>(total_tokens_));
+        std::uniform_real_distribution<double> unif(0.0, 1.0);
+        constexpr double kSampleT = 1e-3;
+        for (const auto& t : tokens) {
+            const double z = static_cast<double>(freq_[t]) / static_cast<double>(total_tokens_);
+            double keep = 1.0;
+            if (z > kSampleT) {
+                keep = (std::sqrt(z / kSampleT) + 1.0) * (kSampleT / z);  // word2vec
+            }
+            if (keep >= 1.0 || unif(rng) < keep) stream.push_back(&t);
+        }
+    }
+
+    // Pass 3: accumulate context over the subsampled stream, weighting
+    // each surviving neighbour by its inverse frequency.
     std::size_t pairs = 0;
-    for (std::size_t i = 0; i < tokens.size(); ++i) {
-        Context& focus = touch_(tokens[i]);
+    for (std::size_t i = 0; i < stream.size(); ++i) {
+        Context& focus = touch_(*stream[i]);
         const std::size_t lo = (i > window) ? (i - window) : 0;
-        const std::size_t hi = std::min(tokens.size(), i + window + 1);
+        const std::size_t hi = std::min(stream.size(), i + window + 1);
         for (std::size_t j = lo; j < hi; ++j) {
             if (j == i) continue;
-            add_index_(focus.acc, tokens[j], +1);  // ~K increments, not ~N bits
+            add_index_(focus.acc, *stream[j], weight_for_(*stream[j]));
             ++pairs;
         }
         ++focus.obs;
@@ -179,14 +226,16 @@ void Lexicon::save(const std::filesystem::path& prefix) const {
     auto sem_path = prefix; sem_path += ".sem.klat";
     khora::lattice::save(sem, sem_path);
 
-    // Observation counts alongside.
+    // Observation + frequency counts alongside.
     auto obs_path = prefix; obs_path += ".lexobs";
     std::ofstream os(obs_path, std::ios::trunc);
     for (const auto& [tok, c] : ctx_) {
         if (c.obs == 0) continue;
         std::string safe = tok;
         for (char& ch : safe) if (ch == '\t' || ch == '\n') ch = ' ';
-        os << safe << '\t' << c.obs << '\n';
+        auto fit = freq_.find(tok);
+        const std::uint32_t f = (fit == freq_.end()) ? 0u : fit->second;
+        os << safe << '\t' << c.obs << '\t' << f << '\n';
     }
 }
 
@@ -197,16 +246,28 @@ void Lexicon::load(const std::filesystem::path& prefix) {
 
     khora::lattice::Lattice sem = khora::lattice::load(sem_path);
 
-    // Observation counts.
+    // Observation + frequency counts.  Format: token \t obs [\t freq]
     std::unordered_map<std::string, std::uint32_t> obs;
+    freq_.clear();
+    total_tokens_ = 0;
     auto obs_path = prefix; obs_path += ".lexobs";
     std::ifstream is(obs_path);
     std::string line;
     while (std::getline(is, line)) {
-        const std::size_t tab = line.rfind('\t');
-        if (tab == std::string::npos) continue;
-        try { obs[line.substr(0, tab)] = static_cast<std::uint32_t>(std::stoul(line.substr(tab + 1))); }
-        catch (...) {}
+        const std::size_t t1 = line.find('\t');
+        if (t1 == std::string::npos) continue;
+        const std::string tok = line.substr(0, t1);
+        const std::size_t t2 = line.find('\t', t1 + 1);
+        try {
+            if (t2 == std::string::npos) {
+                obs[tok] = static_cast<std::uint32_t>(std::stoul(line.substr(t1 + 1)));
+            } else {
+                obs[tok]   = static_cast<std::uint32_t>(std::stoul(line.substr(t1 + 1, t2 - t1 - 1)));
+                const auto f = static_cast<std::uint32_t>(std::stoul(line.substr(t2 + 1)));
+                freq_[tok]   = f;
+                total_tokens_ += f;
+            }
+        } catch (...) {}
     }
 
     ctx_.clear();
