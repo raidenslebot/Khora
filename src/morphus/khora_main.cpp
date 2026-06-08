@@ -7,6 +7,7 @@
 
 #include "khora/carapace/builtin_tools.hpp"
 #include "khora/carapace/carapace.hpp"
+#include "khora/cogitator/cogitator.hpp"
 #include "khora/cortex/predictive_column.hpp"
 #include "khora/lattice/lattice.hpp"
 #include "khora/lattice/persistence.hpp"
@@ -54,6 +55,7 @@ int main(int argc, char** argv) {
     soma::SomaNexus nexus;
     lexicon::Lexicon lex;
     reverie::ReverieLoom dream(memory, column, nexus);
+    cogitator::Cogitator mind(lex, memory, column, nexus);
 
     // 2. Try to load persisted lattice + cortex state.
     namespace fs = std::filesystem;
@@ -94,6 +96,7 @@ int main(int argc, char** argv) {
     carapace::register_cortex_tools(shell, column, &lex);
     carapace::register_soma_tools(shell, nexus);
     carapace::register_lexicon_tools(shell, lex);
+    carapace::register_cogitator_tools(shell, mind);
 
     // System-level tools that close over multiple subsystems.
     shell.register_tool({

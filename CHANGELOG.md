@@ -3,6 +3,63 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.12.0 — The Morphic Cogitator + The Crucible
+
+**Author:** Morphus
+
+Two arrivals: a thought cycle that never accepts failure, and a forge
+that proves Khora can *reason* — not retrieve.
+
+### The Morphic Cogitator — recursive thought, no-surrender
+
+`think(stimulus)` is no longer a single forward pass. It is a resolve
+loop built on one principle: failure is the trigger for the next
+attempt, never a verdict. Each pass: encode → resonate → if a memory
+fires strongly, resolve to it; otherwise spike Curiosity, decompose the
+stimulus into fragments, resonate each alone, synthesize a hypothesis
+from the partial knowledge + the cortex's projection, **consolidate
+that hypothesis into memory and the cortex**, enrich the probe toward
+it, and re-attempt. Even at the attempt cap it never returns "no
+answer" — it returns its best hypothesis and leaves Curiosity elevated
+so the background Reverie keeps working the problem. Every act of
+thought leaves Khora having learned something it did not know.
+
+Wired into the runtime: `think`, `cogitator_stats`. Verified: with
+"install" and "configure" in memory, `think "instal the sytem"`
+(two typos) resolves to **install** in one pass via the Lexicon.
+
+### The Crucible — relational reasoning forge (no more demos)
+
+The demo paradigm is retired entirely (all `*_demo` sources deleted).
+In its place: the Crucible, a serious trial-and-evolution harness that
+drives the substrate against hard cognition and evolves it on shortfall.
+
+First faculty forged: **Vector Symbolic reasoning**. A 32-nation
+knowledge base (currency / capital / language / continent per nation)
+is encoded by binding role glyphs to filler glyphs (XOR) and bundling
+the pairs into holographic record glyphs (majority). Khora then
+*reasons* — the answers fall out of the algebra, no lookup table holds
+them:
+
+- **Structured query** — "currency of mexico?" → unbind(CURRENCY),
+  clean up against the filler codebook → **peso**. 128/128 = 100%.
+- **Analogy** — "as dollar is to USA, ? is to Mexico" → **peso**.
+  First pass scored 45%; observing the failure, the method evolved to
+  clean up the recovered *role* against the role codebook before
+  applying it. Result: 3968/3968 = **100%**.
+- **Holographic capacity** — pack K records into ONE 10,000-bit glyph
+  and recover their fields. First pass cliffed (62% at K=2 → 18% at
+  K=32). Observing it, the method evolved to bind each record by a
+  subject-key before bundling, making records individually addressable.
+  Result: **K=32 → 99.2%** (127/128 facts recovered from a single
+  1,250-byte vector).
+
+Both improvements are the operator's principle made literal: fail,
+study, retry, evolve. The trajectory is written to
+`data/crucible/relational_evolution.json`.
+
+Substrate regression net intact: **8/8 suites pass.**
+
 ## v0.11.0 — The Lexicon (semantic encoding)
 
 **Author:** Morphus

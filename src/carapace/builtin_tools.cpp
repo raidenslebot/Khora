@@ -1,4 +1,5 @@
 #include "khora/carapace/builtin_tools.hpp"
+#include "khora/cogitator/cogitator.hpp"
 
 #include <chrono>
 #include <ctime>
@@ -446,6 +447,58 @@ void register_soma_tools(Carapace& c, khora::soma::SomaNexus& soma) {
             os << "stimulated " << i.args[0] << " by " << delta
                << " -> " << soma.strength(static_cast<Drive>(idx));
             return make_ok(os.str());
+        }
+    });
+}
+
+void register_cogitator_tools(Carapace& c, khora::cogitator::Cogitator& cog) {
+    c.register_tool({
+        "think",
+        "run a Morphic Cogitator resolve-cycle on the given input",
+        [&cog](const Intent& i) -> ToolResult {
+            std::string stim;
+            for (std::size_t k = 0; k < i.args.size(); ++k) {
+                if (k > 0) stim.push_back(' ');
+                stim += i.args[k];
+            }
+            const auto t = cog.think(stim);
+            std::ostringstream os;
+            os << "Thought  stimulus=\"" << t.stimulus << "\"  attempts=" << t.attempts << "\n"
+               << "  tokens       : ";
+            for (const auto& tok : t.tokens) os << tok << ' ';
+            os << "\n  resonances   :\n";
+            if (t.resonances.empty()) {
+                os << "    (none)\n";
+            } else {
+                for (std::size_t k = 0; k < t.resonances.size(); ++k) {
+                    os << "    " << (k + 1) << ". " << t.resonances[k].label
+                       << "  sim=" << t.resonances[k].similarity << "\n";
+                }
+            }
+            os << "  confidence   : " << t.confidence << "\n"
+               << "  novel        : " << (t.novel ? "yes" : "no") << "\n"
+               << "  learned      : " << (t.learned_this_cycle ? "yes" : "no") << "\n"
+               << "  valence      : " << t.valence << "\n"
+               << "  resolution   : "
+               << (t.chosen_label.empty() ? std::string{"(provisional hypothesis formed)"}
+                                          : t.chosen_label);
+            return {true, os.str(), ""};
+        }
+    });
+    c.register_tool({
+        "cogitator_stats",
+        "show how much Khora has thought and learned",
+        [&cog](const Intent&) -> ToolResult {
+            std::ostringstream os;
+            os << "Cogitator:\n"
+               << "  thoughts_completed   : " << cog.thoughts_completed() << "\n"
+               << "  novel_thoughts       : " << cog.novel_thoughts() << "\n"
+               << "  hypotheses_formed    : " << cog.hypotheses_formed() << "\n"
+               << "  total_attempts       : " << cog.total_attempts() << "\n"
+               << "  resonance_k          : " << cog.resonance_k() << "\n"
+               << "  novelty_threshold    : " << cog.novelty_threshold() << "\n"
+               << "  max_resolve_attempts : " << cog.max_resolve_attempts();
+            return {true, os.str(), ""};
         }
     });
 }

@@ -39,3 +39,10 @@ void register_soma_tools(Carapace& c, khora::soma::SomaNexus& soma);
 void register_lexicon_tools(Carapace& c, khora::lexicon::Lexicon& lex);
 
 } // namespace khora::carapace
+
+// Forward-declare-only: tools that need the Cogitator live in a separate
+// header so callers that don't use it don't pay the include cost.
+namespace khora::cogitator { class Cogitator; }
+namespace khora::carapace {
+void register_cogitator_tools(Carapace& c, khora::cogitator::Cogitator& cog);
+} // namespace khora::carapace
