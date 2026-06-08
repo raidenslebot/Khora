@@ -38,7 +38,9 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace khora::cogitator {
@@ -154,6 +156,11 @@ public:
     // has been learned yet. `n` rotates deterministically through the set.
     std::string wandering_seed(std::uint64_t n);
 
+    // The concepts Khora's own thought keeps converging on — its emergent
+    // preoccupations, the attractors a mind develops as it ruminates. Ranked
+    // by how often deliberation/rumination has landed there.
+    std::vector<std::pair<std::string, std::uint32_t>> top_attractors(std::size_t n = 10) const;
+
     // Stats
     std::size_t thoughts_completed() const noexcept { return thoughts_; }
     std::size_t novel_thoughts()     const noexcept { return novel_count_; }
@@ -193,6 +200,7 @@ private:
     std::vector<std::vector<khora::lattice::LatticeMatch>> resonate_batch_(
         const std::vector<khora::lattice::Glyph>& probes, std::size_t k) const;
     khora::lattice::Glyph recall_(const std::string& label) const;
+    void note_attractor_(const std::string& label);  // record a concept thought landed on
 
     khora::lexicon::Lexicon&         lex_;
     khora::lattice::Lattice&         memory_;
@@ -202,6 +210,7 @@ private:
     maelstrom::Resonator           field_{1024};   // GPU crossover for cognition
     std::unordered_set<std::string> content_;       // salient content words
     std::vector<std::string>        concepts_;      // clean concepts for seeding thought
+    std::unordered_map<std::string, std::uint32_t> attractors_;  // emergent preoccupations
     std::size_t                    indexed_vocab_ = static_cast<std::size_t>(-1);
 
     std::size_t resonance_k_            = 5;

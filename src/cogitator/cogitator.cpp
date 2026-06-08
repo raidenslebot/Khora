@@ -153,6 +153,24 @@ std::string Cogitator::wandering_seed(std::uint64_t n) {
     return concepts_[base + (n % span)];
 }
 
+void Cogitator::note_attractor_(const std::string& label) {
+    if (label.empty()) return;
+    // Skip Khora's own provisional trace concepts — only real, learned
+    // concepts count as preoccupations.
+    if (label.rfind("deliberation_", 0) == 0 || label.rfind("hypothesis_", 0) == 0) return;
+    ++attractors_[label];
+}
+
+std::vector<std::pair<std::string, std::uint32_t>> Cogitator::top_attractors(std::size_t n) const {
+    std::vector<std::pair<std::string, std::uint32_t>> v(attractors_.begin(), attractors_.end());
+    std::sort(v.begin(), v.end(), [](const auto& a, const auto& b) {
+        if (a.second != b.second) return a.second > b.second;
+        return a.first < b.first;
+    });
+    if (v.size() > n) v.resize(n);
+    return v;
+}
+
 Thought Cogitator::think(std::string_view stimulus) {
     Thought t;
     t.stimulus = std::string(stimulus);
@@ -464,6 +482,7 @@ Deliberation Cogitator::deliberate(std::string_view stimulus, std::size_t facets
     d.collapsed = coalition.empty() ? win_cand
         : bundle(std::span<const Glyph>{coalition.data(), coalition.size()});
     d.chosen_label = d.facets[d.winner].novel ? std::string{} : d.facets[d.winner].label;
+    note_attractor_(d.chosen_label);
 
     // Consolidate the collapsed thought into memory + cortex (serial; the
     // exploration was read-only, the learning happens once, here).
@@ -533,6 +552,7 @@ Rumination Cogitator::ruminate(std::string_view stimulus, std::size_t max_depth)
     }
 
     if (r.conclusion.empty() && !r.train.empty()) r.conclusion = r.train.back();
+    note_attractor_(r.conclusion);
     return r;
 }
 

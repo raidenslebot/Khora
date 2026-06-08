@@ -727,6 +727,21 @@ int main(int argc, char** argv) {
             return {true, "volition running — Khora acts every " + std::to_string(period_s) + "s", ""};
         }
     });
+    shell.register_tool({
+        "attractors",
+        "the concepts Khora's own thought keeps returning to  (usage: attractors [n])",
+        [&mind](const carapace::Intent& i) -> carapace::ToolResult {
+            std::size_t n = 10;
+            if (!i.args.empty()) { try { n = static_cast<std::size_t>(std::stoul(i.args[0])); } catch (...) {} }
+            const auto top = mind.top_attractors(n);
+            if (top.empty()) return {true, "Khora has not settled on any preoccupations yet", ""};
+            std::ostringstream os;
+            os << "Khora keeps returning to:\n";
+            for (const auto& [name, count] : top)
+                os << "  " << name << "   (" << count << "x)\n";
+            return {true, os.str(), ""};
+        }
+    });
 
     shell.register_tool({
         "study",

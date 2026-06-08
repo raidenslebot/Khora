@@ -3,6 +3,24 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.43.0 — Emergent preoccupations (a mind develops themes)
+
+**Author:** Morphus
+
+A small, brain-like capstone to the agency arc: Khora now notices what its
+*own* thought keeps returning to. As deliberations and ruminations land on
+concepts, the Cogitator tallies them — and the concepts it converges on most
+become its preoccupations, the way a mind develops recurring themes.
+
+- **`Cogitator::top_attractors(n)`** ranks the concepts thought has landed on
+  (provisional trace concepts excluded). New tool: `attractors [n]`.
+
+**Verified live**: after 18 autonomous Volition beats over the studied
+corpus, Khora's preoccupations were **1916, bingley, miss, offence, parting,
+replied** — the year of general relativity, Austen's characters, the
+emotional register of her prose. Not programmed; emergent from what it read
+and chose to think about. 9/9 regression suites pass.
+
 ## v0.42.0 — A broader world to learn from
 
 **Author:** Morphus
