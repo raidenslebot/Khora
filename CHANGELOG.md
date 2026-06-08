@@ -3,6 +3,34 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.5.0 — Soma Nexus
+
+**Author:** Morphus
+
+Khora's drive arbitrator. Multiple competing intrinsic objectives with
+homeostatic dynamics, replacing a single reward function with a
+multi-pole equilibrium.
+
+Shipped:
+
+- `khora::soma::SomaNexus` with five drives: Curiosity, Preservation,
+  Mastery, Efficiency, OperatorAffinity. Each has a current strength
+  in [0, 1], a setpoint (the "personality"), and a per-second
+  exponential decay rate. Default personality leans toward serving the
+  operator and being moderately curious/cautious.
+- `stimulate(d, delta)` / `tick(dt)` / `evaluate(affinity)` /
+  `choose_best(candidates)`. Thread-safe under concurrent stimulators.
+- `soma_test` — seven assertions covering default state, stimulate
+  clamping, tick decay toward setpoint, weighted evaluation, action
+  arbitration, drive-state-changes-choice, and concurrent-stimulator
+  stress (8 threads × 1,000 ops with no out-of-range drives).
+- `soma_demo` — simulated day: drive state shifts move the chosen action
+  across the menu. Observed: novel input → "explore unknown" (valence
+  +0.98); operator command → "serve operator" (+0.99); resource pressure
+  → "consolidate memory" (+1.10); idle → back to "serve operator".
+
+Tests passing: **5/5 ctest suites, 37 assertions total.**
+
 ## v0.4.0 — Stratiform Cortex (PredictiveColumn)
 
 **Author:** Morphus

@@ -13,3 +13,7 @@ add_test(NAME SynapseTest COMMAND synapse_test)
 add_executable(cortex_test cortex_test.cpp)
 target_link_libraries(cortex_test PRIVATE khora::cortex)
 add_test(NAME CortexTest COMMAND cortex_test)
+
+add_executable(soma_test soma_test.cpp)
+target_link_libraries(soma_test PRIVATE khora::soma)
+add_test(NAME SomaTest COMMAND soma_test)

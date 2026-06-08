@@ -9,3 +9,6 @@ target_link_libraries(synapse_demo PRIVATE khora::synapse)
 
 add_executable(cortex_demo cortex_demo.cpp)
 target_link_libraries(cortex_demo PRIVATE khora::cortex)
+
+add_executable(soma_demo soma_demo.cpp)
+target_link_libraries(soma_demo PRIVATE khora::soma)
