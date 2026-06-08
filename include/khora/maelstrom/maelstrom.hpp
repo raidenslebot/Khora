@@ -73,6 +73,14 @@ public:
     std::vector<Neighbour> resonate(const lattice::Glyph& probe,
                                     std::size_t k = 5) const;
 
+    // Batched k-NN: resonate many probes in ONE dispatch, amortising the
+    // per-query GPU round-trip across the whole batch. Returns one neighbour
+    // list per probe, in input order — equivalent to calling resonate() on
+    // each, but far cheaper for bulk work (all-vs-all, hub centrality, the
+    // facets of one deliberation). Empty if not ready/charged.
+    std::vector<std::vector<Neighbour>> resonate_batch(
+        const std::vector<lattice::Glyph>& probes, std::size_t k = 5) const;
+
     // Compute the raw hamming distance to every charged glyph (index order).
     // Primarily a verification hook — lets a caller check the GPU against
     // the CPU popcount bit-for-bit. Empty if not ready/charged.

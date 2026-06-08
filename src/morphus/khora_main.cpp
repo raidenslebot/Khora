@@ -282,7 +282,35 @@ int main(int argc, char** argv) {
                 os << line;
             }
 
-            os << "\n  correctness  : "
+            // Batched dispatch: many probes in ONE call must equal the
+            // individual calls, and amortise the per-query round-trip.
+            {
+                const std::size_t B = 64;
+                std::vector<Glyph> bp;
+                for (std::size_t i = 0; i < B; ++i)
+                    bp.push_back(Glyph::random(0x717E0000ull + static_cast<std::uint64_t>(i) * 40503));
+                clock::time_point t0 = clock::now();
+                const auto batch = storm.resonate_batch(bp, K);
+                const double batch_ms = ms(clock::now() - t0);
+                t0 = clock::now();
+                bool bmatch = batch.size() == B;
+                for (std::size_t i = 0; i < B && bmatch; ++i) {
+                    const auto solo = storm.resonate(bp[i], K);
+                    if (solo.size() != batch[i].size()) { bmatch = false; break; }
+                    for (std::size_t j = 0; j < solo.size(); ++j)
+                        if (solo[j].hamming != batch[i][j].hamming) { bmatch = false; break; }
+                }
+                const double solo_ms = ms(clock::now() - t0);
+                if (!bmatch) topk_ok = false;
+                char line[176];
+                std::snprintf(line, sizeof(line),
+                    "\n  batch x%zu    : %.3f ms batched  vs  %.3f ms individual  (%.1fx)  %s\n",
+                    B, batch_ms, solo_ms, batch_ms > 0 ? solo_ms / batch_ms : 0.0,
+                    bmatch ? "bit-exact" : "DIVERGED");
+                os << line;
+            }
+
+            os << "  correctness  : "
                << ((ok1 && ok2 && topk_ok) ? "GPU is bit-exact with the CPU oracle"
                                            : "DISCREPANCY DETECTED - GPU path is wrong")
                << "\n  (synthetic benchmark; the Maelstrom is now wired as the lattice's "

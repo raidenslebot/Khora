@@ -3,6 +3,28 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.34.0 — Maelstrom: batched multi-probe resonance
+
+**Author:** Morphus
+
+Single-probe GPU queries are latency-bound on a small field — the per-call
+round-trip (upload probe, dispatch, copy back, map) swamps the tiny compute.
+The fix is to resonate *many* probes in one dispatch.
+
+- **`Maelstrom::resonate_batch(probes, k)`** — a second HLSL entry point
+  (`CSBatch`) indexed by `gid.y` over the probe set, so Q probes ride a
+  single `Dispatch(groups, Q, 1)`. Returns one neighbour list per probe,
+  identical to calling `resonate()` on each.
+
+**Verified live** (RTX 2070 SUPER): batched results are **bit-exact** with
+the per-probe path at every field size. On a 4,000-glyph field (the
+latency-bound regime) 64 probes run **4.2× faster** batched (1.97 ms vs
+8.2 ms); on a 200k field (compute-bound) it's 1.0× as expected — no penalty,
+gain where it counts. This is the enabler for all-vs-all work: computing
+each word's resonance-centrality to demote the function-word hubs, and
+resonating the eight facets of one deliberation in a single call. 9/9
+regression suites pass.
+
 ## v0.33.0 — Distributional semantic recall (context glyphs)
 
 **Author:** Morphus

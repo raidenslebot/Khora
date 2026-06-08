@@ -101,6 +101,53 @@ void CSMain(uint3 dtid : SV_DispatchThreadID,
         }
     }
 }
+
+// Batched variant: gid.y selects the probe, gQ holds Q probes back-to-back,
+// gBCand is laid out [probe][group][k]. One dispatch handles every probe.
+StructuredBuffer<uint>    gQB    : register(t2);  // Q probes * WORDS
+RWStructuredBuffer<uint2> gBCand : register(u2);  // Q * groups * K
+
+groupshared uint bDist[256];
+groupshared uint bIdx[256];
+
+[numthreads(256, 1, 1)]
+void CSBatch(uint3 dtid : SV_DispatchThreadID,
+             uint3 gtid : SV_GroupThreadID,
+             uint3 gid  : SV_GroupID) {
+    uint i = dtid.x;     // glyph index
+    uint p = gid.y;      // probe index
+    uint t = gtid.x;
+
+    uint dist = 0xFFFFFFFFu;
+    if (i < gCount) {
+        uint base  = i * gWords;
+        uint qbase = p * gWords;
+        uint d = 0;
+        [loop] for (uint w = 0; w < gWords; ++w) {
+            d += countbits(gDB[base + w] ^ gQB[qbase + w]);
+        }
+        dist = d;
+    }
+    bDist[t] = dist;
+    bIdx[t]  = i;
+    GroupMemoryBarrierWithGroupSync();
+
+    if (t == 0) {
+        uint kk = min(gK, 256u);
+        uint outBase = (p * gGroups + gid.x) * gK;
+        for (uint s = 0; s < kk; ++s) {
+            uint bestD = 0xFFFFFFFFu, bestPos = 0;
+            for (uint j = 0; j < 256; ++j) {
+                if (bDist[j] < bestD) { bestD = bDist[j]; bestPos = j; }
+            }
+            uint2 c;
+            c.x = bestD;
+            c.y = (bestD == 0xFFFFFFFFu) ? 0xFFFFFFFFu : bIdx[bestPos];
+            gBCand[outBase + s] = c;
+            if (bestD != 0xFFFFFFFFu) bDist[bestPos] = 0xFFFFFFFFu;
+        }
+    }
+}
 )HLSL";
 
 std::string narrow(const wchar_t* w) {
@@ -118,6 +165,7 @@ struct Maelstrom::Impl {
     ComPtr<ID3D11Device>           device;
     ComPtr<ID3D11DeviceContext>    ctx;
     ComPtr<ID3D11ComputeShader>    shader;
+    ComPtr<ID3D11ComputeShader>    shaderBatch;
 
     ComPtr<ID3D11Buffer>              dbBuf;
     ComPtr<ID3D11ShaderResourceView>  dbSRV;
@@ -215,6 +263,21 @@ bool Maelstrom::ignite() {
     if (FAILED(impl_->device->CreateComputeShader(
             code->GetBufferPointer(), code->GetBufferSize(), nullptr, &impl_->shader))) {
         info.note = "could not create compute shader";
+        return false;
+    }
+
+    // The batched entry point compiles from the same source.
+    ComPtr<ID3DBlob> bcode, berr;
+    hr = D3DCompile(kKernel, std::strlen(kKernel), "maelstrom.hlsl",
+                    nullptr, nullptr, "CSBatch", "cs_5_0", 0, 0, &bcode, &berr);
+    if (FAILED(hr)) {
+        info.note = "batch kernel compile failed";
+        if (berr) info.note += std::string(": ") + static_cast<const char*>(berr->GetBufferPointer());
+        return false;
+    }
+    if (FAILED(impl_->device->CreateComputeShader(
+            bcode->GetBufferPointer(), bcode->GetBufferSize(), nullptr, &impl_->shaderBatch))) {
+        info.note = "could not create batch compute shader";
         return false;
     }
 
@@ -436,6 +499,116 @@ std::vector<Neighbour> Maelstrom::resonate(const lattice::Glyph& probe, std::siz
     return out;
 }
 
+std::vector<std::vector<Neighbour>> Maelstrom::resonate_batch(
+    const std::vector<lattice::Glyph>& probes, std::size_t k) const {
+    if (!impl_->ready || impl_->count == 0 || probes.empty()) return {};
+    if (k < 1) k = 1;
+    if (k > kMaxK) k = kMaxK;
+    const UINT ku = static_cast<UINT>(k);
+    const UINT Q  = static_cast<UINT>(probes.size());
+    // D3D11 caps a dispatch dimension at 65535 groups; one probe per Y group.
+    if (Q > 65535) return {};
+
+    auto& d = *impl_;
+    const UINT groups = d.groups;
+
+    // Pack the probes back-to-back and upload as an immutable structured SRV.
+    std::vector<UINT> packed(static_cast<std::size_t>(Q) * kWords32);
+    for (UINT p = 0; p < Q; ++p)
+        std::memcpy(&packed[static_cast<std::size_t>(p) * kWords32],
+                    probes[p].words().data(),
+                    lattice::kGlyphWords * sizeof(lattice::Glyph::Word));
+
+    ComPtr<ID3D11Buffer> qbuf;
+    ComPtr<ID3D11ShaderResourceView> qsrv;
+    {
+        D3D11_BUFFER_DESC bd{};
+        bd.ByteWidth           = static_cast<UINT>(packed.size() * sizeof(UINT));
+        bd.Usage               = D3D11_USAGE_IMMUTABLE;
+        bd.BindFlags           = D3D11_BIND_SHADER_RESOURCE;
+        bd.MiscFlags           = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED;
+        bd.StructureByteStride = sizeof(UINT);
+        D3D11_SUBRESOURCE_DATA init{}; init.pSysMem = packed.data();
+        if (FAILED(d.device->CreateBuffer(&bd, &init, &qbuf))) return {};
+        D3D11_SHADER_RESOURCE_VIEW_DESC sv{};
+        sv.Format = DXGI_FORMAT_UNKNOWN;
+        sv.ViewDimension = D3D11_SRV_DIMENSION_BUFFEREX;
+        sv.BufferEx.NumElements = static_cast<UINT>(packed.size());
+        if (FAILED(d.device->CreateShaderResourceView(qbuf.Get(), &sv, &qsrv))) return {};
+    }
+
+    // Output: Q * groups * k candidate pairs, plus a staging copy.
+    const std::size_t candElems = static_cast<std::size_t>(Q) * groups * ku;
+    ComPtr<ID3D11Buffer> cbuf, cstaging;
+    ComPtr<ID3D11UnorderedAccessView> cuav;
+    {
+        D3D11_BUFFER_DESC bd{};
+        bd.ByteWidth           = static_cast<UINT>(candElems * 2 * sizeof(UINT));
+        bd.Usage               = D3D11_USAGE_DEFAULT;
+        bd.BindFlags           = D3D11_BIND_UNORDERED_ACCESS;
+        bd.MiscFlags           = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED;
+        bd.StructureByteStride = 2 * sizeof(UINT);
+        if (FAILED(d.device->CreateBuffer(&bd, nullptr, &cbuf))) return {};
+        D3D11_UNORDERED_ACCESS_VIEW_DESC uv{};
+        uv.Format = DXGI_FORMAT_UNKNOWN;
+        uv.ViewDimension = D3D11_UAV_DIMENSION_BUFFER;
+        uv.Buffer.NumElements = static_cast<UINT>(candElems);
+        if (FAILED(d.device->CreateUnorderedAccessView(cbuf.Get(), &uv, &cuav))) return {};
+        D3D11_BUFFER_DESC sd{};
+        sd.ByteWidth      = static_cast<UINT>(candElems * 2 * sizeof(UINT));
+        sd.Usage          = D3D11_USAGE_STAGING;
+        sd.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+        if (FAILED(d.device->CreateBuffer(&sd, nullptr, &cstaging))) return {};
+    }
+
+    // Params reuse the {count, words, k, groups} layout.
+    UINT params[4] = { d.count, kWords32, ku, groups };
+    d.ctx->UpdateSubresource(d.paramBuf.Get(), 0, nullptr, params, 0, 0);
+
+    ID3D11ShaderResourceView*  srvs[3] = { d.dbSRV.Get(), nullptr, qsrv.Get() };
+    ID3D11UnorderedAccessView* uavs[3] = { nullptr, nullptr, cuav.Get() };
+    ID3D11Buffer*              cb      = d.paramBuf.Get();
+    d.ctx->CSSetShader(d.shaderBatch.Get(), nullptr, 0);
+    d.ctx->CSSetShaderResources(0, 3, srvs);
+    d.ctx->CSSetUnorderedAccessViews(0, 3, uavs, nullptr);
+    d.ctx->CSSetConstantBuffers(0, 1, &cb);
+
+    d.ctx->Dispatch(groups, Q, 1);
+
+    ID3D11ShaderResourceView*  nsrv[3] = { nullptr, nullptr, nullptr };
+    ID3D11UnorderedAccessView* nuav[3] = { nullptr, nullptr, nullptr };
+    d.ctx->CSSetUnorderedAccessViews(0, 3, nuav, nullptr);
+    d.ctx->CSSetShaderResources(0, 3, nsrv);
+
+    d.ctx->CopyResource(cstaging.Get(), cbuf.Get());
+    D3D11_MAPPED_SUBRESOURCE r{};
+    if (FAILED(d.ctx->Map(cstaging.Get(), 0, D3D11_MAP_READ, 0, &r))) return {};
+    struct Pair { std::uint32_t dist; std::uint32_t idx; };
+    std::vector<Pair> all(candElems);
+    std::memcpy(all.data(), r.pData, candElems * sizeof(Pair));
+    d.ctx->Unmap(cstaging.Get(), 0);
+
+    // Merge each probe's groups*k candidates to its global top-k.
+    const std::size_t per = static_cast<std::size_t>(groups) * ku;
+    std::vector<std::vector<Neighbour>> out(Q);
+    for (UINT p = 0; p < Q; ++p) {
+        std::vector<Pair> cand(all.begin() + static_cast<std::size_t>(p) * per,
+                               all.begin() + static_cast<std::size_t>(p + 1) * per);
+        cand.erase(std::remove_if(cand.begin(), cand.end(),
+                       [](const Pair& q) { return q.idx == 0xFFFFFFFFu || q.dist == 0xFFFFFFFFu; }),
+                   cand.end());
+        const std::size_t kk = std::min(static_cast<std::size_t>(ku), cand.size());
+        std::partial_sort(cand.begin(), cand.begin() + kk, cand.end(),
+            [](const Pair& a, const Pair& b) {
+                if (a.dist != b.dist) return a.dist < b.dist;
+                return a.idx < b.idx;
+            });
+        out[p].reserve(kk);
+        for (std::size_t i = 0; i < kk; ++i) out[p].push_back({ cand[i].idx, cand[i].dist });
+    }
+    return out;
+}
+
 } // namespace khora::maelstrom
 
 #else // !_WIN32 — no DirectCompute; the Maelstrom never ignites.
@@ -456,6 +629,8 @@ bool Maelstrom::charge(const std::vector<lattice::Glyph>&) { return false; }
 std::size_t Maelstrom::charged() const noexcept { return 0; }
 std::size_t Maelstrom::vram_bytes() const noexcept { return 0; }
 std::vector<Neighbour> Maelstrom::resonate(const lattice::Glyph&, std::size_t) const { return {}; }
+std::vector<std::vector<Neighbour>> Maelstrom::resonate_batch(
+    const std::vector<lattice::Glyph>&, std::size_t) const { return {}; }
 std::vector<std::uint32_t> Maelstrom::hamming_all(const lattice::Glyph&) const { return {}; }
 
 } // namespace khora::maelstrom
