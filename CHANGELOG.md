@@ -3,6 +3,35 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.81.0 — `answer`: reasoned, grounded Q&A (the faculties compose)
+
+**Author:** Morphus
+
+The reasoning faculties compose into the thing the vision wants: Khora ANSWERING
+a question by reasoning, not generating. `answer <question>` extracts the content
+concepts the question names (filtering the closed class of question-scaffolding
+words — the one place a stop-list belongs, NL structure not semantics), `explain`s
+each from structure, and `infer`s the reasoned path between them.
+
+**Verified — real reasoned answers:**
+```
+  "how is energy related to motion"
+    energy is about: dissipation, conservation, kinetic, potential
+    motion is about: orbital, uniform, rotatory
+    it connects them: energy -> unit -> pendulum -> motion
+  "what connects light and heat"
+    it connects them: light -> ray -> heat
+  "how does number relate to music"
+    it connects them: number -> ... -> plays   (honest "closest reasoned link")
+```
+`energy -> unit -> pendulum -> motion` is a genuine reasoned answer — a pendulum is
+the very device that converts between energy and motion, and Khora found that link
+by walking its own structure. Grounded, verifiable, honest when it can't connect.
+
+Khora now REASONS (`infer`), ANSWERS what-is (`explain`), and ANSWERS how-related
+(`answer`) — all from the clean structure, the first real capability beyond
+association. 10/10 suites pass.
+
 ## v0.80.0 — `explain`: grounded structured answering (the fix for drift)
 
 **Author:** Morphus

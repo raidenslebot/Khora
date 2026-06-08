@@ -42,6 +42,7 @@
 #include <shared_mutex>
 #include <sstream>
 #include <thread>
+#include <unordered_set>
 #include <string>
 
 namespace {
@@ -1414,6 +1415,63 @@ int main(int argc, char** argv) {
                         os << k;
                         if (shown >= 6) break;
                     }
+                }
+            }
+            return {true, os.str(), ""};
+        }
+    });
+
+    // answer — Khora reasons an answer to a question by composing its faculties:
+    // it explains each concept the question names (from structure) and, if the
+    // question relates two, reasons the path between them. Grounded answering,
+    // not the cortex's drifting free generation.
+    shell.register_tool({
+        "answer",
+        "Khora reasons an answer to a question from its structure (usage: answer <question>)",
+        [&mind, &lex](const carapace::Intent& i) -> carapace::ToolResult {
+            if (i.args.empty()) return {false, "", "usage: answer <question>"};
+            std::string q;
+            for (const auto& a : i.args) { if (!q.empty()) q += ' '; q += a; }
+            // Question scaffolding is a closed class — not concepts. Filtering it
+            // here (NL structure parsing) is where a stop-list belongs; the Plexus
+            // semantic layer stays stop-list-free.
+            static const std::unordered_set<std::string> kQWords = {
+                "what","whats","how","why","who","whom","whose","when","where","which",
+                "that","this","these","those","there","their","them","then","than",
+                "is","are","was","were","been","being","does","did","will","would",
+                "can","could","should","shall","might","must","have","has","had",
+                "related","relate","relates","connect","connects","connected","link",
+                "between","about","with","from","into","onto","upon","over","under",
+                "the","and","for","but","not","you","your","yours","its","also","such",
+                "very","much","more","most","some","like","they","does","mean","means"
+            };
+            // The content concepts the question names that Khora actually knows.
+            std::vector<std::string> known;
+            for (const auto& t : khora::lexicon::tokenize(q)) {
+                if (t.size() < 4 || kQWords.count(t)) continue;
+                if (std::find(known.begin(), known.end(), t) != known.end()) continue;
+                if (mind.explain(t).known) known.push_back(t);
+            }
+            if (known.empty())
+                return {true, "Khora knows none of those concepts yet — nothing to reason from.", ""};
+
+            std::ostringstream os;
+            os << "Khora reasons about \"" << q << "\":\n";
+            for (std::size_t k = 0; k < known.size() && k < 2; ++k) {
+                const auto ins = mind.explain(known[k]);
+                os << "  " << known[k] << " is about: ";
+                for (std::size_t j = 0; j < ins.defines.size() && j < 5; ++j) {
+                    if (j) os << ", ";
+                    os << ins.defines[j];
+                }
+                os << "\n";
+            }
+            if (known.size() >= 2) {
+                const auto path = mind.infer_path(known[0], known[1], 7);
+                if (path.size() >= 2) {
+                    os << "  it connects them: ";
+                    for (std::size_t k = 0; k < path.size(); ++k) { if (k) os << " -> "; os << path[k]; }
+                    os << (path.back() == known[1] ? "\n" : "  (closest reasoned link)\n");
                 }
             }
             return {true, os.str(), ""};
