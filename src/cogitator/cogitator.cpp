@@ -31,7 +31,9 @@ Glyph Cogitator::encode_(const std::vector<std::string>& tokens) const {
     if (tokens.empty()) return Glyph::zero();
     std::vector<Glyph> gs;
     gs.reserve(tokens.size());
-    for (const auto& t : tokens) gs.push_back(token_glyph_(t));
+    for (const auto& t : tokens) if (is_content_(t)) gs.push_back(token_glyph_(t));
+    if (gs.empty())  // all function words — fall back to the whole stimulus
+        for (const auto& t : tokens) gs.push_back(token_glyph_(t));
     return bundle(std::span<const Glyph>{gs.data(), gs.size()});
 }
 
@@ -62,11 +64,16 @@ void Cogitator::ensure_field_() {
     // meaning, not connective tissue. Fall back to the whole field for a
     // small lexicon.
     std::vector<std::pair<std::string, Glyph>> entries;
+    content_.clear();
     {
         const auto salient = lex_.salient_tokens(200000, 3);
         entries.reserve(salient.size());
         for (const auto& w : salient) entries.emplace_back(w, lex_.context_glyph(w));
-        if (entries.size() < 50) entries = lex_.context_field();
+        if (entries.size() < 50) {
+            entries = lex_.context_field();   // tiny lexicon: keep content_ empty
+        } else {
+            content_.insert(salient.begin(), salient.end());
+        }
     }
     field_.build(entries);
 
@@ -254,17 +261,31 @@ Glyph Cogitator::facet_probe_(const std::vector<std::string>& tokens, Lens lens,
     switch (lens) {
         case Lens::Leading: {
             const std::size_t half = (n + 1) / 2;
-            for (std::size_t i = 0; i < half; ++i) parts.push_back(token_glyph_(tokens[i]));
+            for (std::size_t i = 0; i < half; ++i)
+                if (is_content_(tokens[i])) parts.push_back(token_glyph_(tokens[i]));
             break;
         }
         case Lens::Trailing: {
             const std::size_t start = n / 2;
-            for (std::size_t i = start; i < n; ++i) parts.push_back(token_glyph_(tokens[i]));
+            for (std::size_t i = start; i < n; ++i)
+                if (is_content_(tokens[i])) parts.push_back(token_glyph_(tokens[i]));
             break;
         }
         default:
-            for (const auto& tok : tokens) parts.push_back(token_glyph_(tok));
+            for (const auto& tok : tokens)
+                if (is_content_(tok)) parts.push_back(token_glyph_(tok));
             break;
+    }
+    // If the lens's slice held only function words, fall back to its tokens.
+    if (parts.empty()) {
+        if (lens == Lens::Leading) {
+            const std::size_t half = (n + 1) / 2;
+            for (std::size_t i = 0; i < half; ++i) parts.push_back(token_glyph_(tokens[i]));
+        } else if (lens == Lens::Trailing) {
+            for (std::size_t i = n / 2; i < n; ++i) parts.push_back(token_glyph_(tokens[i]));
+        } else {
+            for (const auto& tok : tokens) parts.push_back(token_glyph_(tok));
+        }
     }
     Glyph probe = parts.empty() ? Glyph::zero()
                                 : bundle(std::span<const Glyph>{parts.data(), parts.size()});

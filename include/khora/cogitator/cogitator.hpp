@@ -38,6 +38,7 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <unordered_set>
 #include <vector>
 
 namespace khora::cogitator {
@@ -176,6 +177,11 @@ private:
     // (so resonance follows meaning, not spelling), or the structural
     // baseline as a fallback when Khora hasn't learned the word yet.
     khora::lattice::Glyph token_glyph_(const std::string& tok) const;
+    // Is this token a content word (in the salient set), or — when the set
+    // is empty (tiny lexicon) — treat everything as content.
+    bool is_content_(const std::string& tok) const {
+        return content_.empty() || content_.count(tok) > 0;
+    }
     std::vector<khora::lattice::LatticeMatch> resonate_(const khora::lattice::Glyph& probe,
                                                         std::size_t k) const;
     std::vector<std::vector<khora::lattice::LatticeMatch>> resonate_batch_(
@@ -187,8 +193,9 @@ private:
     khora::cortex::PredictiveColumn& cortex_;
     khora::soma::SomaNexus&          soma_;
 
-    maelstrom::Resonator field_{1024};        // GPU crossover for cognition
-    std::size_t          indexed_vocab_ = static_cast<std::size_t>(-1);
+    maelstrom::Resonator           field_{1024};   // GPU crossover for cognition
+    std::unordered_set<std::string> content_;       // salient content words
+    std::size_t                    indexed_vocab_ = static_cast<std::size_t>(-1);
 
     std::size_t resonance_k_            = 5;
     double      novelty_threshold_      = 0.20;

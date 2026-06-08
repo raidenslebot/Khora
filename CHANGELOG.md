@@ -3,6 +3,30 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.37.0 — Content-focused probes (cognition lands on meaning)
+
+**Author:** Morphus
+
+The companion to v0.36. With cognition resonating over the content field,
+the last weakness was the *probe*: a stimulus like "the nature of the soul"
+still bundled its function words, so the broad facets drifted to "this" and
+"one". Now the probe is built from content tokens only.
+
+- The Cogitator caches the salient content-word set when it indexes the
+  field. `encode_` and every lens in `facet_probe_` skip non-content tokens
+  when building their probe (with a graceful fall-back to the whole stimulus
+  if a slice is all function words).
+
+**Verified live**: deliberations now resolve straight to the stimulus's
+concepts —
+- "the nature of the soul" → facets on **nature** / **soul** (conf 1.0)
+- "justice in the city" → **justice** / **city** (Plato's exact framing)
+- "love and marriage" → **love** / **marriage**
+
+No function-word leakage. Together with v0.36's conceptual trains, both
+modes of cognition — the linear walk and the parallel chorus — now think in
+meaning. 9/9 regression suites pass.
+
 ## v0.36.0 — Cognition resonates through the GPU semantic field
 
 **Author:** Morphus
