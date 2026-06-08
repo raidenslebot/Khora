@@ -78,7 +78,9 @@ void Cogitator::ensure_field_() {
     field_.build(entries);
 
     // Demote any residual distributional hubs (centrality outliers, mean+2σ)
-    // so thought resonates with content, not connective tissue.
+    // so thought resonates with content, not connective tissue. The surviving
+    // labels become the clean concept set the Volition seeds thought from.
+    bool demoted = false;
     if (entries.size() > 64) {
         const auto deg = field_.centrality(10);
         if (deg.size() == entries.size()) {
@@ -92,10 +94,20 @@ void Cogitator::ensure_field_() {
             std::vector<std::pair<std::string, Glyph>> clean;
             clean.reserve(entries.size());
             for (std::size_t i = 0; i < entries.size(); ++i)
-                if (deg[i] <= cut) clean.push_back(std::move(entries[i]));
-            if (clean.size() >= 2 && clean.size() < entries.size())
+                if (deg[i] <= cut) clean.push_back(entries[i]);   // copy: keep entries intact
+            if (clean.size() >= 2 && clean.size() < entries.size()) {
                 field_.build(clean);
+                concepts_.clear();
+                concepts_.reserve(clean.size());
+                for (auto& e : clean) concepts_.push_back(e.first);
+                demoted = true;
+            }
         }
+    }
+    if (!demoted) {
+        concepts_.clear();
+        concepts_.reserve(entries.size());
+        for (auto& e : entries) concepts_.push_back(e.first);
     }
     indexed_vocab_ = v;
 }
@@ -127,6 +139,18 @@ Glyph Cogitator::recall_(const std::string& label) const {
     if (auto g = memory_.recall(label)) return *g;
     if (lex_.has(label)) return lex_.glyph_for(label);
     return Glyph::zero();
+}
+
+std::string Cogitator::wandering_seed(std::uint64_t n) {
+    ensure_field_();
+    if (concepts_.empty()) return std::string{};
+    // concepts_ is exposure-ordered; the head is still function-word-heavy
+    // even after hub demotion, so skip it and wander the content body.
+    const std::size_t skip = std::min<std::size_t>(concepts_.size() / 2, 60);
+    const std::size_t span = (concepts_.size() > skip) ? concepts_.size() - skip
+                                                       : concepts_.size();
+    const std::size_t base = (concepts_.size() > skip) ? skip : 0;
+    return concepts_[base + (n % span)];
 }
 
 Thought Cogitator::think(std::string_view stimulus) {

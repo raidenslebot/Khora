@@ -148,6 +148,12 @@ public:
     // concept until it settles into an attractor or reaches max_depth.
     Rumination ruminate(std::string_view stimulus, std::size_t max_depth = 6);
 
+    // A clean concept to think about, drawn from the centrality-pruned
+    // content field (not the function-word-heavy raw vocabulary). Lets the
+    // Volition seed autonomous thought with real concepts. Empty if nothing
+    // has been learned yet. `n` rotates deterministically through the set.
+    std::string wandering_seed(std::uint64_t n);
+
     // Stats
     std::size_t thoughts_completed() const noexcept { return thoughts_; }
     std::size_t novel_thoughts()     const noexcept { return novel_count_; }
@@ -195,6 +201,7 @@ private:
 
     maelstrom::Resonator           field_{1024};   // GPU crossover for cognition
     std::unordered_set<std::string> content_;       // salient content words
+    std::vector<std::string>        concepts_;      // clean concepts for seeding thought
     std::size_t                    indexed_vocab_ = static_cast<std::size_t>(-1);
 
     std::size_t resonance_k_            = 5;

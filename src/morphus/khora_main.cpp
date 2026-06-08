@@ -616,15 +616,13 @@ int main(int argc, char** argv) {
     volition::Volition will(nexus);
     will.set_relief(0.5);   // acting strongly settles the urge, so attention rotates
     std::size_t volition_seed = 0;
-    auto pick_seed = [&lex, &volition_seed]() -> std::string {
-        auto sal = lex.salient_tokens(400, 5);   // exposure-ranked, descending
-        if (sal.empty()) return std::string("khora");
-        // The most-exposed band is function words; skip it and draw from the
-        // content tail. Frequency-based, no hardcoded stoplist.
-        const std::size_t skip = std::min<std::size_t>(sal.size() / 2, 60);
-        const std::size_t span = (sal.size() > skip) ? sal.size() - skip : sal.size();
-        const std::size_t base = (sal.size() > skip) ? skip : 0;
-        return sal[base + (volition_seed++ % span)];
+    auto pick_seed = [&mind, &lex, &volition_seed]() -> std::string {
+        // Draw a clean concept from the cogitator's centrality-pruned field —
+        // real concepts, not the function-word hubs that top raw frequency.
+        std::string s = mind.wandering_seed(volition_seed++);
+        if (!s.empty()) return s;
+        auto sal = lex.salient_tokens(64, 5);   // fallback before anything is learned
+        return sal.empty() ? std::string("khora") : sal[volition_seed % sal.size()];
     };
     {
         using khora::soma::Drive;

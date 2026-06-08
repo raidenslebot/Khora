@@ -3,6 +3,26 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.41.0 — Thought seeds from the concept field
+
+**Author:** Morphus
+
+A small architectural tidy: the Volition was reaching into the Lexicon's raw
+salient list to seed autonomous thought. Now the Cogitator — which owns the
+centrality-pruned concept field — provides the seed itself.
+
+- **`Cogitator::wandering_seed(n)`** returns a clean concept drawn from the
+  hub-demoted content field (skipping the function-word-heavy exposure head),
+  rotating deterministically. The Cogitator caches that field's surviving
+  labels (`concepts_`) when it indexes, at no extra cost.
+- The Volition seeds `ruminate`/`deliberate` from `wandering_seed`, falling
+  back to the lexicon only before anything has been learned.
+
+Verified: autonomous thought still seeds on real concepts —
+`deliberate 'theory' → relativity`, `ruminate 'elizabeth' → replied`,
+`deliberate 'miss' → bingley` — now through a cleaner ownership boundary.
+9/9 regression suites pass.
+
 ## v0.40.0 — Curator robustness (no forage death-loops)
 
 **Author:** Morphus
