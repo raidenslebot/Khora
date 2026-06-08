@@ -8,6 +8,7 @@
 #include "khora/carapace/builtin_tools.hpp"
 #include "khora/carapace/carapace.hpp"
 #include "khora/cogitator/cogitator.hpp"
+#include "khora/curator/curator.hpp"
 #include "khora/cortex/predictive_column.hpp"
 #include "khora/lattice/lattice.hpp"
 #include "khora/lattice/persistence.hpp"
@@ -67,6 +68,9 @@ int main(int argc, char** argv) {
     reservoir::Reservoir pool(std::filesystem::path("data") / "reservoir",
                               20ull * 1024 * 1024 * 1024);
     reservoir::Aqueduct aqueduct(pool);
+
+    // The Curator — Khora decides for itself what to learn next.
+    curator::Curator curator(pool, aqueduct, lex, column);
 
     // 2. Try to load persisted lattice + cortex state.
     namespace fs = std::filesystem;
@@ -245,8 +249,7 @@ int main(int argc, char** argv) {
         "absorb a tome from the pool into actual knowledge  (usage: study <title> [max_tokens])",
         [&pool, &lex, &column](const carapace::Intent& i) -> carapace::ToolResult {
             if (i.args.empty()) return {false, "", "usage: study <title> [max_tokens]"};
-            // Last arg may be a token budget.
-            std::size_t max_tokens = 40000;
+            std::size_t max_tokens = 60000;
             std::size_t title_args = i.args.size();
             if (i.args.size() >= 2) {
                 try { std::size_t v = std::stoul(i.args.back()); max_tokens = v; title_args = i.args.size() - 1; }
@@ -255,46 +258,41 @@ int main(int argc, char** argv) {
             std::string title;
             for (std::size_t k = 0; k < title_args; ++k) { if (k) title += ' '; title += i.args[k]; }
 
-            auto text = pool.read(title);
-            if (!text) return {false, "", "not in pool: " + title};
-
-            // Distill the tome into actual knowledge: expose the Lexicon to
-            // its language and train the Cortex on its token stream. The
-            // competence gained is credited back to the Reservoir so Khora
-            // knows how much this material has taught it.
-            const double acc_before = column.recent_accuracy();
-            const std::size_t vocab_before = lex.vocabulary_size();
-
-            auto tokens = khora::lexicon::tokenize(*text);
-            if (tokens.size() > max_tokens) tokens.resize(max_tokens);
-            // Fast bulk learning: cortex.learn() stores associations in O(1)
-            // per token; sample a prediction every 256 tokens to track
-            // accuracy without the O(N) cost on every token.
-            for (std::size_t ti = 0; ti < tokens.size(); ++ti) {
-                const auto g = lex.glyph_for(tokens[ti]);
-                if ((ti & 0x3FF) == 0) column.step(g);  // periodic measured step (every 1024)
-                else                   column.learn(g); // fast store
-            }
-            const std::size_t pairs = lex.expose_sequence(tokens, 3);
-
-            const double acc_after = column.recent_accuracy();
-            const double yield = std::max(0.0, acc_after - acc_before) +
-                                 0.0001 * static_cast<double>(lex.vocabulary_size() - vocab_before);
-            // Mastery rises with cumulative reads (rough saturation curve).
-            const auto cat = pool.catalog();
-            double prior_reads = 0.0;
-            for (const auto& t : cat) if (t.title == title) prior_reads = t.times_read;
-            const double mastery = 1.0 - 1.0 / (1.0 + 0.25 * prior_reads);
-            pool.record_learning(title, yield, mastery);
-
+            const auto o = khora::curator::study_tome(pool, lex, column, title, max_tokens);
+            if (!o.ok) return {false, "", o.error};
             std::ostringstream os;
-            os << "studied \"" << title << "\"\n"
-               << "  tokens absorbed  : " << tokens.size() << "\n"
-               << "  lexicon vocab    : " << vocab_before << " -> " << lex.vocabulary_size()
-               << "  (+" << pairs << " cooccurrences)\n"
-               << "  cortex recent_acc: " << acc_before << " -> " << acc_after << "\n"
-               << "  learning yield   : " << yield << "  mastery -> " << mastery;
+            os << "studied \"" << o.title << "\"\n"
+               << "  tokens absorbed  : " << o.tokens << "\n"
+               << "  lexicon vocab    : " << o.vocab_before << " -> " << o.vocab_after
+               << "  (+" << o.cooccurrences << " cooccurrences)\n"
+               << "  cortex recent_acc: " << o.acc_before << " -> " << o.acc_after << "\n"
+               << "  learning yield   : " << o.yield << "  mastery -> " << o.mastery;
             return {true, os.str(), ""};
+        }
+    });
+    shell.register_tool({
+        "curate",
+        "Khora autonomously decides and takes its next knowledge action  (usage: curate [N])",
+        [&curator](const carapace::Intent& i) -> carapace::ToolResult {
+            int n = 1;
+            if (!i.args.empty()) { try { n = std::stoi(i.args[0]); } catch (...) {} if (n < 1) n = 1; if (n > 30) n = 30; }
+            std::ostringstream os;
+            for (int k = 0; k < n; ++k) os << curator.act(60000) << "\n";
+            os << "[curator totals: " << curator.studies() << " studies, "
+               << curator.forages() << " forages]";
+            return {true, os.str(), ""};
+        }
+    });
+    shell.register_tool({
+        "curate_plan",
+        "show what Khora would choose to learn next, without doing it",
+        [&curator](const carapace::Intent&) -> carapace::ToolResult {
+            const auto d = curator.decide();
+            const char* kind = d.kind == khora::curator::Decision::Study  ? "STUDY"
+                             : d.kind == khora::curator::Decision::Forage  ? "FORAGE"
+                             : d.kind == khora::curator::Decision::Deepen  ? "DEEPEN"
+                             : "IDLE";
+            return {true, std::string("next: ") + kind + " — " + d.rationale, ""};
         }
     });
     shell.register_tool({

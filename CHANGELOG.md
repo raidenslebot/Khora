@@ -3,6 +3,42 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.17.0 — The Curator (autonomous knowledge loop)
+
+**Author:** Morphus
+
+Khora now decides for itself what to learn. The Curator (`src/curator`)
+surveys its liquid knowledge and absorption state and takes the next
+most valuable knowledge action, unprompted, closing the loop:
+**detect need -> acquire -> absorb -> seek next.**
+
+Decision policy (breadth-first, diminishing-returns aware):
+1. **Study** freshly-acquired material once — absorb what was just brought in.
+2. **Forage** a topic it has no material on — seek the new.
+3. **Deepen** — acquire another source in a covered topic.
+4. **Re-study** the weakest under-mastered tome, but only while it still
+   teaches (capped re-reads) — once "learned enough," move on rather than
+   grinding a mastery number for zero yield.
+5. **Idle** when the catalogue is absorbed to a working level.
+
+This replaced a first attempt that tunnel-visioned on one book (re-read
+it 5x as yield decayed to 0) — the fix makes Khora recognise when it has
+learned enough of something to justify pursuing something more valuable,
+exactly the liquid-knowledge intent.
+
+Shared `study_tome()` faculty: read a tome, absorb it into the live
+Lexicon + Cortex, credit yield/mastery back to the Reservoir. Used by
+both the `study` tool and the Curator.
+
+New tools: `curate [N]` (take N autonomous knowledge actions),
+`curate_plan` (show the next decision without acting).
+
+**Verified live**: from an empty mind, `curate 8` autonomously foraged
+and studied across literature (Pride and Prejudice), philosophy (The
+Republic), and science (Relativity) — vocabulary 0 -> 9,643 — and when
+a forage failed it advanced to the next source rather than stopping.
+Khora building its own education, no operator in the loop.
+
 ## v0.16.0 — Durable, fast knowledge (Random Indexing lexicon)
 
 **Author:** Morphus

@@ -8,4 +8,5 @@ target_link_libraries(khora PRIVATE
     khora::cogitator
     khora::whetstone
     khora::reservoir
+    khora::curator
 )
