@@ -3,6 +3,37 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.4.0 — Stratiform Cortex (PredictiveColumn)
+
+**Author:** Morphus
+
+First subsystem that actually *learns*. Online predictive coding on top
+of the Morphic Lattice.
+
+Shipped:
+
+- `khora::cortex::PredictiveColumn` — sliding context window of K
+  recent input Glyphs, encoded as a position-aware bundle (each
+  remembered input permuted by a stride of `pos * 137`). Associates
+  every (context → next) pair it observes into an internal pair of
+  Lattices. On each step, predicts the next Glyph from current context
+  by k-NN lookup; reports prediction, actual, hamming error, similarity,
+  and a novelty flag. Tracks recent-accuracy over a 64-step window.
+- `cortex_test` — six assertions covering cold-start, single-shot
+  pattern memorization, multi-cycle convergence on a 5-element loop,
+  novelty detection on out-of-distribution context, predict() purity,
+  and zero-prediction on cold column.
+- `cortex_demo` — trains a column on the 44-char phrase
+  "the quick brown fox jumps over the lazy dog " for 50 cycles
+  (2,200 observations). Observed learning curve:
+    - cycle 1: recent_acc = 0.11   (still guessing)
+    - cycle 2: recent_acc = 0.73
+    - cycle 3: recent_acc = 0.97
+    - stable: ~0.96–1.00
+  Live, demonstrable, observable convergence.
+
+Tests passing: **4/4 ctest suites, 30 assertions total.**
+
 ## v0.3.0 — Synapse Bus
 
 **Author:** Morphus

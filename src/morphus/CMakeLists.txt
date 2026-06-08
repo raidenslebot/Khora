@@ -6,3 +6,6 @@ target_link_libraries(persistence_demo PRIVATE khora::lattice)
 
 add_executable(synapse_demo synapse_demo.cpp)
 target_link_libraries(synapse_demo PRIVATE khora::synapse)
+
+add_executable(cortex_demo cortex_demo.cpp)
+target_link_libraries(cortex_demo PRIVATE khora::cortex)
