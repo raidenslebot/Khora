@@ -3,6 +3,31 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.14.0 — Living autonomy (self-training in the runtime)
+
+**Author:** Morphus
+
+The Whetstone moves into the living runtime. `WhetstoneScheduler` runs
+the self-sharpening engine on a background thread, so the moment
+`khora.exe` launches it is **both** dreaming (Reverie @ 100ms) **and**
+training and evolving itself (Whetstone @ 250ms) — for as long as it
+lives, without operator prompting.
+
+Shipped:
+
+- `khora::whetstone::WhetstoneScheduler` — background thread driving
+  `Whetstone::step()`, interruptible-sleep paced, thread-safe last-step
+  snapshot. start/stop idempotent.
+- Wired into `khora.exe`: both background loops start on REPL entry and
+  join cleanly on exit, which reports the rounds trained this session.
+- Three operator tools: `whetstone_status`, `whetstone_pause`,
+  `whetstone_resume [period_ms]`.
+
+Verified live: launching the runtime and querying `whetstone_status`
+shows the engine already training — "mastered d=1 -> escalate to d=2"
+within the first moments, unprompted. Khora is now continuously,
+autonomously improving itself whenever it is running.
+
 ## v0.13.0 — The Whetstone (autonomous self-directed evolution)
 
 **Author:** Morphus

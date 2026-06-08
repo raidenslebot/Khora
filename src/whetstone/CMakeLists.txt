@@ -1,5 +1,6 @@
 add_library(khora_whetstone STATIC
     whetstone.cpp
+    whetstone_scheduler.cpp
 )
 
 target_include_directories(khora_whetstone

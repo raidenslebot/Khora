@@ -6,4 +6,5 @@ target_link_libraries(khora PRIVATE
     khora::reverie
     khora::lexicon
     khora::cogitator
+    khora::whetstone
 )

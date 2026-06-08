@@ -15,6 +15,8 @@
 #include "khora/reverie/reverie_loom.hpp"
 #include "khora/reverie/reverie_scheduler.hpp"
 #include "khora/soma/soma_nexus.hpp"
+#include "khora/whetstone/whetstone.hpp"
+#include "khora/whetstone/whetstone_scheduler.hpp"
 
 #include <chrono>
 #include <cstdio>
@@ -153,7 +155,53 @@ int main(int argc, char** argv) {
         }
     });
 
-    // 5. Background reverie — Khora dreams continuously while idle.
+    // 5a. The Whetstone — Khora sharpens itself autonomously in the
+    //     background, forever. Self-contained faculties, so it needs no
+    //     lock against the operator's memory.
+    whetstone::Whetstone forge(0.90);
+    forge.add_faculty(whetstone::make_relational_faculty());
+    forge.add_faculty(whetstone::make_sequence_faculty());
+    whetstone::WhetstoneScheduler whet(forge);
+
+    shell.register_tool({
+        "whetstone_status",
+        "show the autonomous self-training engine's progress",
+        [&whet, &forge](const carapace::Intent&) -> carapace::ToolResult {
+            std::ostringstream os;
+            os << "Whetstone: " << (whet.is_running() ? "TRAINING" : "IDLE")
+               << "   rounds=" << whet.rounds_run() << "\n";
+            for (std::size_t i = 0; i < forge.faculty_count(); ++i) {
+                const auto& st = forge.state(i);
+                os << "  " << forge.faculty(i).name()
+                   << "  difficulty=" << st.difficulty
+                   << "  competence=" << st.competence
+                   << "  evo_level=" << forge.faculty(i).evolution_level() << "\n";
+            }
+            const auto ls = whet.last_step();
+            if (!ls.note.empty()) os << "  last: " << ls.note;
+            return {true, os.str(), ""};
+        }
+    });
+    shell.register_tool({
+        "whetstone_pause",
+        "pause the autonomous self-training engine",
+        [&whet](const carapace::Intent&) -> carapace::ToolResult {
+            whet.stop();
+            return {true, "whetstone paused", ""};
+        }
+    });
+    shell.register_tool({
+        "whetstone_resume",
+        "resume the autonomous self-training engine  (usage: whetstone_resume [period_ms])",
+        [&whet](const carapace::Intent& i) -> carapace::ToolResult {
+            int ms = 250;
+            if (!i.args.empty()) { try { ms = std::stoi(i.args[0]); } catch (...) {} if (ms < 1) ms = 1; }
+            whet.start(std::chrono::milliseconds(ms));
+            return {true, "whetstone training (period " + std::to_string(ms) + "ms)", ""};
+        }
+    });
+
+    // 5b. Background reverie — Khora dreams continuously while idle.
     reverie::ReverieScheduler scheduler(dream, shared_mu);
 
     shell.register_tool({
@@ -243,12 +291,14 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    // 7. Start the background reverie thread for interactive mode.
+    // 7. Start the background loops for interactive mode: Khora dreams
+    //    and sharpens itself the whole time the operator is present.
     scheduler.start(std::chrono::milliseconds(100));
+    whet.start(std::chrono::milliseconds(250));
 
     // 8. Interactive REPL.
     print_banner();
-    std::cout << "[background reverie loop active @ 100ms period]\n\n";
+    std::cout << "[background reverie @ 100ms + autonomous self-training @ 250ms active]\n\n";
     while (true) {
         const std::string line = read_line_prompt("khora> ");
         if (line == "__EOF__") { std::cout << "\n[EOF]\n"; break; }
@@ -266,8 +316,10 @@ int main(int argc, char** argv) {
         }
     }
 
-    // 9. Stop background reverie before saving (we own the mutex now).
+    // 9. Stop background loops before saving.
     scheduler.stop();
+    whet.stop();
+    std::cout << "[whetstone trained " << whet.rounds_run() << " rounds this session]\n";
 
     // 10. Save Lattice + Cortex on exit.
     try {
