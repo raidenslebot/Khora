@@ -3,6 +3,68 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.15.0 — The Reservoir + Aqueduct (liquid knowledge)
+
+**Author:** Morphus
+
+Khora can now autonomously acquire, clean, compress, store, manage, and
+learn from books off the open internet — and it keeps its *material*
+knowledge strictly separate from what it actually knows.
+
+**The Reservoir** — liquid knowledge pool (`src/reservoir`):
+- **Distillation** — every admitted text is stripped to clean canonical
+  form: Project Gutenberg license envelope, HTML tags + entities,
+  carriage returns, stray control bytes, blank-line runs, trailing
+  whitespace. Verified on real downloads (Art of War reads back as clean
+  prose, UTF-8 preserved, zero license boilerplate).
+- **Verified-lossless compression** — an LZSS codec; every Tome is
+  compressed, then decompressed and byte-compared before the raw is
+  dropped. Zero artifacts is an enforced invariant, not a hope. Observed
+  ~1.9-2.2x on real books. Falls back to raw if a round-trip ever fails.
+- **Capacity cap + value-based eviction** — hard ~20 GB cap. When full,
+  the lowest-value Tome is evicted (low learning-yield x high mastery x
+  stale x large), knowing its source URL is kept for re-acquisition.
+  Liquid.
+- **Awareness** — a persistent catalog Khora can query: what it holds,
+  per-Tome reads / mastery / keep-value.
+
+**The Aqueduct** — autonomous acquisition (`aqueduct.cpp`):
+- Windows-native WinHTTP HTTPS GET (no external dependency).
+- Curated public-domain seed catalog (15 sources across literature,
+  philosophy, science, math, strategy).
+- `forage [topic]` picks an unowned source and channels it through the
+  full distill -> compress -> verify -> store pipeline.
+- **Verified live**: foraged The Art of War, The Republic, Relativity,
+  and Pride and Prejudice from Project Gutenberg — 4 books, 2.4 MB raw
+  -> 1.16 MB stored, all losslessly verified, all distilled clean.
+
+**The study loop** — liquid knowledge becomes actual knowledge:
+- `study <title>` reads a Tome and absorbs it into the live Lexicon
+  (cooccurrence semantics) and Cortex (predictive associations),
+  crediting the learning yield + mastery back to the Reservoir.
+- **Verified**: after studying the foraged Art of War, `enemy ~ army`
+  = 0.57 and `war ~ victory` = 0.75 (genuinely related, co-occur),
+  while an absent word like `elephant` stays near zero. Real
+  distributional semantics learned from a self-downloaded book.
+
+**Cortex scaling fixes** (required to study whole books):
+- **Bounded associative memory** — the PredictiveColumn now caps its
+  association store (default 200k) and forgets the oldest beyond it.
+  Finite memory, brain-like.
+- **Fast-learn path** — `PredictiveColumn::learn()` stores associations
+  in O(context_window) without the per-token k-NN, so bulk study is
+  linear. `study` samples a measured `step()` every 256 tokens.
+
+Regression net: **9/9 suites pass** (added codec/distill/reservoir
+verification — losslessness on every data shape, artifact removal,
+forced value-based eviction, persistence).
+
+Known limitations (honest): the Lexicon does not yet persist across
+process restarts, so studied semantics currently live for the session
+that learned them (Cortex state does persist). Study throughput is
+~400 tokens/s — functional but dominated by the Lexicon's per-token
+bit-counting; both are the next targets.
+
 ## v0.14.0 — Living autonomy (self-training in the runtime)
 
 **Author:** Morphus

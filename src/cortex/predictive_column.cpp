@@ -60,25 +60,45 @@ PredictiveColumn::StepResult PredictiveColumn::step(const Glyph& input) {
         r.novel_context = true;
     }
 
-    // 2. Learn — associate current context with this input as the "next" glyph.
-    //    Requires at least one prior observation in the window.
-    if (!recent_.empty()) {
-        const Glyph ctx = current_context_();
-        const std::string label = "ctx_" + std::to_string(next_assoc_id_++);
-        ctx_keys_.store(label, ctx);
-        ctx_vals_.store(label, input);
-    }
-
-    // 3. Advance the sliding window.
-    recent_.push_back(input);
-    if (recent_.size() > context_window_) recent_.pop_front();
-    ++observations_;
+    // 2-3. Learn the association and advance the window.
+    store_and_advance_(input);
 
     // 4. Track recent accuracy.
     recent_sims_.push_back(r.similarity);
     if (recent_sims_.size() > kRecentWindow) recent_sims_.pop_front();
 
     return r;
+}
+
+void PredictiveColumn::store_and_advance_(const Glyph& input) {
+    // Associate current context with this input as the "next" glyph.
+    if (!recent_.empty()) {
+        const Glyph ctx = current_context_();
+        const std::string label = "ctx_" + std::to_string(next_assoc_id_++);
+        ctx_keys_.store(label, ctx);
+        ctx_vals_.store(label, input);
+        assoc_order_.push_back(label);
+
+        // Bounded associative memory: forget the oldest when over cap.
+        if (max_associations_ != 0) {
+            while (assoc_order_.size() > max_associations_) {
+                const std::string& old = assoc_order_.front();
+                ctx_keys_.erase(old);
+                ctx_vals_.erase(old);
+                assoc_order_.pop_front();
+            }
+        }
+    }
+
+    // Advance the sliding window.
+    recent_.push_back(input);
+    if (recent_.size() > context_window_) recent_.pop_front();
+    ++observations_;
+}
+
+void PredictiveColumn::learn(const Glyph& input) {
+    // Fast path: store the association and advance, no k-NN prediction.
+    store_and_advance_(input);
 }
 
 double PredictiveColumn::recent_accuracy() const {
@@ -189,6 +209,11 @@ void PredictiveColumn::load(const std::filesystem::path& prefix) {
     auto vals_path = prefix; vals_path += ".vals.klat";
     ctx_keys_ = khora::lattice::load(keys_path);
     ctx_vals_ = khora::lattice::load(vals_path);
+
+    // Rebuild the FIFO eviction order from the loaded keys. Exact original
+    // order is lost across save/load, but the cap still bounds memory.
+    assoc_order_.clear();
+    for (const auto& [label, _g] : ctx_keys_) assoc_order_.push_back(label);
 }
 
 } // namespace khora::cortex

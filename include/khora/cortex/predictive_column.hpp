@@ -31,11 +31,25 @@ public:
     };
 
     // Feed one input. Returns the column's prediction *before* seeing it,
-    // along with the actual and the error signals. Then learns.
+    // along with the actual and the error signals. Then learns. This does
+    // a k-NN query (O(associations)) for the prediction.
     StepResult step(const khora::lattice::Glyph& input);
+
+    // Fast learning for bulk study: stores the (context -> input)
+    // association and advances the window WITHOUT the per-token k-NN
+    // prediction. O(context_window) per call instead of O(associations).
+    // Use this to absorb large texts; sample accuracy with step()/predict()
+    // periodically if needed.
+    void learn(const khora::lattice::Glyph& input);
 
     // Predict-without-learn — peek at what would come next.
     khora::lattice::Glyph predict() const;
+
+    // Bounded associative memory (brain-like forgetting). When the number
+    // of stored associations exceeds the cap, the oldest is evicted. This
+    // keeps memory finite and per-step queries bounded. 0 = unbounded.
+    void        set_max_associations(std::size_t n) { max_associations_ = n; }
+    std::size_t max_associations() const noexcept   { return max_associations_; }
 
     // Stats
     std::size_t observations()    const noexcept { return observations_; }
@@ -57,11 +71,14 @@ private:
     khora::lattice::Lattice           ctx_vals_;
     std::size_t                       observations_ = 0;
     std::size_t                       next_assoc_id_ = 0;
+    std::size_t                       max_associations_ = 200000;
+    std::deque<std::string>           assoc_order_;   // FIFO for eviction
 
     static constexpr std::size_t kRecentWindow = 64;
     std::deque<double>                recent_sims_;
 
     khora::lattice::Glyph current_context_() const;
+    void store_and_advance_(const khora::lattice::Glyph& input);
 };
 
 } // namespace khora::cortex

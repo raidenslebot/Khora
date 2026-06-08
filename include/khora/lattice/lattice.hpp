@@ -20,6 +20,7 @@ public:
     Lattice();
 
     void store(std::string label, Glyph g);
+    bool erase(const std::string& label);
     bool contains(const std::string& label) const noexcept;
     std::optional<Glyph> recall(const std::string& label) const;
 

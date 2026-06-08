@@ -12,6 +12,8 @@
 #include "khora/lattice/lattice.hpp"
 #include "khora/lattice/persistence.hpp"
 #include "khora/lexicon/lexicon.hpp"
+#include "khora/reservoir/aqueduct.hpp"
+#include "khora/reservoir/reservoir.hpp"
 #include "khora/reverie/reverie_loom.hpp"
 #include "khora/reverie/reverie_scheduler.hpp"
 #include "khora/soma/soma_nexus.hpp"
@@ -58,6 +60,12 @@ int main(int argc, char** argv) {
     lexicon::Lexicon lex;
     reverie::ReverieLoom dream(memory, column, nexus);
     cogitator::Cogitator mind(lex, memory, column, nexus);
+
+    // Liquid knowledge: the Reservoir holds source texts (~20 GB cap),
+    // the Aqueduct channels new ones in from the public domain.
+    reservoir::Reservoir pool(std::filesystem::path("data") / "reservoir",
+                              20ull * 1024 * 1024 * 1024);
+    reservoir::Aqueduct aqueduct(pool);
 
     // 2. Try to load persisted lattice + cortex state.
     namespace fs = std::filesystem;
@@ -152,6 +160,142 @@ int main(int argc, char** argv) {
             } catch (const std::exception& e) {
                 return {false, "", std::string("save failed: ") + e.what()};
             }
+        }
+    });
+
+    // 5z. Reservoir / Aqueduct tools — Khora's liquid knowledge.
+    shell.register_tool({
+        "reservoir_status",
+        "summarize the liquid knowledge pool",
+        [&pool](const carapace::Intent&) -> carapace::ToolResult {
+            std::ostringstream os;
+            const double used_mb = static_cast<double>(pool.total_stored_bytes()) / (1024.0 * 1024.0);
+            const double cap_mb  = static_cast<double>(pool.cap_bytes()) / (1024.0 * 1024.0);
+            os << "Reservoir: " << pool.count() << " tomes, "
+               << used_mb << " MB / " << cap_mb << " MB used";
+            return {true, os.str(), ""};
+        }
+    });
+    shell.register_tool({
+        "reservoir_list",
+        "list the tomes in the pool with their stats",
+        [&pool](const carapace::Intent&) -> carapace::ToolResult {
+            std::ostringstream os;
+            auto cat = pool.catalog();
+            if (cat.empty()) return {true, "(pool empty — use 'forage' to acquire)", ""};
+            os << "Tomes (" << cat.size() << "):\n";
+            for (const auto& t : cat) {
+                os << "  " << t.title << "  [" << t.topic << "]  "
+                   << (t.original_bytes / 1024) << "KB orig / "
+                   << (t.stored_bytes / 1024) << "KB stored  reads=" << t.times_read
+                   << "  mastery=" << t.mastery
+                   << "  keep=" << pool.keep_value(t) << "\n";
+            }
+            return {true, os.str(), ""};
+        }
+    });
+    shell.register_tool({
+        "reservoir_read",
+        "read the first part of a tome's distilled text  (usage: reservoir_read <title>)",
+        [&pool](const carapace::Intent& i) -> carapace::ToolResult {
+            if (i.args.empty()) return {false, "", "usage: reservoir_read <title>"};
+            std::string title;
+            for (std::size_t k = 0; k < i.args.size(); ++k) { if (k) title += ' '; title += i.args[k]; }
+            auto text = pool.read(title);
+            if (!text) return {false, "", "not in pool: " + title};
+            const std::string head = text->substr(0, std::min<std::size_t>(text->size(), 600));
+            return {true, head + (text->size() > 600 ? "\n...[" + std::to_string(text->size()) + " bytes total]" : ""), ""};
+        }
+    });
+    shell.register_tool({
+        "forage",
+        "autonomously acquire a new tome from the public domain  (usage: forage [topic])",
+        [&aqueduct](const carapace::Intent& i) -> carapace::ToolResult {
+            const std::string topic = i.args.empty() ? std::string{} : i.args[0];
+            auto r = aqueduct.forage(topic);
+            if (!r) return {true, "nothing left to forage" + (topic.empty() ? std::string{} : " in topic '" + topic + "'"), ""};
+            if (!r->ok) return {false, "", "forage failed for '" + r->title + "': " + r->error};
+            std::ostringstream os;
+            os << "acquired \"" << r->title << "\"  "
+               << (r->original_bytes / 1024) << "KB distilled, "
+               << (r->stored_bytes / 1024) << "KB stored ("
+               << r->compression_ratio << "x), lossless="
+               << (r->verified_lossless ? "yes" : "no");
+            if (!r->evicted.empty()) {
+                os << "  evicted " << r->evicted.size() << " to make room";
+            }
+            return {true, os.str(), ""};
+        }
+    });
+    shell.register_tool({
+        "study",
+        "absorb a tome from the pool into actual knowledge  (usage: study <title> [max_tokens])",
+        [&pool, &lex, &column](const carapace::Intent& i) -> carapace::ToolResult {
+            if (i.args.empty()) return {false, "", "usage: study <title> [max_tokens]"};
+            // Last arg may be a token budget.
+            std::size_t max_tokens = 40000;
+            std::size_t title_args = i.args.size();
+            if (i.args.size() >= 2) {
+                try { std::size_t v = std::stoul(i.args.back()); max_tokens = v; title_args = i.args.size() - 1; }
+                catch (...) {}
+            }
+            std::string title;
+            for (std::size_t k = 0; k < title_args; ++k) { if (k) title += ' '; title += i.args[k]; }
+
+            auto text = pool.read(title);
+            if (!text) return {false, "", "not in pool: " + title};
+
+            // Distill the tome into actual knowledge: expose the Lexicon to
+            // its language and train the Cortex on its token stream. The
+            // competence gained is credited back to the Reservoir so Khora
+            // knows how much this material has taught it.
+            const double acc_before = column.recent_accuracy();
+            const std::size_t vocab_before = lex.vocabulary_size();
+
+            auto tokens = khora::lexicon::tokenize(*text);
+            if (tokens.size() > max_tokens) tokens.resize(max_tokens);
+            // Fast bulk learning: cortex.learn() stores associations in O(1)
+            // per token; sample a prediction every 256 tokens to track
+            // accuracy without the O(N) cost on every token.
+            for (std::size_t ti = 0; ti < tokens.size(); ++ti) {
+                const auto g = lex.glyph_for(tokens[ti]);
+                if ((ti & 0xFF) == 0) column.step(g);  // periodic measured step
+                else                  column.learn(g); // fast store
+            }
+            const std::size_t pairs = lex.expose_sequence(tokens, 3);
+
+            const double acc_after = column.recent_accuracy();
+            const double yield = std::max(0.0, acc_after - acc_before) +
+                                 0.0001 * static_cast<double>(lex.vocabulary_size() - vocab_before);
+            // Mastery rises with cumulative reads (rough saturation curve).
+            const auto cat = pool.catalog();
+            double prior_reads = 0.0;
+            for (const auto& t : cat) if (t.title == title) prior_reads = t.times_read;
+            const double mastery = 1.0 - 1.0 / (1.0 + 0.25 * prior_reads);
+            pool.record_learning(title, yield, mastery);
+
+            std::ostringstream os;
+            os << "studied \"" << title << "\"\n"
+               << "  tokens absorbed  : " << tokens.size() << "\n"
+               << "  lexicon vocab    : " << vocab_before << " -> " << lex.vocabulary_size()
+               << "  (+" << pairs << " cooccurrences)\n"
+               << "  cortex recent_acc: " << acc_before << " -> " << acc_after << "\n"
+               << "  learning yield   : " << yield << "  mastery -> " << mastery;
+            return {true, os.str(), ""};
+        }
+    });
+    shell.register_tool({
+        "reservoir_evict",
+        "evict a tome (or the lowest-value one)  (usage: reservoir_evict [title])",
+        [&pool](const carapace::Intent& i) -> carapace::ToolResult {
+            if (i.args.empty()) {
+                const std::string gone = pool.evict_lowest_value();
+                return {true, gone.empty() ? "pool empty" : "evicted lowest-value: " + gone, ""};
+            }
+            std::string title;
+            for (std::size_t k = 0; k < i.args.size(); ++k) { if (k) title += ' '; title += i.args[k]; }
+            return pool.evict(title) ? carapace::ToolResult{true, "evicted: " + title, ""}
+                                     : carapace::ToolResult{false, "", "not in pool: " + title};
         }
     });
 

@@ -29,3 +29,7 @@ add_test(NAME CarapaceTest COMMAND carapace_test)
 add_executable(lexicon_test lexicon_test.cpp)
 target_link_libraries(lexicon_test PRIVATE khora::lexicon)
 add_test(NAME LexiconTest COMMAND lexicon_test)
+
+add_executable(reservoir_test reservoir_test.cpp)
+target_link_libraries(reservoir_test PRIVATE khora::reservoir)
+add_test(NAME ReservoirTest COMMAND reservoir_test)

@@ -11,6 +11,10 @@ void Lattice::store(std::string label, Glyph g) {
     store_[std::move(label)] = std::move(g);
 }
 
+bool Lattice::erase(const std::string& label) {
+    return store_.erase(label) > 0;
+}
+
 bool Lattice::contains(const std::string& label) const noexcept {
     return store_.find(label) != store_.end();
 }
