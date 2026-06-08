@@ -156,20 +156,41 @@ Glyph bind(const Glyph& a, const Glyph& b) noexcept {
 }
 
 Glyph bundle(std::span<const Glyph> xs) {
-    Glyph out;
-    if (xs.empty()) return out;
+    const std::size_t n = xs.size();
+    if (n == 0) return Glyph{};
+    if (n == 1) return xs[0];
 
-    // Count how many of the inputs have each bit set; output bit = 1
-    // iff at least (n + 1) / 2 inputs have it set. For odd n this is
-    // strict majority; for even n it biases slightly toward density,
-    // which preserves similarity-to-constituents better than dropping ties.
+    Glyph out;
+    auto& ow = out.words();
+
+    // Fast word-parallel paths for the common small cases. Inputs are
+    // tail-masked, so word-wise ops keep the tail clean. These produce
+    // results bit-identical to the generic vote-count below.
+    if (n == 2) {
+        // threshold (2+1)/2 = 1  ->  bit set if either input has it (OR)
+        const auto& A = xs[0].words();
+        const auto& B = xs[1].words();
+        for (std::size_t w = 0; w < kGlyphWords; ++w) ow[w] = A[w] | B[w];
+        return out;
+    }
+    if (n == 3) {
+        // threshold (3+1)/2 = 2  ->  bitwise majority of three
+        const auto& A = xs[0].words();
+        const auto& B = xs[1].words();
+        const auto& C = xs[2].words();
+        for (std::size_t w = 0; w < kGlyphWords; ++w)
+            ow[w] = (A[w] & B[w]) | (A[w] & C[w]) | (B[w] & C[w]);
+        return out;
+    }
+
+    // Generic: count how many inputs set each bit; output bit = 1 iff at
+    // least (n + 1) / 2 inputs have it set.
     std::vector<std::uint16_t> counts(kGlyphBits, 0);
     for (const auto& g : xs) {
         for (std::size_t i = 0; i < kGlyphBits; ++i) {
             if (g.bit(i)) ++counts[i];
         }
     }
-    const std::size_t n = xs.size();
     const std::uint16_t threshold = static_cast<std::uint16_t>((n + 1) / 2);
     for (std::size_t i = 0; i < kGlyphBits; ++i) {
         if (counts[i] >= threshold) out.set_bit(i);
@@ -186,6 +207,25 @@ Glyph permute(const Glyph& g, int shift) noexcept {
     Glyph out = g;
     out.permute_inplace(shift);
     return out;
+}
+
+const Glyph& position_glyph(std::size_t k) {
+    // A fixed table of orthogonal position markers, computed once
+    // (thread-safe static init). Positions beyond the table wrap.
+    static const std::array<Glyph, 256> table = [] {
+        std::array<Glyph, 256> t;
+        // Slot 0 is the identity (zero) glyph: bind(x, position_glyph(0))
+        // == x, so the first/most-recent element is marked by being left
+        // unchanged — crisper than perturbing it.
+        t[0] = Glyph::zero();
+        for (std::size_t i = 1; i < t.size(); ++i) {
+            const std::uint64_t seed =
+                0xC0FFEE00BADF00D5ULL ^ (0x9E3779B97F4A7C15ULL * (i + 1));
+            t[i] = Glyph::random(seed);
+        }
+        return t;
+    }();
+    return table[k & 255];
 }
 
 } // namespace khora::lattice

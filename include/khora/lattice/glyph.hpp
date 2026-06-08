@@ -68,4 +68,10 @@ Glyph bundle(std::span<const Glyph> xs);
 Glyph bundle(std::initializer_list<Glyph> xs);
 Glyph permute(const Glyph& g, int shift) noexcept;
 
+// A deterministic, cached family of orthogonal "position" glyphs. Binding
+// a value with position_glyph(k) marks it as occupying slot k — a
+// word-parallel (XOR) alternative to cyclic permutation for encoding
+// order/position, distance-preserving and far cheaper than permute().
+const Glyph& position_glyph(std::size_t k);
+
 } // namespace khora::lattice

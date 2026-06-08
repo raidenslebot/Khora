@@ -3,6 +3,33 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.18.0 — Substrate throughput (word-parallel ops)
+
+**Author:** Morphus
+
+Made the substrate's hot operations word-parallel instead of per-bit,
+cutting full-book study from **28s to ~12s (2.4x)** with all 9 regression
+suites still green.
+
+- **Fast `bundle`** — n=2 is bitwise OR, n=3 is bitwise majority
+  `(a&b)|(a&c)|(b&c)`, both word-parallel (157 word-ops vs 10,000
+  bit-ops). Provably identical to the generic vote-count path; the
+  generic path remains for larger n.
+- **`position_glyph(k)`** — a cached family of orthogonal position
+  markers. Binding a value with `position_glyph(k)` (word-parallel XOR)
+  marks slot k far more cheaply than cyclic `permute`. Slot 0 is the
+  zero glyph (identity), so the first element is marked by being left
+  unchanged. Used in the Lexicon's per-token trigram encoding.
+- **Cortex kept on `permute`** for its context keys, on purpose: shared
+  position-XOR lets two stored keys correlate and tie at the k-NN step
+  (single-shot prediction became a coin-flip at 0.0022 similarity);
+  permute decorrelates per-element and keeps keys cleanly separable.
+  This was caught by the regression net and fixed before commit.
+
+Remaining study cost is the cortex's per-token `permute` (a correct but
+O(N) substrate op) and the `binarise` scan in glyph lookup — both later
+targets, neither blocking.
+
 ## v0.17.0 — The Curator (autonomous knowledge loop)
 
 **Author:** Morphus

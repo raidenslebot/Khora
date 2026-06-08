@@ -23,13 +23,14 @@ Glyph PredictiveColumn::current_context_() const {
 
     // Build a position-aware context glyph by permuting each member of
     // the sliding window by a position-specific amount and bundling.
-    // Position 0 = most recent input (no permutation); older inputs get
-    // larger permutations to mark their relative age.
+    // Permutation (rather than shared-position XOR) is used here on
+    // purpose: it decorrelates differently per element, which keeps the
+    // stored context keys cleanly separable for single-shot prediction.
     std::vector<Glyph> ordered;
     ordered.reserve(recent_.size());
     int pos = 0;
     for (auto it = recent_.rbegin(); it != recent_.rend(); ++it, ++pos) {
-        ordered.push_back(permute(*it, pos * 137));  // 137: arbitrary distinct stride
+        ordered.push_back(permute(*it, pos * 137));
     }
     return bundle(std::span<const Glyph>{ordered.data(), ordered.size()});
 }

@@ -14,8 +14,9 @@
 namespace khora::lexicon {
 
 using khora::lattice::Glyph;
+using khora::lattice::bind;
 using khora::lattice::bundle;
-using khora::lattice::permute;
+using khora::lattice::position_glyph;
 using khora::lattice::kGlyphBits;
 
 namespace {
@@ -67,8 +68,10 @@ Glyph encode_token(std::string_view raw) {
     } else {
         primitives.reserve(norm.size() - 2);
         for (std::size_t i = 0; i + 3 <= norm.size(); ++i) {
-            primitives.push_back(permute(trigram_glyph(norm.substr(i, 3)),
-                                         static_cast<int>(i * 7)));
+            // Bind each trigram to its position slot (word-parallel XOR),
+            // marking order far more cheaply than cyclic permutation.
+            primitives.push_back(bind(trigram_glyph(norm.substr(i, 3)),
+                                      position_glyph(i)));
         }
     }
     return bundle(std::span<const Glyph>{primitives.data(), primitives.size()});
