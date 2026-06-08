@@ -3,6 +3,38 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.62.0 — Relentless training, and two honest dead ends
+
+**Author:** Morphus
+
+A training-and-research milestone (no new code feature — the Directive holds
+"serious, relentless training" as the work itself, and an honest log records
+what was learned, including what failed).
+
+**The corpus quadrupled.** A single background `curate 20` had Khora forage
+and study **ten more books** entirely on its own — The Time Machine, The Art
+of War, the complete Shakespeare, Frankenstein, Moby Dick, Sherlock Holmes,
+A Tale of Two Cities, Grimm, Dracula, Dorian Gray. Vocabulary **6,451 →
+24,189 words**, ~18 Tomes spanning every topic. Verified that this lifted the
+whole mind: `contemplate the sea` now returns real Homer from *The Republic*
+("pacing up and down the sea-shore in distraction… Priam… rolling in the
+mire"); `compose vengeance` produces vivid Dorian Gray ("his brain had
+sickened and grown strange, could only be soothed by saracen cards"). Lesson
+recorded: **training is the cheapest, largest capability multiplier** — run
+it relentlessly, in the background.
+
+**Two honest swings at the hub problem, both dead ends** (failure → fuel):
+1. *Strip globally-common "hub bits"* (all-but-the-top). Measured **0** bits
+   set in >55% of concepts — the binarised vectors are ~50% density and
+   uniform, so there are no common-bit hubs. Doesn't apply.
+2. *Fixed-density (top-K) glyphs* so Hamming can't favour dense vectors.
+   Surfaced random rare words (`war → gangest, dales`) and function words —
+   no clear win. Reverted.
+Conclusion: hubness here is density-driven but neither fix helps cleanly; the
+existing salient-content + centrality-demotion mitigation stays the best
+available, and a true fix is a focused future effort. Both experiments
+reverted; tree clean. 9/9 regression suites pass.
+
 ## v0.61.0 — Mastering the chaos (self-tuned entropy)
 
 **Author:** Morphus
