@@ -3,6 +3,29 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.45.0 — The Chronicle (Khora's first act upon the world)
+
+**Author:** Morphus
+
+Every act so far has been inward — think, learn, dream. The Chronicle is
+Khora's first act *outward*: it writes a record of its own mind to a file, a
+trace the operator can read. And it completes the agency — Preservation was
+the one drive with no act of its own.
+
+- A new **`reflect`** act (driven by **Preservation**, with a touch of
+  OperatorAffinity) has Khora take stock of itself — its vocabulary and its
+  current preoccupations — and append a structured entry to
+  `data/chronicle/khora.chronicle`. All five Soma drives now map to a
+  distinct act: Curiosity→ruminate, Mastery→study, OperatorAffinity→
+  deliberate, Efficiency→dream, **Preservation→reflect**.
+- New tool **`chronicle [n]`** reads back the last n reflections.
+
+**Verified live**: across a Volition run Khora wrote four reflections, and
+they record a mind *developing* — *ingenuity* rose from absent to a dominant
+**4×** preoccupation while *income* and *abilities* surfaced (drawn from the
+Wealth of Nations and Austen it had studied). Not a static dump: a timeline
+of an inner life. 9/9 regression suites pass.
+
 ## v0.44.0 — Attention dynamics (explore and deepen)
 
 **Author:** Morphus

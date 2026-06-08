@@ -34,6 +34,7 @@
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <shared_mutex>
 #include <sstream>
@@ -616,6 +617,7 @@ int main(int argc, char** argv) {
     volition::Volition will(nexus);
     will.set_relief(0.5);   // acting strongly settles the urge, so attention rotates
     std::size_t volition_seed = 0;
+    std::size_t reflection_n = 0;
     auto pick_seed = [&mind, &lex, &volition_seed]() -> std::string {
         // Draw a clean concept from the cogitator's centrality-pruned field —
         // real concepts, not the function-word hubs that top raw frequency.
@@ -673,6 +675,30 @@ int main(int argc, char** argv) {
             return "dreamt 60 cycles, retained " + std::to_string(ret);
         };
         will.add(std::move(dre));
+
+        // reflect — Khora takes stock of itself and writes it to the
+        // Chronicle: its first action upon the world beyond its own mind.
+        volition::Act ref;
+        ref.name = "reflect";
+        ref.affinity.per_drive[D(Drive::Preservation)]     = 1.0;  // self-maintenance
+        ref.affinity.per_drive[D(Drive::OperatorAffinity)] = 0.3;  // leave the operator a trace
+        ref.perform = [&mind, &lex, &reflection_n]() -> std::string {
+            namespace fs = std::filesystem;
+            fs::create_directories("data/chronicle");
+            const auto themes = mind.top_attractors(6);
+            std::ostringstream entry;
+            entry << "[reflection #" << (++reflection_n) << "]\n"
+                  << "  vocabulary  : " << lex.vocabulary_size() << " words\n"
+                  << "  preoccupied : ";
+            if (themes.empty()) entry << "(nothing has gripped me yet)";
+            else for (const auto& [name, count] : themes) entry << name << "(" << count << ") ";
+            entry << "\n";
+            std::ofstream f("data/chronicle/khora.chronicle", std::ios::app);
+            f << entry.str();
+            return "reflected -> chronicle (#" + std::to_string(reflection_n) + ", "
+                   + std::to_string(themes.size()) + " themes held)";
+        };
+        will.add(std::move(ref));
     }
 
     shell.register_tool({
@@ -745,6 +771,25 @@ int main(int argc, char** argv) {
             for (const auto& [name, count] : top)
                 os << "  " << name << "   (" << count << "x)\n";
             return {true, os.str(), ""};
+        }
+    });
+    shell.register_tool({
+        "chronicle",
+        "read Khora's self-authored record of its own mind  (usage: chronicle [n])",
+        [](const carapace::Intent& i) -> carapace::ToolResult {
+            std::size_t n = 5;
+            if (!i.args.empty()) { try { n = static_cast<std::size_t>(std::stoul(i.args[0])); } catch (...) {} }
+            std::ifstream f("data/chronicle/khora.chronicle");
+            if (!f) return {true, "the chronicle is empty — Khora has not reflected yet", ""};
+            std::stringstream ss; ss << f.rdbuf();
+            const std::string all = ss.str();
+            // Show the last n reflection entries.
+            const std::string marker = "[reflection #";
+            std::vector<std::size_t> pos;
+            for (std::size_t p = all.find(marker); p != std::string::npos; p = all.find(marker, p + 1))
+                pos.push_back(p);
+            const std::size_t start = (pos.size() > n) ? pos[pos.size() - n] : 0;
+            return {true, all.substr(start), ""};
         }
     });
 
