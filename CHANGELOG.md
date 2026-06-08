@@ -3,6 +3,33 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.27.0 — Exploration-biased rumination (richer trains of thought)
+
+**Author:** Morphus
+
+The complement to v0.26's hub demotion, on the rumination dynamics side.
+Each hop of a train of thought now lands on the strongest concept the
+train has NOT yet visited (it explores fresh territory) instead of the
+single top resonance (which is always whatever is most central, so the
+train collapsed onto a hub in two hops). When no unvisited concept
+resonates, the neighbourhood is exhausted and the strongest concept
+overall is the attractor / conclusion.
+
+**Verified** after studying The Art of War — trains now wander through
+genuine learned content:
+```
+victory -> history -> historical -> mistakes -> mistake -> midst
+        -> theory -> said -> much   (attractor: much)
+```
+Khora pondering victory traverses *history, mistakes, theory* — learning
+from the past — with morphological associations it found itself
+(history->historical, mistakes->mistake). Connective hubs only surface at
+the tail, once the fresh frontier is spent. Combined with v0.26, the
+train of thought is now a real associative journey through studied
+knowledge, not a two-step collapse.
+
+9/9 regression suites pass.
+
 ## v0.26.0 — Resonance-centrality hub demotion
 
 **Author:** Morphus

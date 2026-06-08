@@ -329,14 +329,16 @@ bool is_trace(const std::string& label) {
 }
 
 // The concept a deliberation lands on — the strongest real resonance
-// across all facets, skipping transient trace concepts and the concept we
-// are currently standing on (`exclude`), so the train hops onward through
-// genuine knowledge rather than looping on itself trivially.
-std::string landed_concept(const Deliberation& d, const std::string& exclude) {
+// across all facets, skipping transient trace concepts and any concept in
+// `exclude`. Excluding the whole visited set forces the train onward into
+// fresh territory rather than collapsing onto a central hub in two hops.
+std::string landed_concept(const Deliberation& d,
+                           const std::vector<std::string>& exclude) {
     double best = -2.0; std::string best_label;
     for (const auto& f : d.facets) {
         for (const auto& m : f.resonances) {
-            if (is_trace(m.label) || m.label == exclude) continue;
+            if (is_trace(m.label)) continue;
+            if (std::find(exclude.begin(), exclude.end(), m.label) != exclude.end()) continue;
             if (m.similarity > best) { best = m.similarity; best_label = m.label; }
         }
     }
@@ -353,21 +355,28 @@ Rumination Cogitator::ruminate(std::string_view stimulus, std::size_t max_depth)
     r.train.push_back(current);      // the seed is the first stop
     for (std::size_t depth = 0; depth < max_depth; ++depth) {
         Deliberation d = deliberate(current);
-        const std::string landed = landed_concept(d, current);
-        r.chain.push_back(std::move(d));
 
-        if (landed.empty()) break;   // nowhere new to go — stop
-        r.train.push_back(landed);
-
-        // Settled into an attractor: the train looped back to a concept it
-        // has already passed through. That recurring pull IS the conclusion.
-        if (std::find(visited.begin(), visited.end(), landed) != visited.end()) {
-            r.converged   = true;
-            r.conclusion  = landed;
-            break;
+        // Hop to the strongest concept the train has NOT yet visited, so it
+        // explores fresh territory each step instead of orbiting a hub.
+        const std::string fresh = landed_concept(d, visited);
+        if (!fresh.empty()) {
+            r.train.push_back(fresh);
+            visited.push_back(fresh);
+            current = fresh;
+            r.chain.push_back(std::move(d));
+            continue;
         }
-        visited.push_back(landed);
-        current = landed;            // hop onward and think again
+
+        // No unvisited concept resonates — the neighbourhood is exhausted.
+        // The strongest concept overall is the attractor the train keeps
+        // returning to: that recurring pull is the conclusion.
+        const std::string attractor = landed_concept(d, {});
+        r.chain.push_back(std::move(d));
+        if (!attractor.empty()) {
+            r.converged  = true;
+            r.conclusion = attractor;
+        }
+        break;
     }
 
     if (r.conclusion.empty() && !r.train.empty()) r.conclusion = r.train.back();
