@@ -3,6 +3,39 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.70.0 — The whole tower rises coherently (the engine compounds)
+
+**Author:** Morphus
+
+v0.69 made word-level abstraction coherent, but the tower's HIGHER levels —
+abstraction over abstractions — still fell to the c0 Hamming path. The
+combinatorial engine that makes evolution exponential lives in those higher
+levels, so this is where it had to reach. An abstraction has no Plexus node, so
+its meaning is taken from its members **ground down to their corpus-word leaves**;
+two abstractions are kin when those leaf sets associate in the Plexus. Cluster
+linkage is measured by the **strongest conceptual bridges** (top-k leaf pairs),
+not the diluted average over all pairs — so cross-level coherence lands on the
+same scale as word-level and **one self-escalating bar governs the entire tower**.
+
+**Verified live — the tower now rises coherently and DISCRIMINATES:**
+```
+  NEW tower-merges (Plexus-grounded)        OLD tower (Hamming, v0.65-67)
+  #10 L5 c48  the justice cluster           #1 L2 c0
+  #11 L6 c56  the virtue/ethics cluster     #2 L3 c0
+  #12 L2 c25  knowledge+war (weak link)     #3 L4 c0
+```
+The strong conceptual merges (justice -> virtue, c48-56) sail above the
+autonomous bar (~0.35), so the tower compounds **on its own**; the weak
+knowledge+war merge (c25) falls below it and would be refused; and `war` —
+genuinely unrelated to the philosophical clusters — refuses to merge at all. The
+engine rises where concepts truly cohere and rejects noise, untended. That is
+the combinatorial loop the whole exponential roadmap hinges on, now closed:
+clean kin -> coherent abstraction -> coherent tower -> (cognition over the tower).
+
+Also: **abstraction coherence now persists** across restarts (a 4th field in the
+archive; old 3-field lines load as 0). The spire's measured cohesion is an honest
+record across Khora's lives, not a reset-to-zero display. 10/10 suites pass.
+
 ## v0.69.0 — The Spire drinks from the clean well (abstraction on PMI kin)
 
 **Author:** Morphus

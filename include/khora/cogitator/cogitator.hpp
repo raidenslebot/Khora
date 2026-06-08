@@ -312,6 +312,22 @@ private:
     std::string form_abstraction_plexus_(const std::string& seed, std::size_t k,
                                          double min_coherence);
 
+    // Coherent TOWER-RISING: abstract over abstractions. An abstraction has no
+    // Plexus node, so its meaning is taken from its members ground down to their
+    // corpus-word leaves; two abstractions are kin when their grounded leaves
+    // mutually associate. This lets level >= 2 of the Spire rise on the same
+    // clean PMI structure as level 1 — the combinatorial engine compounding.
+    std::string form_abstraction_over_abstractions_(const std::string& seed,
+                                                    std::size_t k, double min_coherence);
+    // Expand a concept name to its grounded corpus-word leaves (recursively
+    // through the abstraction tree; a word is its own leaf). Bounded.
+    void ground_concept_(const std::string& name,
+                         std::unordered_set<std::string>& out, int depth) const;
+    // Mean Plexus affinity across two grounded leaf sets — how related two
+    // abstractions (or a word and an abstraction) are, through the corpus.
+    double leafset_affinity_(const std::unordered_set<std::string>& a,
+                             const std::unordered_set<std::string>& b) const;
+
     std::size_t resonance_k_            = 5;
     double      novelty_threshold_      = 0.20;
     std::size_t max_attempts_           = 4;

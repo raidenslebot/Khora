@@ -235,14 +235,123 @@ std::string Cogitator::form_abstraction_plexus_(const std::string& seed, std::si
     return abstractions_.back().name;
 }
 
+void Cogitator::ground_concept_(const std::string& name,
+                                std::unordered_set<std::string>& out, int depth) const {
+    if (depth > 5 || out.size() >= 48) return;
+    for (const auto& a : abstractions_) {
+        if (a.name == name) {
+            for (const auto& m : a.members) ground_concept_(m, out, depth + 1);
+            return;
+        }
+    }
+    out.insert(name);  // a corpus word (its own leaf), or an unknown name
+}
+
+double Cogitator::leafset_affinity_(const std::unordered_set<std::string>& a,
+                                    const std::unordered_set<std::string>& b) const {
+    if (!plexus_ || a.empty() || b.empty()) return 0.0;
+    // Cluster linkage by the STRONGEST conceptual bridges, not the diluted
+    // average over all (mostly unrelated) leaf pairs. Averaging everything would
+    // pull cross-level coherence far below the word-level scale, so a single
+    // self-escalating bar could never govern the whole tower; the top-k bridges
+    // keep it on the same scale as word-word affinity.
+    std::vector<double> bridges;
+    bridges.reserve(a.size());
+    for (const auto& x : a)
+        for (const auto& y : b) {
+            if (x == y) continue;
+            const double v = plexus_->affinity(x, y);
+            if (v > 0.0) bridges.push_back(v);
+        }
+    if (bridges.empty()) return 0.0;
+    const std::size_t topn = std::min<std::size_t>(3, bridges.size());
+    std::partial_sort(bridges.begin(), bridges.begin() + topn, bridges.end(),
+                      [](double x, double y) { return x > y; });
+    double s = 0.0;
+    for (std::size_t i = 0; i < topn; ++i) s += bridges[i];
+    return s / static_cast<double>(topn);
+}
+
+std::string Cogitator::form_abstraction_over_abstractions_(const std::string& seed,
+                                                           std::size_t k, double min_coherence) {
+    const Abstraction* seedA = nullptr;
+    for (const auto& a : abstractions_) if (a.name == seed) { seedA = &a; break; }
+    if (!seedA) return {};
+
+    std::unordered_set<std::string> seedLeaves;
+    ground_concept_(seed, seedLeaves, 0);
+    if (seedLeaves.empty()) return {};
+
+    // Rank the OTHER abstractions by grounded cross-affinity to the seed. Each
+    // abstraction's meaning is its grounded corpus-word leaves; kinship is how
+    // strongly those leaf sets associate in the Plexus.
+    struct AK { double aff; std::size_t idx; };
+    std::vector<AK> kin;
+    std::vector<std::unordered_set<std::string>> leavesOf(abstractions_.size());
+    for (std::size_t i = 0; i < abstractions_.size(); ++i) {
+        if (abstractions_[i].name == seed) continue;
+        ground_concept_(abstractions_[i].name, leavesOf[i], 0);
+        const double aff = leafset_affinity_(seedLeaves, leavesOf[i]);
+        if (aff > 0.0) kin.push_back({ aff, i });
+    }
+    if (kin.empty()) return {};
+    std::sort(kin.begin(), kin.end(), [](const AK& x, const AK& y) { return x.aff > y.aff; });
+
+    std::vector<Glyph> parts{ seedA->glyph };
+    std::vector<std::string> members{ seed };
+    std::vector<const std::unordered_set<std::string>*> memberLeaves{ &seedLeaves };
+    int maxlvl = seedA->level;
+    for (const auto& kk : kin) {
+        if (members.size() >= k + 1) break;
+        const Abstraction& a = abstractions_[kk.idx];
+        parts.push_back(a.glyph);
+        members.push_back(a.name);
+        memberLeaves.push_back(&leavesOf[kk.idx]);
+        maxlvl = std::max(maxlvl, a.level);
+    }
+    if (members.size() < 2) return {};
+
+    // Coherence: mean pairwise grounded cross-affinity among members, squashed
+    // into [0,1] by the same scale as the word-level path, so one bar governs
+    // the whole tower.
+    double aff_sum = 0.0; std::size_t pairs = 0;
+    for (std::size_t i = 0; i < memberLeaves.size(); ++i)
+        for (std::size_t j = i + 1; j < memberLeaves.size(); ++j) {
+            aff_sum += leafset_affinity_(*memberLeaves[i], *memberLeaves[j]);
+            ++pairs;
+        }
+    const double mean_aff = pairs ? aff_sum / static_cast<double>(pairs) : 0.0;
+    const double coh = mean_aff / (mean_aff + kPmiCoherenceScale);
+    if (coh < min_coherence) return {};
+
+    Abstraction a;
+    a.glyph     = bundle(std::span<const Glyph>{parts.data(), parts.size()});
+    a.level     = maxlvl + 1;
+    a.coherence = coh;
+    a.members   = members;
+    a.name = "{";
+    const std::size_t mn = std::min<std::size_t>(3, members.size());
+    for (std::size_t i = 0; i < mn; ++i) { if (i) a.name += "+"; a.name += members[i]; }
+    if (members.size() > mn) a.name += "+..";
+    a.name += "}#" + std::to_string(abstraction_seq_++);
+    abstractions_.push_back(std::move(a));
+    return abstractions_.back().name;
+}
+
 std::string Cogitator::form_abstraction(const std::string& seed, std::size_t k, double min_coherence) {
     // Hub-proof path: when the Plexus knows this seed word, it is AUTHORITATIVE —
     // members are its PMI kin and coherence is mutual information. A refusal here
     // is a true refusal; we do NOT fall back to the looser Hamming field (which
-    // would readmit the very hub-fouled clusters the bar exists to reject). The
-    // field path remains for seeds the Plexus can't judge (e.g. abstractions).
-    if (plexus_ && plexus_->has(seed))
-        return form_abstraction_plexus_(seed, k, min_coherence);
+    // would readmit the very hub-fouled clusters the bar exists to reject).
+    if (plexus_) {
+        if (plexus_->has(seed))
+            return form_abstraction_plexus_(seed, k, min_coherence);
+        // A known abstraction seed has no Plexus node — rise the tower coherently
+        // through its grounded member leaves (also authoritative, no c0 fallback).
+        for (const auto& a : abstractions_)
+            if (a.name == seed)
+                return form_abstraction_over_abstractions_(seed, k, min_coherence);
+    }
 
     ensure_field_();
     int seed_level = 0;
@@ -330,11 +439,13 @@ void Cogitator::save_abstractions(const std::filesystem::path& path) const {
     if (path.has_parent_path()) fs::create_directories(path.parent_path());
     std::ofstream f(path, std::ios::trunc);
     if (!f) return;
-    // level<TAB>name<TAB>member|member|... — glyphs are re-derived on load.
+    // level<TAB>name<TAB>member|member|...<TAB>coherence — glyphs re-derived on
+    // load; coherence persisted so the tower's measured cohesion survives restarts
+    // (an honest spire across lives, not a reset-to-zero display).
     for (const auto& a : abstractions_) {
         f << a.level << '\t' << a.name << '\t';
         for (std::size_t i = 0; i < a.members.size(); ++i) { if (i) f << '|'; f << a.members[i]; }
-        f << '\n';
+        f << '\t' << a.coherence << '\n';
     }
 }
 
@@ -350,7 +461,12 @@ void Cogitator::load_abstractions(const std::filesystem::path& path) {
         Abstraction a;
         a.level = std::atoi(line.substr(0, t1).c_str());
         a.name  = line.substr(t1 + 1, t2 - t1 - 1);
-        std::string mem = line.substr(t2 + 1), tok;
+        // Optional 4th field (coherence); old 3-field lines load as coherence 0.
+        const auto t3 = line.find('\t', t2 + 1);
+        std::string mem = (t3 == std::string::npos) ? line.substr(t2 + 1)
+                                                    : line.substr(t2 + 1, t3 - t2 - 1);
+        a.coherence = (t3 == std::string::npos) ? 0.0
+                                                : std::atof(line.substr(t3 + 1).c_str());
         std::size_t p = 0, q;
         while ((q = mem.find('|', p)) != std::string::npos) { a.members.push_back(mem.substr(p, q - p)); p = q + 1; }
         if (p < mem.size()) a.members.push_back(mem.substr(p));
