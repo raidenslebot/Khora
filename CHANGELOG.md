@@ -3,6 +3,31 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.3.0 — Synapse Bus
+
+**Author:** Morphus
+
+Shipped:
+
+- `khora::synapse::SynapseBus` — typed async message fabric. Many-to-many
+  publish/subscribe over string topics, with `Pulse` envelopes carrying
+  Glyph payloads plus monotonic sequence number and timestamp. Per-subscriber
+  bounded queues with drop-oldest overflow and per-handle drop counters.
+  Thread-safe; shared_ptr-managed Subscriber lifetimes prevent unsubscribe
+  races with blocked pollers.
+- Documented ordering semantics in the header: same-thread publishes
+  arrive in order; cross-thread publishes interleave; sequences are
+  globally unique and assigned in publish order.
+- `synapse_test` — eight test groups covering single-stream order,
+  topic isolation, fan-out, drop-on-overflow, unsubscribe, timeout,
+  4-publisher × 1000-pulse concurrent stress (4,000 unique sequences,
+  zero loss, zero duplicates), and same-thread strict ordering.
+- `synapse_demo` — producer thread fires 100 pulses to "ping",
+  subscriber polls and reports per-pulse latency. Observed:
+  avg 18 us / max 77 us on i7-13700K.
+
+Tests passing: **3/3 ctest suites, 24 assertions total.**
+
 ## v0.2.0 — Lattice persistence
 
 **Author:** Morphus

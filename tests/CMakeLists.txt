@@ -5,3 +5,7 @@ add_test(NAME LatticeTest COMMAND lattice_test)
 add_executable(persistence_test persistence_test.cpp)
 target_link_libraries(persistence_test PRIVATE khora::lattice)
 add_test(NAME PersistenceTest COMMAND persistence_test)
+
+add_executable(synapse_test synapse_test.cpp)
+target_link_libraries(synapse_test PRIVATE khora::synapse)
+add_test(NAME SynapseTest COMMAND synapse_test)
