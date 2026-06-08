@@ -210,11 +210,11 @@ once the substrate is mature.
 
 ## 13. Data layout
 
-- `C:\Ai\Khora\`            — source code, build artifacts, small configs
-- `D:\KhoraData\`           — persistent runtime data
+All Khora data lives on C: by operator directive (D: is slow on this
+machine).
+
+- `C:\Ai\Khora\`            — source code, build artifacts, configs
+- `C:\Ai\Khora\data\`       — persistent runtime data (gitignored)
   - `lattice_archive\`      — serialised Glyphs from long-term memory
   - `reverie_traces\`       — recorded dream-state trajectories
   - `synapse_journal\`      — replayable Synapse Bus event log
-
-The split keeps C: lean (only 31 GB free as of this build) and bulk
-storage on D: (138 GB).

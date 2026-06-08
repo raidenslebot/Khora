@@ -3,6 +3,30 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.2.0 — Lattice persistence
+
+**Author:** Morphus
+
+Shipped:
+
+- `khora::lattice::save(L, path)` / `load(path)` — binary serialization
+  of a Lattice to disk. Self-describing format
+  (magic + version + glyph-bits + count + entries + footer magic).
+  Versioned, validated on read, throws `PersistError` on corruption.
+- `persistence_test` — five assertions covering empty round-trip,
+  full bit-identical round-trip over 500 glyphs, query-result
+  equivalence after disk round-trip, bad-magic rejection, truncated-file
+  rejection, and non-ASCII label survival.
+- `persistence_demo` — two-phase demo proving substrate state survives
+  process death. Save phase writes 1,000 glyphs (1.27 MB) to
+  `data/lattice_archive/demo.klat`; load phase reads them back and runs
+  a bundled-probe query. Results are bit-identical to the in-memory
+  query (Hamming distances exactly: 2463, 2471, 2501).
+- All Khora runtime data now lives at `C:\Ai\Khora\data\` (per
+  operator directive, D: is slow and out of scope).
+
+Tests passing: **2/2 ctest suites, 16 assertions total.**
+
 ## v0.1.0 — Morphic Lattice substrate (in progress)
 
 **Author:** Morphus
