@@ -986,14 +986,44 @@ Rumination Cogitator::ruminate(std::string_view stimulus, std::size_t max_depth)
     r.seed = std::string(stimulus);
     std::string current = r.seed;
     std::vector<std::string> visited;
+    visited.push_back(current);      // don't loop back onto the seed
 
     r.train.push_back(current);      // the seed is the first stop
     for (std::size_t depth = 0; depth < max_depth; ++depth) {
         Deliberation d = deliberate(current);
 
-        // Hop to the strongest concept the train has NOT yet visited, so it
-        // explores fresh territory each step instead of orbiting a hub.
-        const std::string fresh = landed_concept(d, visited);
+        // Coherent hop: walk the clean associative structure. Prefer a sharp
+        // Plexus associate of the current concept the train hasn't visited, so
+        // the chain MEANS something (justice -> injustice -> law -> government)
+        // instead of drifting through resonance hubs. Fall back to the
+        // deliberation's landed concept (which can also reach the abstraction
+        // tower) when the Plexus offers no fresh kin.
+        std::string fresh;
+        bool plexus_knew = false;
+        if (plexus_ && plexus_->has(current)) {
+            plexus_knew = true;
+            // Anchored coherent hop: walk the current concept's sharp kin in their
+            // robust (confidence-weighted) order and take the highest-ranked one
+            // that ALSO stays in the seed's conceptual field — turning free
+            // association (justice -> chief -> a ship's mate) into focused
+            // contemplation (justice -> distributive -> commutative). If none of
+            // the kin link back to the seed, the best-ranked fresh kin carries the
+            // thought onward. Selecting WITHIN the robust ranking keeps the
+            // rare-word bias out.
+            std::string top_fresh;
+            for (const auto& kin : plexus_->associates(current, 12)) {
+                if (kin.first == current) continue;
+                if (std::find(visited.begin(), visited.end(), kin.first) != visited.end()) continue;
+                if (top_fresh.empty()) top_fresh = kin.first;              // best rank, robust
+                if (plexus_->affinity(r.seed, kin.first) > 0.0) { fresh = kin.first; break; }  // seed-anchored
+            }
+            if (fresh.empty()) fresh = top_fresh;
+        }
+        // If the Plexus knew this concept but offered no fresh kin, the coherent
+        // thread is spent — let the train converge here rather than drift into
+        // resonance hubs. Only concepts the Plexus does not know fall back to the
+        // Hamming-resonance landing.
+        if (fresh.empty() && !plexus_knew) fresh = landed_concept(d, visited);
         if (!fresh.empty()) {
             r.train.push_back(fresh);
             visited.push_back(fresh);
@@ -1002,10 +1032,11 @@ Rumination Cogitator::ruminate(std::string_view stimulus, std::size_t max_depth)
             continue;
         }
 
-        // No unvisited concept resonates — the neighbourhood is exhausted.
-        // The strongest concept overall is the attractor the train keeps
-        // returning to: that recurring pull is the conclusion.
-        const std::string attractor = landed_concept(d, {});
+        // No fresh concept to hop to. If the coherent Plexus thread is what is
+        // spent, the thought has settled where it stands (a real concept).
+        // Otherwise the recurring resonance pull — the strongest concept overall
+        // — is the attractor the train keeps returning to.
+        const std::string attractor = plexus_knew ? current : landed_concept(d, {});
         r.chain.push_back(std::move(d));
         if (!attractor.empty()) {
             r.converged  = true;

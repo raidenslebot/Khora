@@ -3,6 +3,40 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.71.0 — Cognition over the clean well (coherent trains of thought)
+
+**Author:** Morphus
+
+The loop closes. v0.68 gave clean kin, v0.69 coherent abstraction, v0.70 a
+coherent tower — and now THOUGHT itself walks the same clean structure.
+Rumination used to hop concept to concept by Hamming resonance, so trains drifted
+into the function-word hubs ("justice -> ... -> the -> this"). Now each hop takes
+the current concept's sharp Plexus kin, anchored toward the seed's conceptual
+field, and when that coherent thread is spent the thought settles where it stands
+rather than drifting into a hub.
+
+**Verified live** (`ponder <seed>` — a new tool to watch Khora think):
+```
+  reason  -> dictates -> naturall -> causes -> ignorance -> law -> civill -> soveraign
+  nature  -> condition -> warre -> civill -> lawes -> unwritten -> laws -> corporation
+  death   -> equality -> fraternity -> liberty -> indivisible -> republic -> plato -> dialogues
+  soul    -> body -> reference -> relative -> embankment -> railway -> travelling
+```
+Every step is a genuine association; the chains MEAN something — legal philosophy,
+the Hobbesian state of nature, the road from death to Plato, the soul-body problem
+sliding into relativity's thought-experiments. A categorical leap over hub-drift.
+
+Honest edges: trains still free-associate ACROSS domains once they leave the
+seed's immediate field (justice -> chief -> a ship's mate, in Moby Dick), and
+polysemy can mislead (knowledge -> divisions flips to the arithmetic sense, not
+the epistemic one). Context-sensitive disambiguation and stronger seed-anchoring
+are future work; what's solved here is the hub-drift that made trains meaningless.
+
+- ruminate() hops through plexus.associates (seed-anchored within the robust
+  confidence-weighted ranking, so no rare-word bias); converges on a real concept
+  when the coherent thread is spent; only Plexus-unknown words fall back to
+  Hamming. New `ponder` tool. 10/10 suites pass.
+
 ## v0.70.0 — The whole tower rises coherently (the engine compounds)
 
 **Author:** Morphus

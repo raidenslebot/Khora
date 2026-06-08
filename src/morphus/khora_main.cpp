@@ -1334,6 +1334,29 @@ int main(int argc, char** argv) {
     });
 
     shell.register_tool({
+        "ponder",
+        "watch a train of thought — Khora hopping concept to concept  (usage: ponder <seed> [depth])",
+        [&mind](const carapace::Intent& i) -> carapace::ToolResult {
+            if (i.args.empty()) return {false, "", "usage: ponder <seed> [depth]"};
+            std::size_t depth = 8, nargs = i.args.size();
+            if (i.args.size() >= 2) {
+                try { depth = std::stoul(i.args.back()); nargs = i.args.size() - 1; }
+                catch (...) {}
+            }
+            std::string seed;
+            for (std::size_t a = 0; a < nargs; ++a) { if (a) seed += ' '; seed += i.args[a]; }
+            if (depth == 0 || depth > 16) depth = 8;
+            const auto r = mind.ruminate(seed, depth);
+            std::ostringstream os;
+            os << "Khora ponders '" << seed << "' — its train of thought:\n  ";
+            for (std::size_t k = 0; k < r.train.size(); ++k) { if (k) os << " -> "; os << r.train[k]; }
+            os << "\n  (" << (r.converged ? "settled on '" + r.conclusion + "'"
+                                          : "arrived at '" + r.conclusion + "'") << ")";
+            return {true, os.str(), ""};
+        }
+    });
+
+    shell.register_tool({
         "study",
         "absorb a tome from the pool into actual knowledge  (usage: study <title> [max_tokens])",
         [&pool, &lex, &column, &memory, &plex](const carapace::Intent& i) -> carapace::ToolResult {
