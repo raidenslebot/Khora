@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <sstream>
+#include <unordered_map>
+#include <vector>
 
 namespace khora::curator {
 
@@ -37,12 +39,35 @@ StudyOutcome study_tome(Reservoir& pool, khora::lexicon::Lexicon& lex,
     o.yield = std::max(0.0, o.acc_after - o.acc_before) +
               0.0001 * static_cast<double>(o.vocab_after - o.vocab_before);
 
-    // Promote the most salient learned words into the thinkable concept
-    // space, so cognition can resonate over what was just studied. Their
-    // glyphs are refreshed each study as the distributional state drifts.
+    // Promote learned words into the thinkable concept space, but demote
+    // resonance HUBS — concepts that are the nearest neighbour of many
+    // others (the distributionally-central connective words like "will"
+    // / "with" that otherwise swallow every train of thought). We measure
+    // hubness directly: build a lattice of candidates, tally each one's
+    // in-degree as a top-k neighbour, and promote the LEAST hub-like.
     if (concept_space) {
-        for (const auto& w : lex.salient_tokens(/*max*/400, /*min_exposure*/4)) {
-            concept_space->store(w, lex.glyph_for(w));
+        const std::size_t kKeep = 400;
+        auto words = lex.salient_tokens(/*pool*/1000, /*min_exposure*/4);
+        if (!words.empty()) {
+            khora::lattice::Lattice cand;
+            for (const auto& w : words) cand.store(w, lex.glyph_for(w));
+
+            std::unordered_map<std::string, int> indeg;
+            for (const auto& w : words) indeg[w] = 0;
+            for (const auto& w : words) {
+                for (const auto& m : cand.query(lex.glyph_for(w), 5)) {
+                    if (m.label != w) ++indeg[m.label];   // w points at m -> m's in-degree
+                }
+            }
+            std::sort(words.begin(), words.end(),
+                      [&](const std::string& a, const std::string& b) {
+                          if (indeg[a] != indeg[b]) return indeg[a] < indeg[b];  // less hubby first
+                          return lex.exposures_for(a) > lex.exposures_for(b);
+                      });
+            const std::size_t keep = std::min(kKeep, words.size());
+            for (std::size_t i = 0; i < keep; ++i) {
+                if (auto g = cand.recall(words[i])) concept_space->store(words[i], *g);
+            }
         }
     }
 

@@ -3,6 +3,33 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.26.0 — Resonance-centrality hub demotion
+
+**Author:** Morphus
+
+Improved the quality of the concept space (v0.25) by demoting resonance
+**hubs** — concepts that are the nearest neighbour of many others (the
+distributionally-central connective words that swallowed every train of
+thought). Hubness is measured directly, not guessed: `study_tome` builds
+a lattice of ~1000 salient candidates, tallies each one's in-degree as a
+top-5 neighbour of the others, and promotes the 400 LEAST hub-like into
+the concept space.
+
+A prior attempt (distinctiveness-from-centroid) was tried first and
+reverted — with a content-rich candidate set the centroid is content-like,
+so function words sit far from it and got promoted, the opposite of
+intended. Resonance-centrality measures the actual phenomenon and works.
+
+**Verified**: after studying The Art of War, the worst hubs ("will",
+"with", "that") are gone and a genuine association surfaces — rumination
+on "soldiers" now hops `soldiers -> soldier` (singular/plural). Residual:
+milder hubs ("said", "much") still emerge — in any dense distributional
+space something is relatively central, so promotion-filtering improves
+but cannot fully eliminate the phenomenon. Richer rumination dynamics
+(exploration-biased landing) are the documented next step.
+
+9/9 regression suites pass.
+
 ## v0.25.0 — Studied vocabulary becomes thinkable
 
 **Author:** Morphus
