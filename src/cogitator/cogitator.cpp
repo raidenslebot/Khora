@@ -153,6 +153,13 @@ std::string Cogitator::wandering_seed(std::uint64_t n) {
     return concepts_[base + (n % span)];
 }
 
+std::string Cogitator::focused_seed(std::uint64_t n) {
+    if (attractors_.empty()) return wandering_seed(n);
+    const auto top = top_attractors(8);
+    if (top.empty()) return wandering_seed(n);
+    return top[n % top.size()].first;
+}
+
 void Cogitator::note_attractor_(const std::string& label) {
     if (label.empty()) return;
     // Skip Khora's own provisional trace concepts — only real, learned

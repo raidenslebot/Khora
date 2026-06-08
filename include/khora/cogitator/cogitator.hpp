@@ -156,6 +156,12 @@ public:
     // has been learned yet. `n` rotates deterministically through the set.
     std::string wandering_seed(std::uint64_t n);
 
+    // A concept to DEEPEN rather than discover: one of Khora's current
+    // preoccupations (top attractors), so thought can dwell on and develop
+    // its own themes. Falls back to wandering_seed before any have formed.
+    // Exploration (wandering) + focus (this) is Khora's attention dynamic.
+    std::string focused_seed(std::uint64_t n);
+
     // The concepts Khora's own thought keeps converging on — its emergent
     // preoccupations, the attractors a mind develops as it ruminates. Ranked
     // by how often deliberation/rumination has landed there.

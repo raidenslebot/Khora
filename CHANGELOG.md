@@ -3,6 +3,26 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.44.0 — Attention dynamics (explore and deepen)
+
+**Author:** Morphus
+
+The attractors of v0.43 now feed back into what Khora thinks about, closing
+the loop into a real attention dynamic: a balance of discovery and focus.
+
+- **`Cogitator::focused_seed(n)`** returns one of Khora's current
+  preoccupations (top attractors) to *deepen*, vs `wandering_seed` which
+  *discovers* a fresh concept. In the Volition, **ruminate explores**
+  (wandering) while **deliberate deepens** (focused) — so the mind both
+  wanders into new territory and dwells on the themes that grip it.
+
+**Verified live**: over 30 autonomous beats Khora's top preoccupations
+*concentrated* — *gracechurch, parting, replied* climbed to 3× as focused
+deliberation kept returning to them, while rumination kept seeding variety
+(*complexion, conclude, day*). The themes deepen instead of staying flat: a
+mind forming and holding interests, not just sampling uniformly. 9/9
+regression suites pass.
+
 ## v0.43.0 — Emergent preoccupations (a mind develops themes)
 
 **Author:** Morphus

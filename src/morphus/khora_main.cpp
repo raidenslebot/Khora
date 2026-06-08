@@ -624,6 +624,11 @@ int main(int argc, char** argv) {
         auto sal = lex.salient_tokens(64, 5);   // fallback before anything is learned
         return sal.empty() ? std::string("khora") : sal[volition_seed % sal.size()];
     };
+    // Focus: deepen a current preoccupation rather than discover a new concept.
+    auto pick_focus = [&mind, &volition_seed]() -> std::string {
+        std::string s = mind.focused_seed(volition_seed++);
+        return s.empty() ? std::string("khora") : s;
+    };
     {
         using khora::soma::Drive;
         const auto D = [](Drive d) { return static_cast<std::size_t>(d); };
@@ -643,8 +648,8 @@ int main(int argc, char** argv) {
         del.name = "deliberate";
         del.affinity.per_drive[D(Drive::OperatorAffinity)] = 1.0;  // reason on the operator's behalf
         del.affinity.per_drive[D(Drive::Mastery)]          = 0.4;
-        del.perform = [&mind, pick_seed]() -> std::string {
-            const std::string seed = pick_seed();
+        del.perform = [&mind, pick_focus]() -> std::string {
+            const std::string seed = pick_focus();   // deepen a preoccupation
             auto d = mind.deliberate(seed);
             const std::string w = (d.winner >= 0 && d.winner < static_cast<int>(d.facets.size()))
                                   ? d.facets[static_cast<std::size_t>(d.winner)].label : std::string{};
