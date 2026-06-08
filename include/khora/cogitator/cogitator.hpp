@@ -129,6 +129,19 @@ struct Synthesis {
     std::vector<khora::lattice::LatticeMatch>  emergent;       // the forged concept(s)
 };
 
+// Recursive abstraction — the combinatorial engine of exponential cognition.
+// Khora chunks a cluster of kindred concepts into ONE higher-order concept,
+// then abstracts over THOSE, and over those — a rising tower. Where flat
+// concepts grow linearly, a hierarchy of abstractions grows combinatorially:
+// every new abstraction multiplies what can be composed at the next level.
+// The tower persists, so it compounds across Khora's whole existence.
+struct Abstraction {
+    std::string                name;
+    khora::lattice::Glyph      glyph;
+    int                        level = 1;     // 1 = over words; 2 = over abstractions; ...
+    std::vector<std::string>   members;
+};
+
 class Cogitator {
 public:
     Cogitator(khora::lexicon::Lexicon&         lex,
@@ -166,6 +179,19 @@ public:
     // transitions and steering each step toward the topic. Associative, not
     // reasoned, but in its own voice. Empty if it has not learned enough.
     std::string utter(const std::string& topic, std::size_t n = 14);
+
+    // Form a higher-order abstraction from a seed concept (a learned word OR
+    // an existing abstraction): bind it with its nearest kin into one new
+    // concept, one level higher. Returns its name. Empty if it can't form one.
+    std::string form_abstraction(const std::string& seed, std::size_t k = 4);
+    std::size_t abstraction_count() const noexcept { return abstractions_.size(); }
+    int         abstraction_depth() const noexcept;            // highest level reached
+    std::vector<std::string> abstraction_names(std::size_t n) const;  // recent, with levels
+    // A name to abstract from next: usually a hot preoccupation, but every
+    // few calls an existing abstraction — so the tower keeps rising.
+    std::string abstraction_seed(std::uint64_t n) const;
+    void save_abstractions(const std::filesystem::path& path) const;
+    void load_abstractions(const std::filesystem::path& path);
 
     // Compose a response grounded in a whole question rather than one topic:
     // seed the generation with the question's content concepts and steer it
@@ -257,7 +283,13 @@ private:
     std::unordered_set<std::string> content_;       // salient content words
     std::vector<std::string>        concepts_;      // clean concepts for seeding thought
     std::unordered_map<std::string, std::uint32_t> attractors_;  // emergent preoccupations
+    std::vector<Abstraction>        abstractions_;   // the rising tower
+    std::size_t                     abstraction_seq_ = 0;
     std::size_t                    indexed_vocab_ = static_cast<std::size_t>(-1);
+
+    // Glyph + level of any concept name (a learned word = level 0, or an
+    // existing abstraction = its level).
+    khora::lattice::Glyph concept_glyph_any_(const std::string& name, int& level) const;
 
     std::size_t resonance_k_            = 5;
     double      novelty_threshold_      = 0.20;

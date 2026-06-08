@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdlib>
 #include <fstream>
 #include <future>
 #include <span>
@@ -152,6 +153,132 @@ std::string Cogitator::wandering_seed(std::uint64_t n) {
                                                        : concepts_.size();
     const std::size_t base = (concepts_.size() > skip) ? skip : 0;
     return concepts_[base + (n % span)];
+}
+
+Glyph Cogitator::concept_glyph_any_(const std::string& name, int& level) const {
+    for (const auto& a : abstractions_)
+        if (a.name == name) { level = a.level; return a.glyph; }
+    level = 0;
+    return lex_.context_glyph(name);
+}
+
+std::string Cogitator::form_abstraction(const std::string& seed, std::size_t k) {
+    ensure_field_();
+    int seed_level = 0;
+    const Glyph seedG = concept_glyph_any_(seed, seed_level);
+    if (seedG.popcount() == 0) return {};
+
+    // Candidate kin: nearest learned words (the field) AND existing
+    // abstractions — so a TOWER can form, not just flat word-chunks.
+    struct Kin { double sim; std::string name; int level; };
+    std::vector<Kin> kin;
+    for (const auto& m : field_.query(seedG, k + 2)) {
+        if (m.label == seed) continue;
+        kin.push_back({ m.similarity, m.label, 0 });
+    }
+    for (const auto& a : abstractions_) {
+        if (a.name == seed) continue;
+        kin.push_back({ seedG.similarity(a.glyph), a.name, a.level });
+    }
+    std::sort(kin.begin(), kin.end(), [](const Kin& a, const Kin& b) { return a.sim > b.sim; });
+
+    std::vector<Glyph> parts{ seedG };
+    std::vector<std::string> members{ seed };
+    int maxlvl = seed_level;
+    for (const auto& c : kin) {
+        if (members.size() >= k + 1) break;
+        int l2 = 0;
+        const Glyph g = concept_glyph_any_(c.name, l2);
+        if (g.popcount() == 0) continue;
+        parts.push_back(g);
+        members.push_back(c.name);
+        maxlvl = std::max(maxlvl, l2);
+    }
+    if (members.size() < 2) return {};
+
+    Abstraction a;
+    a.glyph   = bundle(std::span<const Glyph>{parts.data(), parts.size()});
+    a.level   = maxlvl + 1;
+    a.members = members;
+    a.name = "{";
+    const std::size_t mn = std::min<std::size_t>(3, members.size());
+    for (std::size_t i = 0; i < mn; ++i) { if (i) a.name += "+"; a.name += members[i]; }
+    if (members.size() > mn) a.name += "+..";
+    a.name += "}#" + std::to_string(abstraction_seq_++);
+    abstractions_.push_back(std::move(a));
+    return abstractions_.back().name;
+}
+
+int Cogitator::abstraction_depth() const noexcept {
+    int d = 0;
+    for (const auto& a : abstractions_) d = std::max(d, a.level);
+    return d;
+}
+
+std::vector<std::string> Cogitator::abstraction_names(std::size_t n) const {
+    std::vector<std::string> out;
+    for (auto it = abstractions_.rbegin(); it != abstractions_.rend() && out.size() < n; ++it)
+        out.push_back("L" + std::to_string(it->level) + "  " + it->name);
+    return out;
+}
+
+std::string Cogitator::abstraction_seed(std::uint64_t n) const {
+    // Every 4th step, rise: abstract over an existing abstraction.
+    if (!abstractions_.empty() && (n % 4) == 3)
+        return abstractions_[static_cast<std::size_t>(n) % abstractions_.size()].name;
+    const auto top = top_attractors(8);
+    if (!top.empty()) return top[static_cast<std::size_t>(n) % top.size()].first;
+    if (!abstractions_.empty()) return abstractions_.back().name;
+    return {};
+}
+
+void Cogitator::save_abstractions(const std::filesystem::path& path) const {
+    namespace fs = std::filesystem;
+    if (path.has_parent_path()) fs::create_directories(path.parent_path());
+    std::ofstream f(path, std::ios::trunc);
+    if (!f) return;
+    // level<TAB>name<TAB>member|member|... — glyphs are re-derived on load.
+    for (const auto& a : abstractions_) {
+        f << a.level << '\t' << a.name << '\t';
+        for (std::size_t i = 0; i < a.members.size(); ++i) { if (i) f << '|'; f << a.members[i]; }
+        f << '\n';
+    }
+}
+
+void Cogitator::load_abstractions(const std::filesystem::path& path) {
+    std::ifstream f(path);
+    if (!f) return;
+    std::string line;
+    std::vector<Abstraction> loaded;
+    while (std::getline(f, line)) {
+        const auto t1 = line.find('\t');
+        const auto t2 = (t1 == std::string::npos) ? std::string::npos : line.find('\t', t1 + 1);
+        if (t1 == std::string::npos || t2 == std::string::npos) continue;
+        Abstraction a;
+        a.level = std::atoi(line.substr(0, t1).c_str());
+        a.name  = line.substr(t1 + 1, t2 - t1 - 1);
+        std::string mem = line.substr(t2 + 1), tok;
+        std::size_t p = 0, q;
+        while ((q = mem.find('|', p)) != std::string::npos) { a.members.push_back(mem.substr(p, q - p)); p = q + 1; }
+        if (p < mem.size()) a.members.push_back(mem.substr(p));
+        loaded.push_back(std::move(a));
+    }
+    // Re-derive glyphs in level order, so abstractions can reference lower ones.
+    std::stable_sort(loaded.begin(), loaded.end(),
+                     [](const Abstraction& a, const Abstraction& b) { return a.level < b.level; });
+    abstractions_.clear();
+    for (auto& a : loaded) {
+        std::vector<Glyph> parts;
+        for (const auto& m : a.members) {
+            int lvl = 0;
+            const Glyph g = concept_glyph_any_(m, lvl);   // sees already-loaded lowers
+            if (g.popcount() > 0) parts.push_back(g);
+        }
+        if (parts.empty()) continue;
+        a.glyph = bundle(std::span<const Glyph>{parts.data(), parts.size()});
+        abstractions_.push_back(std::move(a));
+        ++abstraction_seq_;
+    }
 }
 
 std::string Cogitator::focused_seed(std::uint64_t n) {

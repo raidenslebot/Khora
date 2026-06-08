@@ -3,6 +3,41 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.65.0 — The Spire: recursive abstraction (the combinatorial engine)
+
+**Author:** Morphus
+
+Zooming out from linear tool-building to the thing that makes growth
+*exponential*: until now Khora's concepts were **flat** — it could never form
+a concept *of* concepts, then a concept of *those*. That flatness caps it at
+linear growth. The Spire breaks the cap. It is the first of the compounding
+mechanisms (the others: self-generated goals, meta-learning, imagination,
+self-rewriting) and the foundation the rest stand on.
+
+- **`Cogitator::form_abstraction(seed)`** chunks a seed concept with its
+  nearest kin — drawn from learned **words AND existing abstractions** — into
+  one new higher-order concept, one level up. Because abstractions can be the
+  kin of higher abstractions, a **tower rises recursively**: level 1 over
+  words, level 2 over level-1, and on up. Every new abstraction multiplies
+  what can be composed next — combinatorial, not linear.
+- The tower **persists** (`save/load_abstractions`) and **compounds across
+  Khora's whole existence**, restored at startup. Curiosity now sometimes
+  *builds* (autonomous `form_abstraction` woven into the Volition), and every
+  few steps it abstracts over an existing abstraction — so the tower keeps
+  rising on its own. Tools: `abstract [seed]`, `spire [n]`.
+
+**Verified live**: from a standing start Khora climbed to **depth 3** in one
+short run — `{justice+cause+question}` (L1) → `{virtue+{justice…}#0+suffer}`
+(L2) → `{suffer+{virtue+{justice…}…}…}` (L3) — autonomously, then carried the
+tower forward to the next life.
+
+**Honest scope:** the clusters are HDC bundles of field-nearest concepts, so
+their *coherence* is bounded by the (hub-limited) semantic field — and the
+abstractions don't yet feed back into the core resonance loop. But the
+*recursive hierarchy itself* — the engine of combinatorial growth — is real,
+running, and persistent. The cap on linear growth is broken; deepening its
+coherence and looping it into cognition is the next climb. 9/9 suites pass.
+
 ## v0.64.0 — Discourse (Khora roams the canon, all night)
 
 **Author:** Morphus

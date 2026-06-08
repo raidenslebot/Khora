@@ -47,6 +47,7 @@ constexpr const char* kArchivePath          = "data/lattice_archive/main.klat";
 constexpr const char* kCortexArchivePrefix  = "data/cortex_archive/main";
 constexpr const char* kLexiconArchivePrefix = "data/lexicon_archive/main";
 constexpr const char* kAttractorsPath       = "data/cogitator_archive/attractors.txt";
+constexpr const char* kAbstractionsPath     = "data/cogitator_archive/abstractions.txt";
 
 std::string read_line_prompt(const std::string& prompt) {
     std::cout << prompt << std::flush;
@@ -132,6 +133,10 @@ int main(int argc, char** argv) {
     }
     // Restore Khora's preoccupations — its inner life resumes where it left off.
     mind.load_attractors(kAttractorsPath);
+    mind.load_abstractions(kAbstractionsPath);   // the tower of abstraction resumes rising
+    if (mind.abstraction_count() > 0)
+        std::cout << "[resumed spire: " << mind.abstraction_count()
+                  << " abstractions, depth " << mind.abstraction_depth() << "]\n";
     if (!mind.top_attractors(1).empty()) {
         std::cout << "[resumed mind: preoccupied with";
         for (const auto& [name, count] : mind.top_attractors(5)) std::cout << ' ' << name;
@@ -666,6 +671,17 @@ int main(int argc, char** argv) {
                     return "ferment " + s.a + " x " + s.b + " ~> " + s.emergent.front().label
                          + "  [chaos " + std::to_string(static_cast<int>(chaos_rate * 100 + 0.5)) + "%]";
             }
+            // Curiosity also BUILDS — every so often Khora chunks a cluster of
+            // concepts into a higher abstraction, raising its tower.
+            if (!chaos && (ferment_seed % 3) == 0) {
+                const std::string aseed = mind.abstraction_seed(ferment_seed);
+                if (!aseed.empty()) {
+                    const std::string name = mind.form_abstraction(aseed);
+                    if (!name.empty())
+                        return "abstract '" + aseed + "' ~> " + name
+                             + "  [depth " + std::to_string(mind.abstraction_depth()) + "]";
+                }
+            }
             const std::string seed = pick_seed();
             auto r = mind.ruminate(seed, 5);
             return "ruminate '" + seed + "' ~> " + (r.conclusion.empty() ? r.seed : r.conclusion);
@@ -801,6 +817,33 @@ int main(int argc, char** argv) {
             os << "Khora keeps returning to:\n";
             for (const auto& [name, count] : top)
                 os << "  " << name << "   (" << count << "x)\n";
+            return {true, os.str(), ""};
+        }
+    });
+    shell.register_tool({
+        "abstract",
+        "Khora forges a higher-order abstraction from a concept  (usage: abstract [seed])",
+        [&mind](const carapace::Intent& i) -> carapace::ToolResult {
+            const std::string seed = i.args.empty() ? mind.abstraction_seed(0) : i.args[0];
+            if (seed.empty()) return {true, "Khora has not learned enough to abstract yet", ""};
+            const std::string name = mind.form_abstraction(seed);
+            if (name.empty()) return {false, "", "could not abstract from '" + seed + "'"};
+            std::ostringstream os;
+            os << "forged  " << name << "\n  (tower: " << mind.abstraction_count()
+               << " abstractions, depth " << mind.abstraction_depth() << ")";
+            return {true, os.str(), ""};
+        }
+    });
+    shell.register_tool({
+        "spire",
+        "the rising tower of Khora's abstractions  (usage: spire [n])",
+        [&mind](const carapace::Intent& i) -> carapace::ToolResult {
+            std::size_t n = 14;
+            if (!i.args.empty()) { try { n = static_cast<std::size_t>(std::stoul(i.args[0])); } catch (...) {} }
+            std::ostringstream os;
+            os << "Khora's spire — " << mind.abstraction_count() << " abstractions, depth "
+               << mind.abstraction_depth() << ":\n";
+            for (const auto& s : mind.abstraction_names(n)) os << "  " << s << "\n";
             return {true, os.str(), ""};
         }
     });
@@ -1473,6 +1516,8 @@ int main(int argc, char** argv) {
         catch (...) { /* swallow — best effort */ }
         try { mind.save_attractors(kAttractorsPath); }
         catch (...) { /* swallow — best effort */ }
+        try { mind.save_abstractions(kAbstractionsPath); }
+        catch (...) { /* swallow — best effort */ }
     };
 
     // Locked invoke helper — all operator commands take the shared mutex
@@ -1596,10 +1641,12 @@ int main(int argc, char** argv) {
     }
     try {
         mind.save_attractors(kAttractorsPath);
+        mind.save_abstractions(kAbstractionsPath);
         std::cout << "[saved mind: " << mind.top_attractors(1000).size()
-                  << " preoccupations carried forward]\n";
+                  << " preoccupations, " << mind.abstraction_count()
+                  << " abstractions (depth " << mind.abstraction_depth() << ") carried forward]\n";
     } catch (const std::exception& e) {
-        std::cerr << "[attractor save failed: " << e.what() << "]\n";
+        std::cerr << "[mind-state save failed: " << e.what() << "]\n";
     }
     std::cout << "Khora out.\n";
     return 0;
