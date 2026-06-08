@@ -3,6 +3,32 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.55.0 — Questions that differ get answers that differ
+
+**Author:** Morphus
+
+After v0.54 + a broader corpus, a sharper flaw showed: `ask justice` and
+`ask wealth` returned *identical* text — both just drifted to the
+last-studied book. The cause: `respond` seeded the cortex with only the
+question's lone content word, too weak a context to match anything specific,
+so every question fell into the same dominant transitions.
+
+- **`respond` now seeds with the whole question phrase** (every token, not
+  just one content word), so different questions begin in different cortex
+  contexts; the content concepts still set the steering target.
+
+**Verified live** on the now-balanced 7-book corpus: the answers diverge and
+track the question —
+- `what is justice` → *"…the wages of the labour which must be paid…"*
+  (Smith on just compensation)
+- `what is liberty` → *"…to go to battle… i am he that walks with the
+  tender…"* (Whitman)
+
+Honest scope unchanged: it lands in the region of what it read that best
+matches the question's phrasing — associative, not reasoned — but it now
+genuinely *responds* to the question instead of reciting the same passage.
+9/9 regression suites pass.
+
 ## v0.54.0 — Asking Khora (knowledge-grounded generation)
 
 **Author:** Morphus

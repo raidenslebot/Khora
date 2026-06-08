@@ -200,23 +200,22 @@ std::string Cogitator::utter(const std::string& topic, std::size_t n) {
 
 std::string Cogitator::respond(const std::string& question, std::size_t n) {
     ensure_field_();
-    // Gather the question's content concepts — the knowledge neighbourhood it
-    // points at. Seed the generation with them and steer toward their blend.
-    std::vector<Glyph> concepts, seed;
+    // Seed the cortex with the WHOLE question phrase (so different questions
+    // start from different contexts, not one weak content word), and steer
+    // toward the question's content concepts — its knowledge neighbourhood.
+    std::vector<Glyph> seed, concepts;
     for (const auto& t : khora::lexicon::tokenize(question)) {
-        if (lex_.has(t) && is_content_(t)) {
-            concepts.push_back(lex_.glyph_for(t));
-            seed.push_back(lex_.glyph_for(t));
-        }
+        seed.push_back(lex_.glyph_for(t));                          // phrase context
+        if (lex_.has(t) && is_content_(t)) concepts.push_back(lex_.glyph_for(t));
     }
-    if (concepts.empty()) {  // fall back to any learned tokens
+    if (concepts.empty())  // fall back to any learned tokens for the target
         for (const auto& t : khora::lexicon::tokenize(question))
-            if (lex_.has(t)) { concepts.push_back(lex_.glyph_for(t)); seed.push_back(lex_.glyph_for(t)); }
-    }
-    if (concepts.empty()) return {};
-    const Glyph target = bundle(std::span<const Glyph>{concepts.data(), concepts.size()});
-    if (seed.empty()) seed.push_back(target);
-    return generate_(std::move(seed), target, n, 1.3);  // hold the question harder
+            if (lex_.has(t)) concepts.push_back(lex_.glyph_for(t));
+    if (seed.empty()) return {};
+    const Glyph target = concepts.empty()
+        ? seed.back()
+        : bundle(std::span<const Glyph>{concepts.data(), concepts.size()});
+    return generate_(std::move(seed), target, n, 1.0);
 }
 
 Synthesis Cogitator::synthesize(const std::string& a_in, const std::string& b_in, std::uint64_t seed) {
