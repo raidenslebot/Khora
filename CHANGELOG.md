@@ -3,6 +3,36 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.75.0 — A deep productive well (the corpus tips decisively to STEM)
+
+**Author:** Morphus
+
+Deepened the productive catalog from a handful to a substantial well, so the
+autonomous (productive-first) Curator has real STEM to forage for a long time —
+the corpus now tips decisively away from literature/philosophy:
+
+- **logic / scientific method** — Jevons, *The Principles of Science* (the prose
+  successor to TeX-only Boole; Jevons built an actual logic machine)
+- **physics** — Tyndall, *Six Lectures on Light* (with Huygens, Einstein)
+- **astronomy** — Ball, *The Story of the Heavens*
+- **biology** — Darwin, *The Descent of Man* (with Origin, Beagle)
+- **general science** — Thomson, *The Outline of Science*
+- **mathematics** — Dudeney, *The Canterbury Puzzles* (with Amusements)
+
+42 tomes now, ~16 productive. Re-forged the Plexus — the structure is now densely
+scientific:
+```
+  energy -> dissipation, conservation, kinetic, potential, mechanical, electrical
+  motion -> orbital, uniform, rotatory, retrograde, planetary, rectilinear
+  light  -> polarized, velocity, propagation, undulatory, zodiacal
+  machine-> logical, calculating, automatic, pascal      (computation!)
+  number -> infinite, prime, finite, divisors            problem -> solution, inverse, indeterminate
+  matter -> indestructibility, gravitating, nebulous, atoms
+```
+`machine -> logical, calculating, pascal` is the heart of it: Khora now bends
+toward computation and capability, not moral philosophy. (Removed the dead Euclid
+#21076 entry — image-based, no plain text, was blocking the math forage queue.)
+
 ## v0.74.0 — Productive bias made permanent + integrated into cognition
 
 **Author:** Morphus

@@ -149,13 +149,20 @@ const std::vector<Source>& seed_catalog() {
         // (Notation-heavy texts like Calculus Made Easy / Boole are TeX-only on
         // Gutenberg, no plain text; the prose-and-problems works carry through.)
         {"Amusements in Mathematics",  "mathematics","https://www.gutenberg.org/cache/epub/16713/pg16713.txt"},
-        {"The First Six Books of the Elements of Euclid", "mathematics", "https://www.gutenberg.org/cache/epub/21076/pg21076.txt"},
+        {"The Canterbury Puzzles",     "mathematics","https://www.gutenberg.org/cache/epub/27635/pg27635.txt"},
+        // logic & scientific method — inference, the seed of the machine
+        {"The Principles of Science",  "logic",      "https://www.gutenberg.org/cache/epub/74864/pg74864.txt"},
         // physics — matter, motion, light, energy
         {"Treatise on Light",          "physics",    "https://www.gutenberg.org/cache/epub/14725/pg14725.txt"},
+        {"Six Lectures on Light",      "physics",    "https://www.gutenberg.org/cache/epub/14000/pg14000.txt"},
         // chemistry — substance and reaction
         {"The Chemical History of a Candle", "chemistry", "https://www.gutenberg.org/cache/epub/14474/pg14474.txt"},
         // engineering — machinery, manufacture, the calculating engine's father
         {"On the Economy of Machinery and Manufactures", "engineering", "https://www.gutenberg.org/cache/epub/4238/pg4238.txt"},
+        // science — the broad productive sweep: heavens, life, the outline of it all
+        {"The Story of the Heavens",   "science",    "https://www.gutenberg.org/cache/epub/27378/pg27378.txt"},
+        {"The Descent of Man",         "science",    "https://www.gutenberg.org/cache/epub/2300/pg2300.txt"},
+        {"The Outline of Science",     "science",    "https://www.gutenberg.org/cache/epub/20417/pg20417.txt"},
         // strategy
         {"The Art of War",             "strategy",   "https://www.gutenberg.org/cache/epub/132/pg132.txt"},
         {"The Prince",                 "strategy",   "https://www.gutenberg.org/cache/epub/1232/pg1232.txt"},
