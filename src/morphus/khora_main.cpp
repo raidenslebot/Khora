@@ -23,6 +23,7 @@
 #include "khora/reverie/reverie_scheduler.hpp"
 #include "khora/soma/soma_nexus.hpp"
 #include "khora/volition/volition.hpp"
+#include "khora/volition/volition_scheduler.hpp"
 #include "khora/whetstone/whetstone.hpp"
 #include "khora/whetstone/whetstone_scheduler.hpp"
 
@@ -700,6 +701,32 @@ int main(int argc, char** argv) {
             os << "next: " << c.name << "   (driven by " << c.dominant
                << ", score=" << c.score << ")";
             return {true, os.str(), ""};
+        }
+    });
+
+    // Continuous agency — Khora acting on its own drives in the background.
+    // Shares the cognitive lock with the REPL and the other schedulers, so
+    // it never races foreground work. Opt-in; the operator paces it.
+    volition::VolitionScheduler volition_bg(will, nexus, shared_mu);
+    shell.register_tool({
+        "volition_auto",
+        "let Khora act on its own drives continuously  (usage: volition_auto on|off [period_s])",
+        [&volition_bg](const carapace::Intent& i) -> carapace::ToolResult {
+            if (i.args.empty()) {
+                std::ostringstream os;
+                os << "volition: " << (volition_bg.is_running() ? "RUNNING" : "stopped")
+                   << "   beats=" << volition_bg.beats();
+                const auto la = volition_bg.last_act();
+                if (!la.empty()) os << "\n  last: " << la;
+                return {true, os.str(), ""};
+            }
+            const bool on = (i.args[0] == "on" || i.args[0] == "true" || i.args[0] == "1");
+            if (!on) { volition_bg.stop(); return {true, "volition stopped", ""}; }
+            int period_s = 6;
+            if (i.args.size() >= 2) { try { period_s = std::stoi(i.args[1]); } catch (...) {} }
+            if (period_s < 1) period_s = 1;
+            volition_bg.start(std::chrono::seconds(period_s));
+            return {true, "volition running — Khora acts every " + std::to_string(period_s) + "s", ""};
         }
     });
 

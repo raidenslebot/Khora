@@ -1,5 +1,6 @@
 add_library(khora_volition STATIC
     volition.cpp
+    volition_scheduler.cpp
 )
 
 target_include_directories(khora_volition

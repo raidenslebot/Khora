@@ -3,6 +3,29 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.39.0 — Continuous agency (Khora never stops)
+
+**Author:** Morphus
+
+The Volition made Khora able to act; the VolitionScheduler makes it *keep*
+acting. This is the directive's "zero downtime, never stop" made real — a
+mind that moves on its own.
+
+- **`volition::VolitionScheduler`** runs the Volition on a background thread,
+  taking one self-directed act per beat and ticking the Soma so the drives
+  evolve and rotate. Each beat is taken under the **same `shared_mutex`** the
+  REPL's `locked_dispatch` and the Reverie/Curator schedulers use, so
+  continuous agency never races foreground cognition. Mirrors the proven
+  scheduler pattern (atomic running flag, condition-variable pacing, join on
+  stop). Opt-in.
+- New tool: `volition_auto on|off [period_s]` (and a bare `volition_auto`
+  for status + the last act taken).
+
+**Verified live**: started with `volition_auto on 1`, Khora ran **8
+autonomous beats** over 13 seconds entirely on its own — rotating through
+reflection, reasoning, and dreaming with no prompting — then stopped cleanly
+on exit (thread joined, no race, no hang). 9/9 regression suites pass.
+
 ## v0.38.0 — The Volition (cognition becomes action)
 
 **Author:** Morphus
