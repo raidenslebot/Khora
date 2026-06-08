@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(Khora VERSION 0.12.0 LANGUAGES CXX)
+project(Khora VERSION 0.13.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -27,6 +27,7 @@ add_subdirectory(src/reverie)
 add_subdirectory(src/lexicon)
 add_subdirectory(src/cogitator)
 add_subdirectory(src/crucible)
+add_subdirectory(src/whetstone)
 add_subdirectory(src/carapace)
 add_subdirectory(src/morphus)
 

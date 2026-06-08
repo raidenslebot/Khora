@@ -3,6 +3,46 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.13.0 — The Whetstone (autonomous self-directed evolution)
+
+**Author:** Morphus
+
+Khora no longer waits to be taught. The Whetstone is a self-sharpening
+engine: it holds a set of trainable Faculties, and each round it surveys
+its own competence, drills whichever faculty has the most room to grow,
+generates a challenge at that faculty's frontier, and responds to the
+outcome with one of two moves — never a third called "failure":
+
+  - mastery reached  -> ESCALATE difficulty (reach further)
+  - shortfall        -> EVOLVE the method, MEASURE the result, and keep
+                        the mutation only if it helped. Harmful mutations
+                        are reverted. Natural selection over methods.
+
+Two faculties forged:
+
+- **sequence_induction** — predict the continuation of a repeating
+  symbol sequence of period (d+1). Mastered through period-17 at 100%.
+- **relational_capacity** — recover fields from (d*4) holographically
+  superimposed records. Evolution = recruit more memory banks (split the
+  load across independent glyphs) when one saturates.
+
+A 200-round autonomous session produced real, self-directed capability
+growth. The engine first revealed a genuine flaw — the original
+"redundancy" evolution made holographic overload *worse* (87% -> 7%) —
+which is exactly what natural selection then rejected. With memory-bank
+recruitment instead:
+
+  - saturates ~52 records/bank (~208 facts/glyph — a real capacity limit)
+  - d=14 shortfall -> 2 banks -> 99.6%
+  - d=28 shortfall -> 4 banks -> 99.8%
+  - d=54 shortfall -> 8 banks -> 99.8%
+  - reaches d=64 = 256 records = **1,024 facts recovered at 99.9%**
+    across 8 glyphs (~10 KB total)
+
+Khora autonomously discovered that the answer to a saturated working
+memory is to allocate more of it — and pushed its own frontier 64x.
+Trajectory saved to `data/whetstone/session.json`.
+
 ## v0.12.0 — The Morphic Cogitator + The Crucible
 
 **Author:** Morphus
