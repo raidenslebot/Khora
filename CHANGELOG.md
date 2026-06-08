@@ -3,6 +3,33 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.10.0 — Reverie consolidation (dreams train cortex)
+
+**Author:** Morphus
+
+The inner loop closes. When `consolidation` is enabled, every retained
+dream is fed back into the cortex via `cortex.step(dream)` — so
+synthesised glyphs become training signal. Khora learns from its own
+dreams.
+
+Shipped:
+
+- `ReverieLoom::set_consolidation(bool)` — toggles dream→cortex feedback.
+- `ReverieLoom::consolidations()` — count of dreams that became training.
+- `reverie_consolidate on|off` carapace tool.
+- Two new reverie tests:
+  - With consolidation on, `cortex.observations()` grows by exactly
+    `loom.consolidations()` after `dream_n(50)`.
+  - With consolidation off (default), cortex stays untouched.
+
+This is the loop the original Khora docs envisioned but never built:
+experience → memory → perturbation → synthesis → satisfaction-gated
+retention → training signal. All on the substrate, all transparent,
+all without an LLM.
+
+Tests passing: **7/7 ctest suites, 64 assertions total** (+5 new
+consolidation assertions).
+
 ## v0.9.0 — Background reverie (autonomy)
 
 **Author:** Morphus

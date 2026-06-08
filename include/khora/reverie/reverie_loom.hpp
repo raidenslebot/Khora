@@ -40,6 +40,12 @@ public:
     void set_satisfaction_threshold(double t)           { threshold_ = t; }
     void set_dream_affinity(const khora::soma::Affinity& a) { dream_affinity_ = a; }
 
+    // When consolidation is on, every retained dream is also fed into
+    // the cortex via cortex.step(dream). Closes the loop: dreams become
+    // training signal. Default: off.
+    void set_consolidation(bool on) { consolidate_ = on; }
+    bool consolidation() const noexcept { return consolidate_; }
+
     // Run one dream cycle.
     DreamSample dream_once();
 
@@ -50,8 +56,9 @@ public:
     const khora::lattice::Lattice& dreams() const noexcept { return dreams_; }
 
     // Stats
-    std::size_t cycles()   const noexcept { return cycles_; }
-    std::size_t retained() const noexcept { return retained_count_; }
+    std::size_t cycles()         const noexcept { return cycles_; }
+    std::size_t retained()       const noexcept { return retained_count_; }
+    std::size_t consolidations() const noexcept { return consolidations_done_; }
 
 private:
     khora::lattice::Lattice&             memory_;
@@ -64,8 +71,10 @@ private:
     double                               threshold_         = 0.5;
     khora::soma::Affinity                dream_affinity_;
 
-    std::size_t                          cycles_         = 0;
-    std::size_t                          retained_count_ = 0;
+    std::size_t                          cycles_              = 0;
+    std::size_t                          retained_count_      = 0;
+    std::size_t                          consolidations_done_ = 0;
+    bool                                 consolidate_         = false;
 };
 
 } // namespace khora::reverie

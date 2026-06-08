@@ -186,6 +186,21 @@ int main(int argc, char** argv) {
             return {true, os.str(), ""};
         }
     });
+    shell.register_tool({
+        "reverie_consolidate",
+        "toggle dream->cortex consolidation  (usage: reverie_consolidate on|off)",
+        [&dream](const carapace::Intent& i) -> carapace::ToolResult {
+            if (i.args.empty()) {
+                std::ostringstream os;
+                os << "consolidation = " << (dream.consolidation() ? "ON" : "OFF")
+                   << "  (total consolidations: " << dream.consolidations() << ")";
+                return {true, os.str(), ""};
+            }
+            const bool on = (i.args[0] == "on" || i.args[0] == "true" || i.args[0] == "1");
+            dream.set_consolidation(on);
+            return {true, std::string("consolidation = ") + (on ? "ON" : "OFF"), ""};
+        }
+    });
 
     // Helper: persist lattice + cortex silently. Used both at
     // single-command exit and at interactive-loop exit so state actually

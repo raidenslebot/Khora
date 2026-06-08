@@ -148,7 +148,44 @@ int main() {
                "loom cycle count matches scheduler cycle count");
     }
 
-    // 7. Scheduler: start / stop are idempotent.
+    // 7. Consolidation: retained dreams are fed back into the cortex,
+    //    growing its observation count.
+    {
+        Lattice mem;
+        for (int i = 0; i < 40; ++i) mem.store("m" + std::to_string(i), Glyph::random(i + 1));
+        PredictiveColumn cortex(2);
+        SomaNexus soma;
+        ReverieLoom loom(mem, cortex, soma);
+        loom.set_satisfaction_threshold(0.0);
+        loom.set_consolidation(true);
+
+        const auto obs_before = cortex.observations();
+        loom.dream_n(50);
+        const auto obs_after = cortex.observations();
+
+        EXPECT(obs_after > obs_before, "cortex.observations grew under consolidation");
+        EXPECT(loom.consolidations() > 0, "loom recorded consolidations");
+        EXPECT(loom.consolidations() == (obs_after - obs_before),
+               "every consolidation == one cortex.step");
+    }
+
+    // 8. Consolidation off (default): cortex unchanged.
+    {
+        Lattice mem;
+        for (int i = 0; i < 40; ++i) mem.store("m" + std::to_string(i), Glyph::random(i + 1));
+        PredictiveColumn cortex(2);
+        SomaNexus soma;
+        ReverieLoom loom(mem, cortex, soma);
+        loom.set_satisfaction_threshold(0.0);
+        EXPECT(!loom.consolidation(), "consolidation off by default");
+
+        const auto obs_before = cortex.observations();
+        loom.dream_n(20);
+        EXPECT(cortex.observations() == obs_before, "cortex untouched when consolidation off");
+        EXPECT(loom.consolidations() == 0, "consolidations counter stays zero");
+    }
+
+    // 9. Scheduler: start / stop are idempotent.
     {
         Lattice mem;
         mem.store("a", Glyph::random(1));

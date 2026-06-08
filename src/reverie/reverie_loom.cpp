@@ -84,6 +84,15 @@ DreamSample ReverieLoom::dream_once() {
         dreams_.store(label, s.dream);
         s.retained = true;
         ++retained_count_;
+
+        // Consolidation: feed the dream back into the cortex as a real
+        // training signal. The cortex incorporates the synthesised glyph
+        // into its (context -> next) associative store, so future
+        // prediction is shaped by what we dreamed.
+        if (consolidate_) {
+            cortex_.step(s.dream);
+            ++consolidations_done_;
+        }
     }
 
     return s;
