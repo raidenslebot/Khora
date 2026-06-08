@@ -1,9 +1,13 @@
 // Tests for the Reverie Loom.
 
 #include "khora/reverie/reverie_loom.hpp"
+#include "khora/reverie/reverie_scheduler.hpp"
 
+#include <chrono>
 #include <cstdio>
+#include <shared_mutex>
 #include <string>
+#include <thread>
 
 namespace {
 int g_total = 0;
@@ -118,6 +122,49 @@ int main() {
             }
         }
         EXPECT(all_match, "deterministic dreams under fixed seed");
+    }
+
+    // 6. Scheduler: start, run, stop. Cycles advance, no crash.
+    //    Windows wait_for has ~15ms timer resolution; pick numbers loose
+    //    enough that this isn't flaky.
+    {
+        Lattice mem;
+        for (int i = 0; i < 50; ++i) mem.store("m" + std::to_string(i), Glyph::random(i + 1));
+        PredictiveColumn cortex(2);
+        SomaNexus soma;
+        ReverieLoom loom(mem, cortex, soma);
+        loom.set_satisfaction_threshold(0.0);
+
+        std::shared_mutex mu;
+        khora::reverie::ReverieScheduler sched(loom, mu);
+
+        sched.start(std::chrono::milliseconds(5));
+        EXPECT(sched.is_running(), "scheduler is_running after start");
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        sched.stop();
+        EXPECT(!sched.is_running(), "scheduler stopped after stop()");
+        EXPECT(sched.cycles_run() >= 3, "scheduler ran multiple cycles");
+        EXPECT(loom.cycles() == sched.cycles_run(),
+               "loom cycle count matches scheduler cycle count");
+    }
+
+    // 7. Scheduler: start / stop are idempotent.
+    {
+        Lattice mem;
+        mem.store("a", Glyph::random(1));
+        PredictiveColumn cortex(2);
+        SomaNexus soma;
+        ReverieLoom loom(mem, cortex, soma);
+
+        std::shared_mutex mu;
+        khora::reverie::ReverieScheduler sched(loom, mu);
+
+        sched.start(std::chrono::milliseconds(5));
+        sched.start(std::chrono::milliseconds(5));  // second start is a no-op
+        EXPECT(sched.is_running(), "double-start does not crash");
+        sched.stop();
+        sched.stop();  // double-stop is no-op
+        EXPECT(!sched.is_running(), "double-stop ends running state");
     }
 
     std::printf("\nReverie tests: %d/%d passed (%d failed).\n",

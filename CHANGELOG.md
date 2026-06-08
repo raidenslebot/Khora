@@ -3,6 +3,41 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.9.0 — Background reverie (autonomy)
+
+**Author:** Morphus
+
+Khora now dreams continuously in a background thread while the operator
+interacts with the foreground shell. First piece of true autonomy.
+
+Shipped:
+
+- `khora::reverie::ReverieScheduler` — owns a worker thread that calls
+  `ReverieLoom::dream_once()` on a configurable period. Coordinates
+  with the foreground via an externally-owned `std::shared_mutex`:
+  both the scheduler (unique lock during a cycle) and operator tool
+  dispatch (unique lock around `shell.dispatch`) take it, so memory
+  mutations never race. Interruptible sleep via condvar so `stop()`
+  wakes the thread immediately. start/stop are idempotent.
+- `khora.exe` runtime starts a 100 ms-period reverie loop on REPL
+  entry, joins it on exit. Every operator command runs under the
+  same shared mutex so Khora's dreaming pauses for the duration of
+  each user invocation only.
+- Three new carapace tools: `reverie_status`, `reverie_pause`,
+  `reverie_resume [period_ms]`.
+- Two new reverie test groups: scheduler start/cycles/stop with
+  loose Windows-friendly timing (300 ms wall-clock, expect ≥ 3
+  cycles), and start/stop idempotency.
+
+Live verification: after `memorize` six labels and re-entering REPL,
+`reverie_status` immediately reports `scheduler cycles : 1, dream
+lattice : 1 glyphs` — the background thread dreamed once before the
+first operator command was processed. Khora is now genuinely
+autonomous.
+
+Tests passing: **7/7 ctest suites, 59 assertions total** (+3 new
+reverie scheduler assertions).
+
 ## v0.8.0 — Cortex persistence + training pipeline
 
 **Author:** Morphus

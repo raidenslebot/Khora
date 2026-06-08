@@ -11,12 +11,15 @@
 #include "khora/lattice/lattice.hpp"
 #include "khora/lattice/persistence.hpp"
 #include "khora/reverie/reverie_loom.hpp"
+#include "khora/reverie/reverie_scheduler.hpp"
 #include "khora/soma/soma_nexus.hpp"
 
+#include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <iostream>
+#include <shared_mutex>
 #include <sstream>
 #include <string>
 
@@ -78,7 +81,11 @@ int main(int argc, char** argv) {
         }
     }
 
-    // 3. Register tools.
+    // 3. Shared mutex coordinating the main thread (operator tools) with
+    //    the background reverie thread.
+    std::shared_mutex shared_mu;
+
+    // 4. Register tools.
     carapace::Carapace shell;
     carapace::register_core_tools(shell);
     carapace::register_memory_tools(shell, memory);
@@ -140,6 +147,46 @@ int main(int argc, char** argv) {
         }
     });
 
+    // 5. Background reverie — Khora dreams continuously while idle.
+    reverie::ReverieScheduler scheduler(dream, shared_mu);
+
+    shell.register_tool({
+        "reverie_status",
+        "show background reverie loop state",
+        [&scheduler, &dream](const carapace::Intent&) -> carapace::ToolResult {
+            std::ostringstream os;
+            os << "background reverie: " << (scheduler.is_running() ? "RUNNING" : "STOPPED") << "\n"
+               << "  scheduler cycles : " << scheduler.cycles_run() << "\n"
+               << "  loom total cycles: " << dream.cycles() << "\n"
+               << "  dreams retained  : " << dream.retained() << "\n"
+               << "  dream lattice    : " << dream.dreams().size() << " glyphs";
+            return {true, os.str(), ""};
+        }
+    });
+    shell.register_tool({
+        "reverie_pause",
+        "pause the background reverie loop",
+        [&scheduler](const carapace::Intent&) -> carapace::ToolResult {
+            scheduler.stop();
+            return {true, "reverie paused", ""};
+        }
+    });
+    shell.register_tool({
+        "reverie_resume",
+        "start the background reverie loop  (usage: reverie_resume [period_ms])",
+        [&scheduler](const carapace::Intent& i) -> carapace::ToolResult {
+            int ms = 100;
+            if (!i.args.empty()) {
+                try { ms = std::stoi(i.args[0]); } catch (...) {}
+                if (ms < 1) ms = 1;
+            }
+            scheduler.start(std::chrono::milliseconds(ms));
+            std::ostringstream os;
+            os << "reverie resumed (period=" << ms << "ms)";
+            return {true, os.str(), ""};
+        }
+    });
+
     // Helper: persist lattice + cortex silently. Used both at
     // single-command exit and at interactive-loop exit so state actually
     // accumulates across runs.
@@ -150,14 +197,21 @@ int main(int argc, char** argv) {
         catch (...) { /* swallow — best effort */ }
     };
 
-    // 4. Non-interactive single-command mode: khora <verb> [args...]
+    // Locked invoke helper — all operator commands take the shared mutex
+    // in unique mode so they can't race the background reverie.
+    auto locked_dispatch = [&shell, &shared_mu](const carapace::Intent& intent) {
+        std::unique_lock<std::shared_mutex> lk(shared_mu);
+        return shell.dispatch(intent);
+    };
+
+    // 6. Non-interactive single-command mode: khora <verb> [args...]
     if (argc > 1) {
         std::ostringstream line;
         for (int i = 1; i < argc; ++i) {
             if (i > 1) line << ' ';
             line << argv[i];
         }
-        const auto r = shell.invoke(line.str());
+        const auto r = locked_dispatch(carapace::Carapace::parse(line.str()));
         persist_silently();
         if (r.ok) {
             std::cout << r.output;
@@ -168,8 +222,12 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    // 5. Interactive REPL.
+    // 7. Start the background reverie thread for interactive mode.
+    scheduler.start(std::chrono::milliseconds(100));
+
+    // 8. Interactive REPL.
     print_banner();
+    std::cout << "[background reverie loop active @ 100ms period]\n\n";
     while (true) {
         const std::string line = read_line_prompt("khora> ");
         if (line == "__EOF__") { std::cout << "\n[EOF]\n"; break; }
@@ -178,7 +236,7 @@ int main(int argc, char** argv) {
         const auto intent = carapace::Carapace::parse(line);
         if (intent.verb == "exit" || intent.verb == "quit") break;
 
-        const auto r = shell.dispatch(intent);
+        const auto r = locked_dispatch(intent);
         if (r.ok) {
             std::cout << r.output;
             if (!r.output.empty() && r.output.back() != '\n') std::cout << '\n';
@@ -187,7 +245,10 @@ int main(int argc, char** argv) {
         }
     }
 
-    // 6. Save Lattice + Cortex on exit.
+    // 9. Stop background reverie before saving (we own the mutex now).
+    scheduler.stop();
+
+    // 10. Save Lattice + Cortex on exit.
     try {
         auto s = lattice::save(memory, kArchivePath);
         std::cout << "[saved " << s.glyph_count << " glyphs to "

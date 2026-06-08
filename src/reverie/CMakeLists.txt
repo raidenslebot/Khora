@@ -1,5 +1,6 @@
 add_library(khora_reverie STATIC
     reverie_loom.cpp
+    reverie_scheduler.cpp
 )
 
 target_include_directories(khora_reverie
