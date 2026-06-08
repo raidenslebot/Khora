@@ -27,15 +27,20 @@ struct HardwareProfile {
     // Derived operating parameters
     std::size_t    recommended_facets        = 8;
     std::size_t    recommended_assoc_cap     = 200000;
+    std::size_t    recommended_vocab_cap     = 40000;
     std::size_t    recommended_study_tokens  = 60000;
     int            recommended_reverie_ms    = 100;
     int            recommended_whetstone_ms  = 250;
+    std::uint64_t  khora_budget_mb           = 4096;
 
     std::string summary() const;
 };
 
 // Run the benchmarks against the current machine and derive the profile.
 // `scratch_dir` is where the disk benchmark writes a temporary file.
-HardwareProfile gauge(const std::string& scratch_dir = ".");
+// `khora_budget_mb` is Khora's hard RAM cap — the memory caps are sized to
+// fit within it, never to the full system RAM (the operator needs the rest).
+HardwareProfile gauge(const std::string& scratch_dir = ".",
+                      std::uint64_t khora_budget_mb = 4096);
 
 } // namespace khora::lodestone

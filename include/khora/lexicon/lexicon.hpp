@@ -59,6 +59,16 @@ public:
     // Semantic similarity between two tokens through the lexicon.
     double similarity(std::string_view a, std::string_view b) const;
 
+    // Memory bounding. Each learned word holds a D-dim accumulator
+    // (~40 KB), so the vocabulary is the lexicon's dominant RAM cost. When
+    // it exceeds the cap, the least-exposed words are pruned automatically.
+    void        set_max_vocabulary(std::size_t n) { max_vocabulary_ = n; }
+    std::size_t max_vocabulary() const noexcept   { return max_vocabulary_; }
+
+    // Shed memory now: drop the least-exposed words down to `target`.
+    // Returns the number pruned. Used by the Ballast under pressure.
+    std::size_t prune(std::size_t target);
+
     // Inspectors
     std::size_t   vocabulary_size()  const noexcept { return ctx_.size(); }
     std::size_t   total_observations() const noexcept { return total_obs_; }
@@ -91,8 +101,9 @@ private:
 
     std::unordered_map<std::string, Context>      ctx_;
     std::unordered_map<std::string, std::uint32_t> freq_;   // global token frequency
-    std::size_t                                   total_obs_    = 0;
-    std::size_t                                   total_tokens_ = 0;
+    std::size_t                                   total_obs_      = 0;
+    std::size_t                                   total_tokens_   = 0;
+    std::size_t                                   max_vocabulary_ = 40000;
 };
 
 } // namespace khora::lexicon

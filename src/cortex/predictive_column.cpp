@@ -102,6 +102,18 @@ void PredictiveColumn::learn(const Glyph& input) {
     store_and_advance_(input);
 }
 
+std::size_t PredictiveColumn::prune_associations(std::size_t target) {
+    std::size_t removed = 0;
+    while (assoc_order_.size() > target) {
+        const std::string& old = assoc_order_.front();
+        ctx_keys_.erase(old);
+        ctx_vals_.erase(old);
+        assoc_order_.pop_front();
+        ++removed;
+    }
+    return removed;
+}
+
 double PredictiveColumn::recent_accuracy() const {
     if (recent_sims_.empty()) return 0.0;
     double sum = 0.0;

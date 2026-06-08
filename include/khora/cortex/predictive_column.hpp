@@ -51,6 +51,10 @@ public:
     void        set_max_associations(std::size_t n) { max_associations_ = n; }
     std::size_t max_associations() const noexcept   { return max_associations_; }
 
+    // Shed memory: evict oldest associations down to `target`. Returns the
+    // number evicted. Used by the Ballast under memory pressure.
+    std::size_t prune_associations(std::size_t target);
+
     // Stats
     std::size_t observations()    const noexcept { return observations_; }
     std::size_t associations()    const          { return ctx_keys_.size(); }

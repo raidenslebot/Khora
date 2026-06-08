@@ -13,6 +13,7 @@
 #include "khora/cortex/predictive_column.hpp"
 #include "khora/lattice/lattice.hpp"
 #include "khora/lattice/persistence.hpp"
+#include "khora/ballast/ballast.hpp"
 #include "khora/lexicon/lexicon.hpp"
 #include "khora/lodestone/lodestone.hpp"
 #include "khora/reservoir/aqueduct.hpp"
@@ -23,6 +24,7 @@
 #include "khora/whetstone/whetstone.hpp"
 #include "khora/whetstone/whetstone_scheduler.hpp"
 
+#include <atomic>
 #include <chrono>
 #include <cstdio>
 #include <cstring>
@@ -74,6 +76,12 @@ int main(int argc, char** argv) {
     // The Curator — Khora decides for itself what to learn next. Studied
     // vocabulary is promoted into `memory` so cognition can think over it.
     curator::Curator curator(pool, aqueduct, lex, column, &memory);
+
+    // The Ballast — Khora is hard-capped at 4 GB of system RAM and backs
+    // off when total system RAM crosses 90% (the operator's machine must
+    // never lock up). GPU memory and NVMe are used freely elsewhere.
+    ballast::Ballast ballast(/*cap_mb*/4096, /*system_pressure*/0.90);
+    std::atomic<std::uint64_t> ballast_sheds{0};
 
     // 2. Try to load persisted lattice + cortex state.
     namespace fs = std::filesystem;
@@ -131,10 +139,25 @@ int main(int argc, char** argv) {
     shell.register_tool({
         "hardware",
         "gauge the machine and show the adaptive operating profile",
-        [&column](const carapace::Intent&) -> carapace::ToolResult {
-            const auto hw = lodestone::gauge("data");
+        [&column, &lex](const carapace::Intent&) -> carapace::ToolResult {
+            const auto hw = lodestone::gauge("data", 4096);
             column.set_max_associations(hw.recommended_assoc_cap);
+            lex.set_max_vocabulary(hw.recommended_vocab_cap);
             return {true, hw.summary(), ""};
+        }
+    });
+    shell.register_tool({
+        "ballast",
+        "show Khora's memory governor (RAM cap, system pressure, sheds)",
+        [&ballast, &ballast_sheds, &column, &lex](const carapace::Intent&) -> carapace::ToolResult {
+            std::ostringstream os;
+            os << ballast.summary() << "\n"
+               << "  load shed events  : " << ballast_sheds.load() << "\n"
+               << "  cortex assoc      : " << column.associations() << " / "
+               << column.max_associations() << " cap\n"
+               << "  lexicon vocab     : " << lex.vocabulary_size() << " / "
+               << lex.max_vocabulary() << " cap";
+            return {true, os.str(), ""};
         }
     });
 
@@ -486,23 +509,52 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    // 6.5 Gauge the hardware and adapt cognitive complexity to it. The
-    //     only limit is physics — so measure where it sits and fill the
-    //     space it leaves. (Interactive mode only; the benchmark costs a
-    //     couple of seconds and single-command runs are short-lived.)
-    const auto hw = lodestone::gauge("data");
+    // 6.5 Gauge the hardware and size memory to Khora's 4 GB budget. The
+    //     only limit is physics — measure where it sits and fill the space
+    //     it leaves, without ever exceeding the cap. (Interactive only.)
+    const auto hw = lodestone::gauge("data", ballast.cap_mb());
     std::cout << hw.summary() << "\n\n";
     column.set_max_associations(hw.recommended_assoc_cap);
+    lex.set_max_vocabulary(hw.recommended_vocab_cap);
 
-    // 7. Start the background loops for interactive mode: Khora dreams and
-    //    sharpens itself the whole time the operator is present, paced to
-    //    what the hardware can carry.
+    // 7. Start the background loops, paced to the hardware.
     scheduler.start(std::chrono::milliseconds(hw.recommended_reverie_ms));
     whet.start(std::chrono::milliseconds(hw.recommended_whetstone_ms));
 
+    // 7.5 Start the Ballast governor. It watches Khora's working set and
+    //     total system RAM once a second; on over-cap or system pressure it
+    //     pauses background learning and sheds memory (prunes the cortex and
+    //     lexicon), then resumes once the pressure clears. The operator's
+    //     machine must never lock up.
+    bool ballast_throttled = false;
+    ballast::BallastGovernor governor(ballast,
+        [&](const ballast::MemoryStatus&, ballast::Pressure p) {
+            const bool shed = (p == ballast::Pressure::OverCap ||
+                               p == ballast::Pressure::SystemPressure);
+            if (shed) {
+                if (!ballast_throttled) {
+                    scheduler.stop(); whet.stop(); curator_bg.stop();
+                    ballast_throttled = true;
+                    std::cout << "\n[ballast: " << ballast::pressure_name(p)
+                              << " — pausing background learning and shedding memory]\n";
+                }
+                std::unique_lock<std::shared_mutex> lk(shared_mu);
+                column.prune_associations(hw.recommended_assoc_cap / 2);
+                lex.prune(hw.recommended_vocab_cap / 2);
+                ballast_sheds.fetch_add(1, std::memory_order_relaxed);
+            } else if (p == ballast::Pressure::Normal && ballast_throttled) {
+                ballast_throttled = false;
+                scheduler.start(std::chrono::milliseconds(hw.recommended_reverie_ms));
+                whet.start(std::chrono::milliseconds(hw.recommended_whetstone_ms));
+                std::cout << "\n[ballast: pressure cleared — background learning resumed]\n";
+            }
+        });
+    governor.start(std::chrono::seconds(1));
+
     // 8. Interactive REPL.
     print_banner();
-    std::cout << "[background reverie @ 100ms + autonomous self-training @ 250ms active]\n\n";
+    std::cout << "[reverie + self-training active; ballast governing RAM @ "
+              << ballast.cap_mb() << "MB cap]\n\n";
     while (true) {
         const std::string line = read_line_prompt("khora> ");
         if (line == "__EOF__") { std::cout << "\n[EOF]\n"; break; }
@@ -521,6 +573,7 @@ int main(int argc, char** argv) {
     }
 
     // 9. Stop background loops before saving.
+    governor.stop();
     scheduler.stop();
     whet.stop();
     curator_bg.stop();

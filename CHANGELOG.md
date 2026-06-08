@@ -3,6 +3,42 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.28.0 — The Ballast (memory governance, 4 GB cap)
+
+**Author:** Morphus
+
+Khora lives inside a machine the operator also uses, and system RAM
+(32 GB) is the weak link. So Khora is now hard-capped at **4 GB** of
+system RAM and backs off the moment **total system RAM crosses 90%** —
+the operator's work is never starved, the machine never locks up. GPU
+memory (8 GB) and NVMe remain free for use elsewhere; this governs only
+the one scarce shared resource.
+
+- **The Ballast** (`ballast`) samples Khora's own working set
+  (`GetProcessMemoryInfo`) and total system RAM (`GlobalMemoryStatusEx`)
+  and returns a verdict: normal / approaching-cap / over-cap /
+  system-pressure.
+- **`BallastGovernor`** runs the Ballast on a 1 s background thread. On
+  over-cap or system-pressure it pauses background learning (reverie /
+  whetstone / curator) and sheds memory — prunes the cortex's
+  associations and the lexicon's heavy per-word accumulators to half
+  their caps — then resumes when pressure clears.
+- **Static caps sized to the budget**: the Lodestone now allocates the
+  4 GB budget (~50% cortex associations, ~35% lexicon vocabulary, ~15%
+  headroom) instead of grabbing system RAM. On the 13700K: assoc cap
+  859k (~2.1 GB), vocab cap 36.7k (~1.5 GB). If less RAM is actually
+  free than the budget, the caps shrink to fit.
+- **Memory bounding**: `PredictiveColumn::prune_associations()` and
+  `Lexicon::prune()` (drop least-exposed words; the lexicon auto-prunes
+  when vocabulary exceeds its cap during study). New tool: `ballast`.
+
+**Verified live**: Khora's startup footprint is ~5 MB (vast 4 GB
+headroom). Forcing the system-pressure path (threshold set to 50% against
+a real 77% system load) the governor correctly printed
+"system-pressure — pausing background learning and shedding memory",
+paused the loops, and shed 3 times over 3 seconds. Reverted to the
+production 90% threshold. 9/9 regression suites pass.
+
 ## v0.27.0 — Exploration-biased rumination (richer trains of thought)
 
 **Author:** Morphus

@@ -96,16 +96,19 @@ std::string HardwareProfile::summary() const {
        << "  parallel speedup : " << parallel_speedup << "x\n"
        << "  RAM              : " << ram_avail_mb << " / " << ram_total_mb << " MB free\n"
        << "  disk write       : " << disk_write_mbps << " MB/s\n"
+       << "  RAM budget       : " << khora_budget_mb << " MB (Khora hard cap)\n"
        << "  -> facets        : " << recommended_facets << "\n"
        << "  -> assoc cap     : " << recommended_assoc_cap << "\n"
+       << "  -> vocab cap     : " << recommended_vocab_cap << "\n"
        << "  -> study tokens  : " << recommended_study_tokens << "\n"
        << "  -> reverie/whet  : " << recommended_reverie_ms << "ms / "
        << recommended_whetstone_ms << "ms";
     return os.str();
 }
 
-HardwareProfile gauge(const std::string& scratch_dir) {
+HardwareProfile gauge(const std::string& scratch_dir, std::uint64_t khora_budget_mb) {
     HardwareProfile p;
+    p.khora_budget_mb = khora_budget_mb;
     p.threads = std::max(1u, std::thread::hardware_concurrency());
 
     constexpr int kIters = 2'000'000;
@@ -133,13 +136,21 @@ HardwareProfile gauge(const std::string& scratch_dir) {
     // Facets: one per hardware thread, capped at the 8 lenses we have.
     p.recommended_facets = clampv<std::size_t>(p.threads, 4, 8);
 
-    // Association cap: spend up to ~25% of available RAM on cortex
-    // associations (each ~2500 bytes: two glyphs).
-    if (p.ram_avail_mb > 0) {
-        const std::uint64_t budget_bytes = (p.ram_avail_mb * 1024ull * 1024ull) / 4;
-        p.recommended_assoc_cap = clampv<std::size_t>(
-            static_cast<std::size_t>(budget_bytes / 2500ull), 50000, 2000000);
+    // Memory caps are sized to fit within Khora's hard RAM budget, NOT the
+    // full system RAM — the operator needs the rest of the machine. If less
+    // RAM is actually free than the budget, shrink to fit; the Ballast then
+    // governs the rest dynamically. Allocation: ~50% to cortex associations
+    // (~2500 B each), ~35% to the lexicon vocabulary (~40 KB per word), the
+    // remainder headroom for glyphs, dreams, and transient working sets.
+    std::uint64_t effective_mb = khora_budget_mb;
+    if (p.ram_avail_mb > 0 && p.ram_avail_mb < khora_budget_mb) {
+        effective_mb = std::max<std::uint64_t>(512, (p.ram_avail_mb * 3) / 4);
     }
+    const std::uint64_t budget_bytes = effective_mb * 1024ull * 1024ull;
+    p.recommended_assoc_cap = clampv<std::size_t>(
+        static_cast<std::size_t>((budget_bytes / 2) / 2500ull), 50000, 2000000);
+    p.recommended_vocab_cap = clampv<std::size_t>(
+        static_cast<std::size_t>((budget_bytes * 35 / 100) / 40960ull), 5000, 200000);
 
     // Study budget scales with raw glyph throughput.
     p.recommended_study_tokens = clampv<std::size_t>(

@@ -155,6 +155,20 @@ std::uint32_t Lexicon::exposures_for(std::string_view token) const {
     return (it == ctx_.end()) ? 0 : it->second.obs;
 }
 
+std::size_t Lexicon::prune(std::size_t target) {
+    if (ctx_.size() <= target) return 0;
+    std::vector<std::pair<std::uint32_t, std::string>> v;
+    v.reserve(ctx_.size());
+    for (const auto& [tok, c] : ctx_) v.emplace_back(c.obs, tok);
+    // Keep the `target` most-exposed words; drop the rest (their heavy
+    // accumulators are freed; their small frequency counts are retained).
+    std::sort(v.begin(), v.end(),
+              [](const auto& a, const auto& b) { return a.first > b.first; });
+    std::size_t removed = 0;
+    for (std::size_t i = target; i < v.size(); ++i) { ctx_.erase(v[i].second); ++removed; }
+    return removed;
+}
+
 std::vector<std::string> Lexicon::salient_tokens(std::size_t max_tokens,
                                                  std::uint32_t min_exposure) const {
     std::vector<std::pair<std::string, std::uint32_t>> cands;
@@ -227,6 +241,11 @@ std::size_t Lexicon::expose_sequence(const std::vector<std::string>& tokens,
         ++focus.obs;
     }
     total_obs_ += pairs;
+
+    // Keep the vocabulary's heavy accumulators within the memory cap.
+    if (max_vocabulary_ > 0 && ctx_.size() > max_vocabulary_) {
+        prune(max_vocabulary_);
+    }
     return pairs;
 }
 
