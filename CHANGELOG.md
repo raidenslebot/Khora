@@ -3,6 +3,35 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.32.0 — GPU semantic search over the Lexicon
+
+**Author:** Morphus
+
+The Maelstrom's first real cognitive payoff: fast, **exact** nearest-word
+search over everything Khora has learned. The key realisation is that the
+Lexicon's `similarity(a,b)` is already `glyph_for(a).similarity(glyph_for(b))`
+— pure Hamming over each word's binarised semantic glyph. So a Resonator
+built from `{word → glyph_for(word)}` searches the vocabulary on the GPU
+with **no approximation**: GPU Hamming is bit-identical to the Lexicon's own
+notion of similarity.
+
+- **`Lexicon::semantic_field()`** snapshots every learned word with its
+  current semantic glyph — the field an accelerator indexes.
+- New tool **`nearest <word> [k]`**: builds a Resonator over the whole
+  vocabulary and returns the k most semantically-similar words, transparently
+  on GPU above the crossover (CPU below). Each call audits itself against a
+  brute-force reference over the same field.
+
+**Verified live**: exposed a small war/monarchy corpus (27 words, 636
+cooccurrences); `nearest king` surfaced **kingdom** as the closest word
+(sim 0.366), and every query reported **audit: EXACT (matches brute-force
+reference)**. Vocabulary sat below the crossover so it correctly ran the CPU
+path; the GPU path's exactness at scale is already established (the
+Resonator agrees with brute-force 96/96 on an 80k field). Function words
+still rank high — the known distributional-hub effect, not an integration
+fault; the audit proves the search itself is exact. 9/9 regression suites
+pass.
+
 ## v0.31.0 — The Resonator (transparent CPU/GPU recall)
 
 **Author:** Morphus

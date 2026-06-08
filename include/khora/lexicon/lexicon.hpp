@@ -29,6 +29,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace khora::lexicon {
@@ -80,6 +81,13 @@ public:
     // promote studied vocabulary into Khora's thinkable concept space.
     std::vector<std::string> salient_tokens(std::size_t max_tokens,
                                             std::uint32_t min_exposure = 5) const;
+
+    // Snapshot of every learned word paired with its current semantic glyph
+    // (glyph_for). An accelerator (the Maelstrom Resonator) can index this
+    // whole field for fast nearest-neighbour semantic search — and that
+    // search is EXACT, because similarity() is itself the Hamming similarity
+    // of these very glyphs.
+    std::vector<std::pair<std::string, khora::lattice::Glyph>> semantic_field() const;
 
     // Persistence — survives across process restarts. Writes
     //   <prefix>.sem.klat  : token -> binarised context glyph (Lattice)

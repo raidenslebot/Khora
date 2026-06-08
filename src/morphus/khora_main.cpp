@@ -365,6 +365,59 @@ int main(int argc, char** argv) {
             return {exact, os.str(), ""};
         }
     });
+    shell.register_tool({
+        "nearest",
+        "k most semantically-similar learned words, GPU-accelerated  (usage: nearest <word> [k])",
+        [&lex](const carapace::Intent& in) -> carapace::ToolResult {
+            using namespace khora::lattice;
+            if (in.args.empty()) return {false, "", "usage: nearest <word> [k]"};
+            const std::string word = in.args[0];
+            std::size_t k = 8;
+            if (in.args.size() >= 2) {
+                try { k = static_cast<std::size_t>(std::stoul(in.args[1])); } catch (...) {}
+            }
+            if (k < 1) k = 1;
+            if (!lex.has(word))
+                return {false, "", "'" + word + "' is not in the lexicon yet - study or lex_expose first"};
+
+            auto field = lex.semantic_field();
+            if (field.size() < 2)
+                return {false, "", "lexicon has too few learned words for neighbour search"};
+            const Glyph probe = lex.glyph_for(word);
+
+            // GPU-accelerated associative recall over the whole vocabulary.
+            // The crossover is low so even a modest vocabulary exercises the
+            // card; the search is exact (similarity() is Hamming over these
+            // very glyphs).
+            maelstrom::Resonator res(256);
+            res.build(field);
+            const std::size_t want = std::min(field.size(), k + 1); // +1 to drop self
+            const auto hits = res.query(probe, want);
+
+            // Exactness audit: brute-force the same field, compare the hamming
+            // sequence (tie-break-agnostic) — must be identical.
+            std::vector<std::uint32_t> ref(field.size());
+            for (std::size_t i = 0; i < field.size(); ++i)
+                ref[i] = static_cast<std::uint32_t>(probe.hamming(field[i].second));
+            std::partial_sort(ref.begin(), ref.begin() + want, ref.end());
+            bool exact = true;
+            for (std::size_t i = 0; i < want && i < hits.size(); ++i)
+                if (hits[i].hamming != ref[i]) exact = false;
+
+            std::ostringstream os;
+            os << "nearest to '" << word << "'  (vocabulary " << field.size()
+               << ", " << (res.on_gpu() ? "GPU" : "CPU") << " path)\n";
+            std::size_t shown = 0;
+            for (const auto& h : hits) {
+                if (h.label == word) continue; // skip self
+                os << "  " << h.label << "   sim=" << h.similarity
+                   << "  (hamming " << h.hamming << ")\n";
+                if (++shown >= k) break;
+            }
+            os << "  audit: " << (exact ? "EXACT (matches brute-force reference)" : "MISMATCH");
+            return {exact, os.str(), ""};
+        }
+    });
 
     // System-level tools that close over multiple subsystems.
     shell.register_tool({
