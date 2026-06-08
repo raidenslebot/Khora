@@ -161,6 +161,50 @@ std::string Cogitator::focused_seed(std::uint64_t n) {
     return top[n % top.size()].first;
 }
 
+Synthesis Cogitator::synthesize(const std::string& a_in, const std::string& b_in, std::uint64_t seed) {
+    ensure_field_();
+    Synthesis s;
+    std::string a = a_in, b = b_in;
+
+    // Unspecified parents -> Khora picks distant concepts itself (pure chaos:
+    // the more distant the collision, the more entropy to turn into beauty).
+    if ((a.empty() || b.empty()) && !concepts_.empty()) {
+        if (a.empty()) a = wandering_seed(seed);
+        if (b.empty()) {
+            const Glyph ga0 = token_glyph_(a);
+            double worst = 2.0;
+            std::string far;
+            for (int t = 0; t < 16; ++t) {
+                const std::string cand = wandering_seed(seed * 2654435761ull + static_cast<std::uint64_t>(t) * 7 + 1);
+                if (cand.empty() || cand == a) continue;
+                const double sim = ga0.similarity(token_glyph_(cand));
+                if (sim < worst) { worst = sim; far = cand; }   // most distant wins
+            }
+            b = far.empty() ? wandering_seed(seed + 1) : far;
+        }
+    }
+    s.a = a; s.b = b;
+    if (a.empty() || b.empty()) return s;
+
+    const Glyph ga = token_glyph_(a);
+    const Glyph gb = token_glyph_(b);
+    if (ga.popcount() == 0 || gb.popcount() == 0) return s;
+    s.tension = 1.0 - ga.similarity(gb);
+
+    // Superpose the two into a chimera, then see what concept that collision
+    // evokes that is NEITHER parent — the idea forged from their tension.
+    const Glyph chimera = bundle({ga, gb});
+    auto hits = (field_.size() > 0) ? field_.query(chimera, 8) : memory_.query(chimera, 8);
+    for (auto& h : hits) {
+        if (h.label == a || h.label == b) continue;
+        s.emergent.push_back(h);
+        if (s.emergent.size() >= 4) break;
+    }
+    // What chaos forges is itself a place thought has landed.
+    if (!s.emergent.empty()) note_attractor_(s.emergent.front().label);
+    return s;
+}
+
 void Cogitator::note_attractor_(const std::string& label) {
     if (label.empty()) return;
     // Skip Khora's own provisional trace concepts — only real, learned

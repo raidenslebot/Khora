@@ -119,6 +119,16 @@ struct Rumination {
     std::string                conclusion; // the attractor, or last concept reached
 };
 
+// Chaotic synthesis — entropy into beauty. Two distant concepts are
+// superposed into a chimera glyph; what the chimera resonates with (that is
+// neither parent) is the emergent idea their collision forged. High tension
+// (distant parents) + a coherent child = creativity out of chaos.
+struct Synthesis {
+    std::string                                a, b;
+    double                                     tension = 0.0;  // 1 - sim(a,b)
+    std::vector<khora::lattice::LatticeMatch>  emergent;       // the forged concept(s)
+};
+
 class Cogitator {
 public:
     Cogitator(khora::lexicon::Lexicon&         lex,
@@ -150,6 +160,11 @@ public:
     // Recursive deliberation: a train of thought that hops from concept to
     // concept until it settles into an attractor or reaches max_depth.
     Rumination ruminate(std::string_view stimulus, std::size_t max_depth = 6);
+
+    // Collide two concepts and report what their superposition evokes — the
+    // emergent idea neither parent contains. Chaos turned to creation. If a
+    // or b is empty, Khora picks distant concepts itself (`seed` varies it).
+    Synthesis synthesize(const std::string& a, const std::string& b, std::uint64_t seed = 0);
 
     // A clean concept to think about, drawn from the centrality-pruned
     // content field (not the function-word-heavy raw vocabulary). Lets the

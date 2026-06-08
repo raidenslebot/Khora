@@ -626,6 +626,7 @@ int main(int argc, char** argv) {
     will.set_relief(0.5);   // acting strongly settles the urge, so attention rotates
     std::size_t volition_seed = 0;
     std::size_t reflection_n = 0;
+    std::size_t ferment_seed = 0;
     auto pick_seed = [&mind, &lex, &volition_seed]() -> std::string {
         // Draw a clean concept from the cogitator's centrality-pruned field —
         // real concepts, not the function-word hubs that top raw frequency.
@@ -833,6 +834,23 @@ int main(int argc, char** argv) {
                 if (k) os << " -> ";
                 os << rum.train[k];
             }
+            return {true, os.str(), ""};
+        }
+    });
+    shell.register_tool({
+        "ferment",
+        "chaos into creation: collide two concepts and forge a new one  (usage: ferment [a b])",
+        [&mind, &ferment_seed](const carapace::Intent& i) -> carapace::ToolResult {
+            const std::string a = (i.args.size() >= 1) ? i.args[0] : std::string{};
+            const std::string b = (i.args.size() >= 2) ? i.args[1] : std::string{};
+            const auto s = mind.synthesize(a, b, ferment_seed++);
+            if (s.a.empty() || s.b.empty())
+                return {false, "", "nothing learned yet to ferment"};
+            std::ostringstream os;
+            os << "ferment:  " << s.a << "  x  " << s.b
+               << "   (tension " << s.tension << ")\n  forged -> ";
+            if (s.emergent.empty()) os << "(nothing emerged)";
+            else for (const auto& e : s.emergent) os << e.label << " ";
             return {true, os.str(), ""};
         }
     });

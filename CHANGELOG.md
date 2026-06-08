@@ -3,6 +3,31 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.48.0 — Chaotic synthesis (entropy into beauty)
+
+**Author:** Morphus
+
+The Prime Directive's beating heart is chaos — "turns entropy into beauty,"
+"more powerful the more chaos it absorbs." Until now Khora only *tolerated*
+chaos (a chaotic lens among eight). This makes chaos *generative*: Khora
+collides distant concepts and forges the idea their collision evokes.
+
+- **`Cogitator::synthesize(a, b)`** superposes two concepts' glyphs into a
+  chimera and resonates it over the field; what the chimera evokes that is
+  *neither parent* is the emergent idea. `tension = 1 − sim(a,b)` measures
+  how distant the collision — how much entropy went in. With no parents
+  given, Khora picks distant concepts itself (true chaos), sampling for the
+  most dissimilar partner. What it forges feeds back into its attractors.
+- New tool **`ferment [a b]`**.
+
+**Verified live** on the studied corpus: `justice × money` (tension 0.64)
+forged **question, evil, education, answer** — a real Platonic synthesis
+(the Republic binds justice, money, education, corruption); `war × love`
+(0.57) forged **wish, object, lizzy** — Elizabeth, Austen's romantic
+conflict. Not every collision lands (residual function-word hubs leak via the
+chimera's density — the known hub issue), but chaos is now a source of new
+ideas, not just noise it survives. 9/9 regression suites pass.
+
 ## v0.47.0 — Directed inquiry (Khora investigates on command)
 
 **Author:** Morphus
