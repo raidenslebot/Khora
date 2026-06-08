@@ -3,6 +3,30 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.31.0 — The Resonator (transparent CPU/GPU recall)
+
+**Author:** Morphus
+
+The Maelstrom proved the GPU; the Resonator makes it *usable* by cognition
+without anyone having to know a GPU is involved.
+
+- **`Resonator`** wraps a labelled glyph store — a snapshot of (label,
+  glyph) pairs, or a whole `lattice::Lattice`. `query(probe, k)` returns
+  ordinary `LatticeMatch` results, exactly like `Lattice::query`. Under the
+  hood it crosses over: a field above the amortisation threshold (~3,000
+  glyphs) with a GPU present resonates through the Maelstrom; anything
+  smaller, or any machine without a GPU, scans on the CPU. Same results,
+  either path — call sites never change as the concept space grows from a
+  thousand entries to millions.
+- It lives outside the Windows gate, speaking only the public Maelstrom
+  API, so the identical code path compiles and runs with or without a GPU.
+
+**Verified live** (RTX 2070 SUPER): with an 80,000-glyph labelled field the
+GPU path activates; a forced-CPU Resonator and an independent brute-force
+top-8 scan agree with it on **96 / 96** checks — GPU == CPU == reference,
+label mapping and all. The live (freshly-empty) concept space correctly
+stays on the CPU below the crossover. 9/9 regression suites pass.
+
 ## v0.30.0 — Maelstrom: on-GPU top-k reduction
 
 **Author:** Morphus

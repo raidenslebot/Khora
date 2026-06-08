@@ -290,6 +290,81 @@ int main(int argc, char** argv) {
             return {ok1 && ok2 && topk_ok, os.str(), ""};
         }
     });
+    shell.register_tool({
+        "resonator",
+        "verify the labelled CPU/GPU associative store (Resonator)  (usage: resonator [N])",
+        [&memory](const carapace::Intent& in) -> carapace::ToolResult {
+            using namespace khora::lattice;
+            std::size_t N = 50000;
+            if (!in.args.empty()) {
+                try { N = static_cast<std::size_t>(std::stoul(in.args[0])); } catch (...) {}
+            }
+            if (N < 100)    N = 100;
+            if (N > 1000000) N = 1000000;
+
+            // A labelled synthetic field; labels carry the index so a correct
+            // index->label mapping is checkable by parsing the label back.
+            std::vector<std::pair<std::string, Glyph>> entries;
+            entries.reserve(N);
+            for (std::size_t i = 0; i < N; ++i)
+                entries.emplace_back("g" + std::to_string(i),
+                    Glyph::random(0x100000001B3ull * (i + 1) + 0xCBF29CE484222325ull));
+
+            maelstrom::Resonator gpu(3000);            // crosses over to GPU
+            maelstrom::Resonator cpu(N + 1);           // forced CPU (crossover above N)
+            gpu.build(entries);
+            cpu.build(entries);
+
+            std::ostringstream os;
+            os << "Resonator verification\n"
+               << "  field size   : " << gpu.size() << " labelled glyphs\n"
+               << "  GPU path     : " << (gpu.on_gpu() ? "ACTIVE" : "inactive")
+               << "  (" << (gpu.on_gpu() ? gpu.device().adapter : std::string("CPU fallback")) << ")\n"
+               << "  CPU path     : " << (cpu.on_gpu() ? "ACTIVE" : "inactive (forced)") << "\n";
+
+            // Independent reference scan + cross-path agreement.
+            const std::size_t K = 8;
+            std::size_t agree = 0, checks = 0;
+            bool exact = true;
+            for (int p = 0; p < 12; ++p) {
+                const Glyph probe = Glyph::random(0xBEEF0000ull + static_cast<std::uint64_t>(p) * 2654435761ull);
+
+                // reference: brute-force top-K (hamming, then index).
+                std::vector<std::uint32_t> idx(N), d(N);
+                for (std::size_t i = 0; i < N; ++i) {
+                    idx[i] = static_cast<std::uint32_t>(i);
+                    d[i]   = static_cast<std::uint32_t>(probe.hamming(entries[i].second));
+                }
+                std::partial_sort(idx.begin(), idx.begin() + K, idx.end(),
+                    [&](std::uint32_t a, std::uint32_t b) {
+                        if (d[a] != d[b]) return d[a] < d[b];
+                        return a < b;
+                    });
+
+                const auto gq = gpu.query(probe, K);
+                const auto cq = cpu.query(probe, K);
+                for (std::size_t i = 0; i < K; ++i) {
+                    const std::string ref = "g" + std::to_string(idx[i]);
+                    ++checks;
+                    const bool gok = i < gq.size() && gq[i].label == ref && gq[i].hamming == d[idx[i]];
+                    const bool cok = i < cq.size() && cq[i].label == ref && cq[i].hamming == d[idx[i]];
+                    if (gok && cok) ++agree; else exact = false;
+                }
+            }
+            os << "  top-" << K << " checks: " << agree << " / " << checks
+               << (exact ? "  EXACT (GPU == CPU == brute-force reference)"
+                         : "  MISMATCH") << "\n";
+
+            // Bind the live concept space (whatever the operator has studied).
+            maelstrom::Resonator live(3000);
+            live.build(memory);
+            os << "  live lattice : " << live.size() << " glyphs, "
+               << (live.on_gpu() ? "GPU" : "CPU") << " path"
+               << (live.size() < 3000 ? "  (below crossover -> CPU, as expected)" : "");
+
+            return {exact, os.str(), ""};
+        }
+    });
 
     // System-level tools that close over multiple subsystems.
     shell.register_tool({

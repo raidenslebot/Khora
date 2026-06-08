@@ -18,11 +18,13 @@
 // return bit-identical hamming distances or it is wrong.
 
 #include "khora/lattice/glyph.hpp"
+#include "khora/lattice/lattice.hpp"
 
 #include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace khora::maelstrom {
@@ -79,6 +81,38 @@ public:
 private:
     struct Impl;
     std::unique_ptr<Impl> impl_;
+};
+
+// A labelled associative store with a transparent CPU/GPU crossover.
+//
+// Wraps a snapshot of (label, glyph) pairs. When the set is large enough
+// to amortise the GPU round-trip — and a GPU is present — queries resonate
+// through the Maelstrom; otherwise they scan on the CPU. Either path
+// returns identical LatticeMatch results, so cognition need not care which
+// ran. This is how the substrate's content-addressable recall scales from
+// a thousand concepts to millions without changing call sites.
+class Resonator {
+public:
+    explicit Resonator(std::size_t gpu_crossover = 3000);
+    ~Resonator();
+    Resonator(Resonator&&) noexcept;
+    Resonator& operator=(Resonator&&) noexcept;
+
+    // Snapshot a labelled glyph set; (re)charges the GPU if warranted.
+    void build(std::vector<std::pair<std::string, lattice::Glyph>> entries);
+    void build(const lattice::Lattice& lat);
+
+    // k-nearest by Hamming, ascending. Identical results on CPU or GPU.
+    std::vector<lattice::LatticeMatch> query(const lattice::Glyph& probe,
+                                             std::size_t k = 5) const;
+
+    bool        on_gpu() const noexcept;   // is the GPU path currently active?
+    std::size_t size() const noexcept;
+    const DeviceInfo& device() const noexcept;
+
+private:
+    struct RImpl;
+    std::unique_ptr<RImpl> r_;
 };
 
 } // namespace khora::maelstrom

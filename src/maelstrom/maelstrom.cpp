@@ -461,3 +461,94 @@ std::vector<std::uint32_t> Maelstrom::hamming_all(const lattice::Glyph&) const {
 } // namespace khora::maelstrom
 
 #endif
+
+// ---------------------------------------------------------------------------
+// Resonator — labelled associative store with a CPU/GPU crossover. Lives
+// outside the platform gate: it speaks only the public Maelstrom API, so the
+// same code path works whether or not a GPU ever ignited.
+// ---------------------------------------------------------------------------
+namespace khora::maelstrom {
+
+struct Resonator::RImpl {
+    Maelstrom                    storm;
+    std::vector<std::string>     labels;
+    std::vector<lattice::Glyph>  glyphs;
+    std::size_t                  crossover;
+    bool                         gpu_active = false;
+    explicit RImpl(std::size_t c) : crossover(c) {}
+};
+
+Resonator::Resonator(std::size_t gpu_crossover)
+    : r_(std::make_unique<RImpl>(gpu_crossover)) {}
+Resonator::~Resonator() = default;
+Resonator::Resonator(Resonator&&) noexcept = default;
+Resonator& Resonator::operator=(Resonator&&) noexcept = default;
+
+void Resonator::build(std::vector<std::pair<std::string, lattice::Glyph>> entries) {
+    r_->labels.clear();
+    r_->glyphs.clear();
+    r_->labels.reserve(entries.size());
+    r_->glyphs.reserve(entries.size());
+    for (auto& e : entries) {
+        r_->labels.push_back(std::move(e.first));
+        r_->glyphs.push_back(e.second);
+    }
+    r_->gpu_active = false;
+    if (r_->glyphs.size() >= r_->crossover && r_->storm.ignite()) {
+        r_->gpu_active = r_->storm.charge(r_->glyphs);
+    }
+}
+
+void Resonator::build(const lattice::Lattice& lat) {
+    std::vector<std::pair<std::string, lattice::Glyph>> entries;
+    entries.reserve(lat.size());
+    for (const auto& [label, g] : lat) entries.emplace_back(label, g);
+    build(std::move(entries));
+}
+
+std::vector<lattice::LatticeMatch> Resonator::query(const lattice::Glyph& probe,
+                                                    std::size_t k) const {
+    using lattice::LatticeMatch;
+    const auto to_sim = [](std::uint32_t h) {
+        return 1.0 - 2.0 * static_cast<double>(h) / static_cast<double>(lattice::kGlyphBits);
+    };
+
+    // GPU path: resonate, then map indices back to labels.
+    if (r_->gpu_active) {
+        const auto neigh = r_->storm.resonate(probe, k);
+        if (!neigh.empty() || r_->glyphs.empty()) {
+            std::vector<LatticeMatch> out;
+            out.reserve(neigh.size());
+            for (const auto& nb : neigh)
+                out.push_back({ r_->labels[nb.index], nb.hamming, to_sim(nb.hamming) });
+            return out;
+        }
+        // fall through to CPU if the GPU returned nothing unexpectedly.
+    }
+
+    // CPU path: scan, partial-sort by (hamming, index) for determinism.
+    const std::size_t n = r_->glyphs.size();
+    std::vector<std::uint32_t> idx(n);
+    std::vector<std::uint32_t> dist(n);
+    for (std::size_t i = 0; i < n; ++i) {
+        idx[i]  = static_cast<std::uint32_t>(i);
+        dist[i] = static_cast<std::uint32_t>(probe.hamming(r_->glyphs[i]));
+    }
+    const std::size_t kk = std::min(k, n);
+    std::partial_sort(idx.begin(), idx.begin() + kk, idx.end(),
+        [&](std::uint32_t a, std::uint32_t b) {
+            if (dist[a] != dist[b]) return dist[a] < dist[b];
+            return a < b;
+        });
+    std::vector<LatticeMatch> out;
+    out.reserve(kk);
+    for (std::size_t i = 0; i < kk; ++i)
+        out.push_back({ r_->labels[idx[i]], dist[idx[i]], to_sim(dist[idx[i]]) });
+    return out;
+}
+
+bool        Resonator::on_gpu() const noexcept { return r_->gpu_active; }
+std::size_t Resonator::size()   const noexcept { return r_->glyphs.size(); }
+const DeviceInfo& Resonator::device() const noexcept { return r_->storm.device(); }
+
+} // namespace khora::maelstrom
