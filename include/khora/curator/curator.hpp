@@ -16,6 +16,7 @@
 // and the Curator share one implementation.
 
 #include "khora/cortex/predictive_column.hpp"
+#include "khora/lattice/lattice.hpp"
 #include "khora/lexicon/lexicon.hpp"
 #include "khora/reservoir/aqueduct.hpp"
 #include "khora/reservoir/reservoir.hpp"
@@ -41,11 +42,15 @@ struct StudyOutcome {
 
 // Read a tome and absorb it into the live Lexicon + Cortex, crediting the
 // learning back to the Reservoir. Shared by the Curator and the runtime.
+// If `concept_space` is non-null, the most salient words learned are
+// promoted into it as thinkable concepts (so cognition can resonate over
+// studied vocabulary, not just hand-memorized concepts).
 StudyOutcome study_tome(khora::reservoir::Reservoir& pool,
                         khora::lexicon::Lexicon& lex,
                         khora::cortex::PredictiveColumn& cortex,
                         const std::string& title,
-                        std::size_t max_tokens = 200000);
+                        std::size_t max_tokens = 200000,
+                        khora::lattice::Lattice* concept_space = nullptr);
 
 struct Decision {
     enum Kind { Study, Forage, Deepen, Idle } kind = Idle;
@@ -59,7 +64,8 @@ public:
     Curator(khora::reservoir::Reservoir& pool,
             khora::reservoir::Aqueduct&  aqueduct,
             khora::lexicon::Lexicon&     lex,
-            khora::cortex::PredictiveColumn& cortex);
+            khora::cortex::PredictiveColumn& cortex,
+            khora::lattice::Lattice*     concept_space = nullptr);
 
     // Decide the next knowledge action without executing it.
     Decision decide() const;
@@ -78,6 +84,7 @@ private:
     khora::reservoir::Aqueduct&       aqueduct_;
     khora::lexicon::Lexicon&          lex_;
     khora::cortex::PredictiveColumn&  cortex_;
+    khora::lattice::Lattice*          concept_space_ = nullptr;
 
     double      mastery_target_ = 0.6;
     std::size_t studies_ = 0;

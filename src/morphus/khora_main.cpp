@@ -71,8 +71,9 @@ int main(int argc, char** argv) {
                               20ull * 1024 * 1024 * 1024);
     reservoir::Aqueduct aqueduct(pool);
 
-    // The Curator — Khora decides for itself what to learn next.
-    curator::Curator curator(pool, aqueduct, lex, column);
+    // The Curator — Khora decides for itself what to learn next. Studied
+    // vocabulary is promoted into `memory` so cognition can think over it.
+    curator::Curator curator(pool, aqueduct, lex, column, &memory);
 
     // 2. Try to load persisted lattice + cortex state.
     namespace fs = std::filesystem;
@@ -259,7 +260,7 @@ int main(int argc, char** argv) {
     shell.register_tool({
         "study",
         "absorb a tome from the pool into actual knowledge  (usage: study <title> [max_tokens])",
-        [&pool, &lex, &column](const carapace::Intent& i) -> carapace::ToolResult {
+        [&pool, &lex, &column, &memory](const carapace::Intent& i) -> carapace::ToolResult {
             if (i.args.empty()) return {false, "", "usage: study <title> [max_tokens]"};
             std::size_t max_tokens = 60000;
             std::size_t title_args = i.args.size();
@@ -270,7 +271,7 @@ int main(int argc, char** argv) {
             std::string title;
             for (std::size_t k = 0; k < title_args; ++k) { if (k) title += ' '; title += i.args[k]; }
 
-            const auto o = khora::curator::study_tome(pool, lex, column, title, max_tokens);
+            const auto o = khora::curator::study_tome(pool, lex, column, title, max_tokens, &memory);
             if (!o.ok) return {false, "", o.error};
             std::ostringstream os;
             os << "studied \"" << o.title << "\"\n"

@@ -12,7 +12,8 @@ using khora::reservoir::seed_catalog;
 
 StudyOutcome study_tome(Reservoir& pool, khora::lexicon::Lexicon& lex,
                         khora::cortex::PredictiveColumn& cortex,
-                        const std::string& title, std::size_t max_tokens) {
+                        const std::string& title, std::size_t max_tokens,
+                        khora::lattice::Lattice* concept_space) {
     StudyOutcome o;
     o.title = title;
     auto text = pool.read(title);   // bumps times_read
@@ -36,6 +37,15 @@ StudyOutcome study_tome(Reservoir& pool, khora::lexicon::Lexicon& lex,
     o.yield = std::max(0.0, o.acc_after - o.acc_before) +
               0.0001 * static_cast<double>(o.vocab_after - o.vocab_before);
 
+    // Promote the most salient learned words into the thinkable concept
+    // space, so cognition can resonate over what was just studied. Their
+    // glyphs are refreshed each study as the distributional state drifts.
+    if (concept_space) {
+        for (const auto& w : lex.salient_tokens(/*max*/400, /*min_exposure*/4)) {
+            concept_space->store(w, lex.glyph_for(w));
+        }
+    }
+
     // Mastery from accumulated reads (saturating).
     double reads = 0.0;
     for (const auto& t : pool.catalog()) if (t.title == title) reads = t.times_read;
@@ -47,8 +57,10 @@ StudyOutcome study_tome(Reservoir& pool, khora::lexicon::Lexicon& lex,
 
 Curator::Curator(Reservoir& pool, Aqueduct& aqueduct,
                  khora::lexicon::Lexicon& lex,
-                 khora::cortex::PredictiveColumn& cortex)
-    : pool_(pool), aqueduct_(aqueduct), lex_(lex), cortex_(cortex) {}
+                 khora::cortex::PredictiveColumn& cortex,
+                 khora::lattice::Lattice* concept_space)
+    : pool_(pool), aqueduct_(aqueduct), lex_(lex), cortex_(cortex),
+      concept_space_(concept_space) {}
 
 Decision Curator::decide() const {
     const auto cat = pool_.catalog();
@@ -138,7 +150,7 @@ std::string Curator::act(std::size_t study_tokens) {
 
     switch (d.kind) {
         case Decision::Study: {
-            const auto o = study_tome(pool_, lex_, cortex_, d.title, study_tokens);
+            const auto o = study_tome(pool_, lex_, cortex_, d.title, study_tokens, concept_space_);
             ++studies_;
             if (o.ok) {
                 os << "  STUDIED \"" << o.title << "\": " << o.tokens << " tokens, vocab "

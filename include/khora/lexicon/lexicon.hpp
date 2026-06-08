@@ -65,6 +65,12 @@ public:
     bool          has(std::string_view token) const;
     std::uint32_t exposures_for(std::string_view token) const;
 
+    // The most salient learned tokens: content words (not ubiquitous
+    // function words) with enough exposure, ranked by exposure. Used to
+    // promote studied vocabulary into Khora's thinkable concept space.
+    std::vector<std::string> salient_tokens(std::size_t max_tokens,
+                                            std::uint32_t min_exposure = 5) const;
+
     // Persistence — survives across process restarts. Writes
     //   <prefix>.sem.klat  : token -> binarised context glyph (Lattice)
     //   <prefix>.lexobs     : per-token observation counts

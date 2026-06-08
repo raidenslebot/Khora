@@ -3,6 +3,38 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.25.0 — Studied vocabulary becomes thinkable
+
+**Author:** Morphus
+
+Closed a real gap: Khora *studied* books into the Lexicon, but its
+*cognition* (deliberate / ruminate) only resonated against the small
+hand-memorized concept set — so it could not think about what it read.
+Now `study_tome` promotes the most salient learned words into the
+concept space (the Morphic Lattice), so cognition resonates over
+studied vocabulary.
+
+- `Lexicon::salient_tokens()` returns content words: length >= 3, idf
+  above a content-word cutoff (excludes function words by corpus
+  statistics, no hardcoded stoplist), ranked by exposure.
+- `study_tome` / the Curator / the `study` tool now take a concept-space
+  Lattice and promote ~400 salient words per study (glyphs refreshed
+  each study as the distributional state drifts).
+
+**Verified live**: after studying The Art of War, the concept space holds
+400 learned words and rumination traverses them — e.g.
+`soldiers -> view -> ... -> attack -> soldiers` surfaces a genuine
+military-concept neighbourhood from the book, with no hand-memorization.
+
+Honest limitation: distributionally-central connective words ("will",
+"with") still act as attractors in the trains of thought — frequency
+filtering alone can't remove them because they are central regardless of
+count. The principled fix is distinctiveness-weighting (promote words far
+from the concept centroid); noted as the next refinement. The mechanism —
+studied knowledge feeding cognition — is real and working.
+
+9/9 regression suites pass.
+
 ## v0.24.0 — The Lodestone (hardware self-gauge + adaptive complexity)
 
 **Author:** Morphus

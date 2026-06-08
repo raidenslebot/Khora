@@ -155,6 +155,31 @@ std::uint32_t Lexicon::exposures_for(std::string_view token) const {
     return (it == ctx_.end()) ? 0 : it->second.obs;
 }
 
+std::vector<std::string> Lexicon::salient_tokens(std::size_t max_tokens,
+                                                 std::uint32_t min_exposure) const {
+    std::vector<std::pair<std::string, std::uint32_t>> cands;
+    cands.reserve(ctx_.size());
+    for (const auto& [tok, c] : ctx_) {
+        if (c.obs < min_exposure) continue;
+        // Length >= 3: two-letter tokens ("be","it","of","to") are almost
+        // all function words or fragments, and their sparse trigram glyphs
+        // act as structural hubs that swallow every train of thought.
+        if (tok.size() < 3) continue;
+        // Keep only genuine content words: those appearing in under ~1% of
+        // positions (high idf). Frequent words score lower and are
+        // distributional hubs, so they are excluded from the concept space.
+        if (weight_for_(tok) < 8) continue;
+        cands.emplace_back(tok, c.obs);
+    }
+    std::sort(cands.begin(), cands.end(),
+              [](const auto& a, const auto& b) { return a.second > b.second; });
+    std::vector<std::string> out;
+    out.reserve(std::min(max_tokens, cands.size()));
+    for (std::size_t i = 0; i < cands.size() && i < max_tokens; ++i)
+        out.push_back(cands[i].first);
+    return out;
+}
+
 std::size_t Lexicon::expose_sequence(const std::vector<std::string>& tokens,
                                      std::size_t window) {
     if (window == 0) return 0;
