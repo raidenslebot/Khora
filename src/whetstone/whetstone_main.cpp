@@ -28,6 +28,7 @@ int main(int argc, char** argv) {
     Whetstone ws(/*mastery=*/0.90);
     ws.add_faculty(make_relational_faculty());
     ws.add_faculty(make_sequence_faculty());
+    ws.add_faculty(make_transitive_faculty());
 
     const auto trajectory = ws.run(rounds);
 

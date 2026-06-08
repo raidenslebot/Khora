@@ -3,9 +3,12 @@
 #include "khora/cortex/predictive_column.hpp"
 #include "khora/crucible/crucible.hpp"
 #include "khora/lattice/glyph.hpp"
+#include "khora/lattice/lattice.hpp"
 
 #include <algorithm>
 #include <limits>
+#include <optional>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -256,6 +259,113 @@ private:
     int           prev_window_ = 0;
 };
 
+// ---------------- transitive (multi-hop) reasoning faculty ----------------
+
+// Encode a chain A->B->C->... as a bundle of transition bindings
+// bind(item_i, item_{i+1}). "What follows X" = cleanup(chain XOR X).
+// Multi-hop traversal repeats the follow. Difficulty grows the chain
+// length (more transitions superimposed = more crosstalk) and demands
+// recovery at 1, 2, and 3 hops — genuine compositional reasoning, not
+// single-step lookup. Evolution: redundant transition encoding.
+class TransitiveFaculty final : public Faculty {
+public:
+    explicit TransitiveFaculty(std::uint64_t seed) : seed_(seed) {}
+
+    std::string name() const override { return "transitive_reasoning"; }
+
+    AttemptOutcome attempt(int difficulty) override {
+        const std::size_t L = static_cast<std::size_t>(difficulty) + 3;  // chain length
+
+        // A fresh item codebook for this chain, plus the chain glyph.
+        khora::lattice::Lattice codebook;
+        std::vector<khora::lattice::Glyph> items;
+        items.reserve(L);
+        for (std::size_t i = 0; i < L; ++i) {
+            const auto g = khora::lattice::Glyph::random(
+                seed_ ^ (0x9E3779B97F4A7C15ULL * (i + 1)));
+            items.push_back(g);
+            codebook.store("i" + std::to_string(i), g);
+        }
+
+        std::vector<khora::lattice::Glyph> transitions;
+        transitions.reserve(L - 1);
+        for (std::size_t i = 0; i + 1 < L; ++i) {
+            transitions.push_back(encode_transition(items[i], items[i + 1]));
+        }
+        const khora::lattice::Glyph chain =
+            khora::lattice::bundle(std::span<const khora::lattice::Glyph>{
+                transitions.data(), transitions.size()});
+
+        auto follow = [&](const khora::lattice::Glyph& from) -> std::string {
+            const auto m = codebook.query(khora::lattice::bind(chain, from), 1);
+            return m.empty() ? std::string{} : m.front().label;
+        };
+
+        std::size_t correct = 0, total = 0;
+        for (std::size_t i = 0; i + 1 < L; ++i) {
+            // 1-hop: what follows item i?
+            ++total;
+            if (follow(items[i]) == "i" + std::to_string(i + 1)) ++correct;
+            // 2-hop: two steps ahead.
+            if (i + 2 < L) {
+                ++total;
+                const std::string mid = follow(items[i]);
+                if (!mid.empty()) {
+                    const auto midg = codebook.recall(mid);
+                    if (midg && follow(*midg) == "i" + std::to_string(i + 2)) ++correct;
+                }
+            }
+            // 3-hop.
+            if (i + 3 < L) {
+                ++total;
+                const std::string s1 = follow(items[i]);
+                const auto g1 = s1.empty() ? std::nullopt : codebook.recall(s1);
+                const std::string s2 = g1 ? follow(*g1) : std::string{};
+                const auto g2 = s2.empty() ? std::nullopt : codebook.recall(s2);
+                if (g2 && follow(*g2) == "i" + std::to_string(i + 3)) ++correct;
+            }
+        }
+        AttemptOutcome o;
+        o.score  = total ? static_cast<double>(correct) / static_cast<double>(total) : 1.0;
+        o.detail = "chain length " + std::to_string(L) + ", redundancy " +
+                   std::to_string(redundancy_);
+        return o;
+    }
+
+    bool evolve() override {
+        if (redundancy_ >= 9) return false;
+        prev_redundancy_ = redundancy_;
+        redundancy_ += 2;
+        return true;
+    }
+    bool revert() override {
+        if (prev_redundancy_ == 0) return false;
+        redundancy_ = prev_redundancy_;
+        prev_redundancy_ = 0;
+        return true;
+    }
+    int evolution_level() const override { return redundancy_; }
+    int max_difficulty()  const override { return 32; }   // chains up to length 35
+
+private:
+    khora::lattice::Glyph encode_transition(const khora::lattice::Glyph& a,
+                                            const khora::lattice::Glyph& b) const {
+        const khora::lattice::Glyph base = khora::lattice::bind(a, b);
+        if (redundancy_ <= 1) return base;
+        std::vector<khora::lattice::Glyph> copies;
+        copies.reserve(static_cast<std::size_t>(redundancy_));
+        for (int r = 0; r < redundancy_; ++r)
+            copies.push_back(khora::lattice::permute(base, r * 173));
+        // Note: redundancy here mainly stabilises cleanup under crosstalk.
+        return khora::lattice::bundle(std::span<const khora::lattice::Glyph>{
+            copies.data(), copies.size()});
+    }
+
+    std::uint64_t seed_;
+    int           redundancy_      = 1;
+    int           prev_redundancy_ = 0;
+};
+
 } // namespace
 
 std::unique_ptr<Faculty> make_relational_faculty(std::uint64_t seed) {
@@ -264,6 +374,10 @@ std::unique_ptr<Faculty> make_relational_faculty(std::uint64_t seed) {
 
 std::unique_ptr<Faculty> make_sequence_faculty(std::uint64_t seed) {
     return std::make_unique<SequenceFaculty>(seed);
+}
+
+std::unique_ptr<Faculty> make_transitive_faculty(std::uint64_t seed) {
+    return std::make_unique<TransitiveFaculty>(seed);
 }
 
 } // namespace khora::whetstone

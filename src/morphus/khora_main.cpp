@@ -341,6 +341,7 @@ int main(int argc, char** argv) {
     whetstone::Whetstone forge(0.90);
     forge.add_faculty(whetstone::make_relational_faculty());
     forge.add_faculty(whetstone::make_sequence_faculty());
+    forge.add_faculty(whetstone::make_transitive_faculty());
     whetstone::WhetstoneScheduler whet(forge);
 
     shell.register_tool({

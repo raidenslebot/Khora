@@ -115,4 +115,9 @@ std::unique_ptr<Faculty> make_relational_faculty(std::uint64_t seed = 0xBEAC04UL
 // competence = cortex continuation accuracy; evolution = context window.
 std::unique_ptr<Faculty> make_sequence_faculty(std::uint64_t seed = 0x5EE5EEDULL);
 
+// Transitive (multi-hop) reasoning: difficulty = chain length; competence
+// = accuracy recovering items 1/2/3 hops ahead by traversing bound
+// transitions; evolution = redundant transition encoding.
+std::unique_ptr<Faculty> make_transitive_faculty(std::uint64_t seed = 0x713A11ULL);
+
 } // namespace khora::whetstone

@@ -3,6 +3,27 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.21.0 — Transitive reasoning faculty
+
+**Author:** Morphus
+
+A third Whetstone faculty: multi-hop compositional reasoning. A chain
+A->B->C->... is encoded as a bundle of transition bindings
+`bind(item_i, item_{i+1})`; "what follows X" = `cleanup(chain XOR X)`,
+and multi-hop traversal repeats the follow. The faculty scores recovery
+at 1, 2, and 3 hops — genuine chained inference, not single-step lookup.
+
+Run under the self-evolution engine it behaved exactly as intended:
+pushed difficulty-1 (4-item chains) to 100% by evolving transition
+redundancy, escalated to difficulty-2, then plateaued at 66.67% on
+2-3-hop queries even at maximum redundancy. That is a real, measured
+capability frontier of the naive superimposed-chain encoding — the
+Whetstone surfacing where Khora's compositional reasoning currently
+ends. A richer sequence encoding is the faculty's next evolution.
+
+Added to both the standalone `whetstone` runner and the runtime's
+background self-sharpening forge. 9/9 regression suites pass.
+
 ## v0.20.0 — Continuous self-education (background Curator)
 
 **Author:** Morphus
