@@ -173,6 +173,29 @@ Plexus::associates(std::string_view word, std::size_t k) const {
     return out;
 }
 
+void Plexus::absorb(const Plexus& other) {
+    if (other.word_.empty()) return;
+    // Map other's node ids into this graph (interning new words), summing
+    // occurrences, then sum every edge's co-occurrence count.
+    std::vector<std::uint32_t> remap(other.word_.size());
+    for (std::uint32_t oid = 0; oid < other.word_.size(); ++oid) {
+        const std::uint32_t mid = intern_(other.word_[oid]);
+        remap[oid] = mid;
+        occ_[mid] += other.occ_[oid];
+    }
+    for (std::uint32_t oid = 0; oid < other.adj_.size(); ++oid) {
+        auto& dst = adj_[remap[oid]];
+        for (const auto& [onb, c] : other.adj_[oid]) dst[remap[onb]] += c;
+    }
+    total_tokens_ += other.total_tokens_;
+    total_cooc_   += other.total_cooc_;
+}
+
+void Plexus::prune_all() {
+    for (std::uint32_t i = 0; i < adj_.size(); ++i)
+        if (adj_[i].size() > max_degree_) prune_(i);
+}
+
 std::uint64_t Plexus::edge_count() const noexcept {
     std::uint64_t e = 0;
     for (const auto& m : adj_) e += m.size();

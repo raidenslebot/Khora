@@ -90,10 +90,12 @@ int main(int argc, char** argv) {
     // vocabulary is promoted into `memory` so cognition can think over it.
     curator::Curator curator(pool, aqueduct, lex, column, &memory, &plex);
 
-    // The Ballast — Khora is hard-capped at 4 GB of system RAM and backs
-    // off when total system RAM crosses 90% (the operator's machine must
-    // never lock up). GPU memory and NVMe are used freely elsewhere.
-    ballast::Ballast ballast(/*cap_mb*/4096, /*system_pressure*/0.90);
+    // The Ballast — Khora may now claim up to 24 GB of system RAM (raised from
+    // 4 GB: the operator has 32 GB and wants the headroom USED). It still backs
+    // off hard the instant total system RAM crosses 90% — the machine must never
+    // lock up — and the Lodestone sizes the actual caps to what is really free.
+    // GPU memory and NVMe are used freely elsewhere.
+    ballast::Ballast ballast(/*cap_mb*/24576, /*system_pressure*/0.90);
     std::atomic<std::uint64_t> ballast_sheds{0};
 
     // 2. Try to load persisted lattice + cortex state.
@@ -175,8 +177,8 @@ int main(int argc, char** argv) {
     shell.register_tool({
         "hardware",
         "gauge the machine and show the adaptive operating profile",
-        [&column, &lex](const carapace::Intent&) -> carapace::ToolResult {
-            const auto hw = lodestone::gauge("data", 4096);
+        [&column, &lex, &ballast](const carapace::Intent&) -> carapace::ToolResult {
+            const auto hw = lodestone::gauge("data", ballast.cap_mb());
             column.set_max_associations(hw.recommended_assoc_cap);
             lex.set_max_vocabulary(hw.recommended_vocab_cap);
             return {true, hw.summary(), ""};

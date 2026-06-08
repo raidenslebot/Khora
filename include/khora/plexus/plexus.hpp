@@ -81,6 +81,15 @@ public:
     void        set_max_degree(std::size_t d) { max_degree_ = (d ? d : 1); }
     std::size_t max_degree() const noexcept   { return max_degree_; }
 
+    // Merge another graph into this one — co-occurrence is an additive,
+    // commutative monoid, so summing partial graphs built over disjoint slices
+    // of the corpus equals the serial result. This is what lets the forge build
+    // the graph across all cores: each thread weaves a thread-local Plexus over
+    // its slice, then they are absorbed into one. Prune AFTER all absorbs.
+    void absorb(const Plexus& other);
+    // Prune every over-capacity node back to max_degree (call once after merge).
+    void prune_all();
+
     // Persistence — a single compact binary file <prefix>.plexus.
     void save(const std::filesystem::path& prefix) const;
     void load(const std::filesystem::path& prefix);

@@ -3,6 +3,35 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.76.0 — Unleashing the headroom, part 1 (RAM, cadence, parallel forge)
+
+**Author:** Morphus (operator: "it has massive headroom — use it")
+
+Khora was throttled by its own governors, not the machine. A 7-agent workflow
+mapped where it leaves the 24-thread / 32 GB / RTX-2070 box idle. First wave of
+fixes — the safe, high-leverage ones:
+
+- **RAM cap 4 GB -> 24 GB** (`ballast::Ballast(24576, 0.90)`). The Lodestone gauge
+  already sizes vocab/assoc/plexus caps from this budget, so it auto-propagates;
+  raised the derived clamp ceilings too (assoc 2M -> 5M, vocab 200k -> 250k) and
+  made it use 85% of actually-free RAM (was 75%). The 90% system-pressure backoff
+  still protects the machine. Honest limit observed: with the operator's other
+  apps holding ~26 GB, only ~6.7 GB is truly free, so the effective budget
+  self-sizes to that — RAM is the operator's scarcest resource, not the headroom.
+- **Background cadence cranked** — reverie floor 40 ms -> 8 ms, whetstone 100 -> 40 ms,
+  so the dream/sharpen loops run far more often.
+- **plexus_forge parallelized across all cores.** Co-occurrence is an additive
+  commutative monoid, so each thread weaves a thread-local Plexus over its slice
+  of the corpus and they are absorbed into one and pruned once (new `Plexus::
+  absorb` / `prune_all`). Serial I/O (the reservoir read is stateful), parallel
+  counting. ~5x faster (30s -> 6s) over the now 46-tome / 74,778-node / 7.2M-token
+  corpus.
+
+The real headroom is CPU (24 cores at ~5%) and the idle GPU. The continuous
+multi-core lever is the background schedulers — they currently serialize on one
+shared mutex (each holds it unique for its whole beat). That race-sensitive
+refactor is next, done carefully; this wave is the safe ground it stands on.
+
 ## v0.75.0 — A deep productive well (the corpus tips decisively to STEM)
 
 **Author:** Morphus

@@ -144,13 +144,20 @@ HardwareProfile gauge(const std::string& scratch_dir, std::uint64_t khora_budget
     // remainder headroom for glyphs, dreams, and transient working sets.
     std::uint64_t effective_mb = khora_budget_mb;
     if (p.ram_avail_mb > 0 && p.ram_avail_mb < khora_budget_mb) {
-        effective_mb = std::max<std::uint64_t>(512, (p.ram_avail_mb * 3) / 4);
+        // Use 85% of what is actually free (was 75%). The Ballast governor still
+        // sheds hard if total system pressure crosses 90%, so this is safe but
+        // bold — Khora fills the headroom the operator left it.
+        effective_mb = std::max<std::uint64_t>(512, (p.ram_avail_mb * 17) / 20);
     }
     const std::uint64_t budget_bytes = effective_mb * 1024ull * 1024ull;
+    // Ceilings raised to let Khora scale into a multi-GB budget: up to ~5M cortex
+    // associations (~12.5 GB) and ~250k vocabulary words (~10 GB). The formula
+    // still splits the budget (50% associations, 35% vocabulary), so both maxima
+    // are only approached when RAM is genuinely abundant.
     p.recommended_assoc_cap = clampv<std::size_t>(
-        static_cast<std::size_t>((budget_bytes / 2) / 2500ull), 50000, 2000000);
+        static_cast<std::size_t>((budget_bytes / 2) / 2500ull), 50000, 5000000);
     p.recommended_vocab_cap = clampv<std::size_t>(
-        static_cast<std::size_t>((budget_bytes * 35 / 100) / 40960ull), 5000, 200000);
+        static_cast<std::size_t>((budget_bytes * 35 / 100) / 40960ull), 5000, 250000);
 
     // Study budget scales with raw glyph throughput.
     p.recommended_study_tokens = clampv<std::size_t>(
@@ -159,8 +166,11 @@ HardwareProfile gauge(const std::string& scratch_dir, std::uint64_t khora_budget
     // Background cadences: faster machines can afford to dream/sharpen more
     // often without starving the operator.
     const double headroom = clampv(p.parallel_speedup / static_cast<double>(p.threads), 0.2, 1.0);
-    p.recommended_reverie_ms   = static_cast<int>(clampv(150.0 - headroom * 100.0, 40.0, 200.0));
-    p.recommended_whetstone_ms = static_cast<int>(clampv(400.0 - headroom * 250.0, 100.0, 500.0));
+    // Background cadences cranked: near-continuous dreaming/sharpening so the
+    // cores the operator left idle stay busy. Floors dropped to 8 ms / 40 ms
+    // (was 40 / 100). The Ballast + shared mutex keep the interactive thread fed.
+    p.recommended_reverie_ms   = static_cast<int>(clampv(60.0 - headroom * 50.0, 8.0, 200.0));
+    p.recommended_whetstone_ms = static_cast<int>(clampv(160.0 - headroom * 120.0, 40.0, 500.0));
 
     return p;
 }
