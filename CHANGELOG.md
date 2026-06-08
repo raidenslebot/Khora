@@ -3,6 +3,29 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.30.0 — Maelstrom: on-GPU top-k reduction
+
+**Author:** Morphus
+
+The first Maelstrom cut read the entire distance vector back to the host
+and sorted it on the CPU — so the "GPU" query still paid an O(N) CPU sort,
+and the speedup stalled around 5×. v0.30 moves the selection onto the card.
+
+- The resonance kernel now reduces in groupshared memory: each 256-thread
+  group cooperatively keeps the **k nearest of its own slice** and writes
+  only those k candidates out. The host merges `groups·k` candidates
+  instead of N — readback and CPU work drop from O(N) to O(N/256).
+- Provably exact: an element in the global top-k has fewer than k elements
+  smaller than it overall, hence fewer than k within its own group, so it
+  always survives the local selection. The CPU oracle confirms it.
+
+**Verified live** (RTX 2070 SUPER): still **bit-exact** (0 of 500,000
+differ), top-8 matches the CPU at every scale, and the speedup now *grows*
+with the database — 3.1× @ 10k, 5.7× @ 50k, 6.8× @ 200k, **7.4× @ 500k**
+glyphs (was 5.1× @ 200k before the reduction). The crossover widens with
+N, which is the regime the liquid-knowledge vision is built for. 9/9
+regression suites pass.
+
 ## v0.29.0 — The Maelstrom (GPU resonance, DirectCompute)
 
 **Author:** Morphus
