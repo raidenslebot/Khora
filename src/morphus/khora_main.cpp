@@ -634,6 +634,7 @@ int main(int argc, char** argv) {
     std::size_t reflection_n = 0;
     std::size_t ferment_seed = 0;
     double      chaos_rate   = 0.33;   // Khora masters this itself: how often curiosity erupts as chaos
+    double      abstraction_bar = 0.35;  // the coherence Khora demands of itself to keep an abstraction; it ratchets up
     auto pick_seed = [&mind, &lex, &volition_seed]() -> std::string {
         // Draw a clean concept from the cogitator's centrality-pruned field —
         // real concepts, not the function-word hubs that top raw frequency.
@@ -655,7 +656,7 @@ int main(int argc, char** argv) {
         rum.name = "ruminate";
         rum.affinity.per_drive[D(Drive::Curiosity)] = 1.0;
         rum.affinity.per_drive[D(Drive::Mastery)]   = 0.2;
-        rum.perform = [&mind, pick_seed, &ferment_seed, &chaos_rate]() -> std::string {
+        rum.perform = [&mind, pick_seed, &ferment_seed, &chaos_rate, &abstraction_bar]() -> std::string {
             // Chaos is woven into curiosity: sometimes Khora collides concepts
             // instead of wandering. And it MASTERS its own chaos — leaning in
             // when collisions forge strong ideas, easing off when they fizzle.
@@ -676,10 +677,14 @@ int main(int argc, char** argv) {
             if (!chaos && (ferment_seed % 3) == 0) {
                 const std::string aseed = mind.abstraction_seed(ferment_seed);
                 if (!aseed.empty()) {
-                    const std::string name = mind.form_abstraction(aseed);
-                    if (!name.empty())
+                    const std::string name = mind.form_abstraction(aseed, 4, abstraction_bar);
+                    if (!name.empty()) {
+                        abstraction_bar = std::min(0.72, abstraction_bar + 0.01);   // succeeded -> demand more
                         return "abstract '" + aseed + "' ~> " + name
-                             + "  [depth " + std::to_string(mind.abstraction_depth()) + "]";
+                             + "  [depth " + std::to_string(mind.abstraction_depth())
+                             + ", bar " + std::to_string(static_cast<int>(abstraction_bar * 100 + 0.5)) + "%]";
+                    }
+                    abstraction_bar = std::max(0.20, abstraction_bar - 0.015);      // refused -> ease, keep striving
                 }
             }
             const std::string seed = pick_seed();

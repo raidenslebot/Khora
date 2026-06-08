@@ -173,7 +173,7 @@ Glyph Cogitator::concept_glyph_any_(const std::string& name, int& level) const {
     return lex_.context_glyph(name);
 }
 
-std::string Cogitator::form_abstraction(const std::string& seed, std::size_t k) {
+std::string Cogitator::form_abstraction(const std::string& seed, std::size_t k, double min_coherence) {
     ensure_field_();
     int seed_level = 0;
     const Glyph seedG = concept_glyph_any_(seed, seed_level);
@@ -208,10 +208,19 @@ std::string Cogitator::form_abstraction(const std::string& seed, std::size_t k) 
     }
     if (members.size() < 2) return {};
 
+    // Coherence: mean pairwise similarity of the cluster. A loose grab-bag
+    // scores low; a genuine unification scores high. Khora refuses weak ones.
+    double coh = 0.0; std::size_t pairs = 0;
+    for (std::size_t i = 0; i < parts.size(); ++i)
+        for (std::size_t j = i + 1; j < parts.size(); ++j) { coh += parts[i].similarity(parts[j]); ++pairs; }
+    coh = pairs ? coh / static_cast<double>(pairs) : 0.0;
+    if (coh < min_coherence) return {};
+
     Abstraction a;
-    a.glyph   = bundle(std::span<const Glyph>{parts.data(), parts.size()});
-    a.level   = maxlvl + 1;
-    a.members = members;
+    a.glyph     = bundle(std::span<const Glyph>{parts.data(), parts.size()});
+    a.level     = maxlvl + 1;
+    a.coherence = coh;
+    a.members   = members;
     a.name = "{";
     const std::size_t mn = std::min<std::size_t>(3, members.size());
     for (std::size_t i = 0; i < mn; ++i) { if (i) a.name += "+"; a.name += members[i]; }
@@ -230,7 +239,9 @@ int Cogitator::abstraction_depth() const noexcept {
 std::vector<std::string> Cogitator::abstraction_names(std::size_t n) const {
     std::vector<std::string> out;
     for (auto it = abstractions_.rbegin(); it != abstractions_.rend() && out.size() < n; ++it)
-        out.push_back("L" + std::to_string(it->level) + "  " + it->name);
+        out.push_back("L" + std::to_string(it->level)
+                      + " c" + std::to_string(static_cast<int>(it->coherence * 100 + 0.5))
+                      + "  " + it->name);
     return out;
 }
 

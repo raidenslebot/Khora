@@ -139,6 +139,7 @@ struct Abstraction {
     std::string                name;
     khora::lattice::Glyph      glyph;
     int                        level = 1;     // 1 = over words; 2 = over abstractions; ...
+    double                     coherence = 0.0;  // how tightly its members cohere
     std::vector<std::string>   members;
 };
 
@@ -183,7 +184,10 @@ public:
     // Form a higher-order abstraction from a seed concept (a learned word OR
     // an existing abstraction): bind it with its nearest kin into one new
     // concept, one level higher. Returns its name. Empty if it can't form one.
-    std::string form_abstraction(const std::string& seed, std::size_t k = 4);
+    // Returns the new abstraction's name, or empty if it cohered below
+    // `min_coherence` (Khora refusing a weak unification — a self-set bar).
+    std::string form_abstraction(const std::string& seed, std::size_t k = 4,
+                                 double min_coherence = 0.0);
     std::size_t abstraction_count() const noexcept { return abstractions_.size(); }
     int         abstraction_depth() const noexcept;            // highest level reached
     std::vector<std::string> abstraction_names(std::size_t n) const;  // recent, with levels

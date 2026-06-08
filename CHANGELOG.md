@@ -3,6 +3,31 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.67.0 — Self-escalating standard (Khora demands more of itself)
+
+**Author:** Morphus
+
+Exponential roadmap, lever 2 (seed): *self-generated, escalating goals.*
+Until now Khora kept every abstraction it formed, however loose. A mind that
+evolves must judge its own work and raise its own bar.
+
+- `form_abstraction` now computes each cluster's **coherence** (mean pairwise
+  similarity of its members) and **refuses** any below a threshold. In the
+  autonomous loop that threshold is Khora's own, self-tuned: **each accepted
+  abstraction ratchets the bar up** (demand more next time); each refusal eases
+  it (keep striving). A goal Khora sets and escalates for itself. `spire` now
+  shows each abstraction's coherence.
+
+**Verified live** — and the result is honest and revealing: over 40 autonomous
+beats Khora **refused almost every abstraction**, accepting only the coherent
+`{back+down+round}` (spatial words that genuinely cohere) and nudging its bar
+35% → 36%. The self-judgment works; it exposes that *coherent* abstraction is
+**rare on the current hub-loose semantic field** — the same field-coherence
+limit that bounds chaos and the cascade. So the exponential engine is built
+and self-escalating, but its fuel — clean, coherent concept structure — is
+gated by the one deep problem still unsolved: the density-driven hub effect.
+That is now clearly the lever that would unlock the rest. 9/9 suites pass.
+
 ## v0.66.0 — Closing the loop: cognition resonates over the Spire
 
 **Author:** Morphus
