@@ -196,6 +196,17 @@ public:
     // `min_coherence` (Khora refusing a weak unification — a self-set bar).
     std::string form_abstraction(const std::string& seed, std::size_t k = 4,
                                  double min_coherence = 0.0);
+    // Parallel abstraction scouting — the Furnace's core-user. Samples many
+    // candidate seeds and computes each one's plexus-cluster coherence ACROSS
+    // `threads` cores, returning the most coherent (>= min_coherence). This is
+    // pure read-only work over the const Plexus + concept set, so it is safe to
+    // run wide while the caller holds a SHARED lock (writers excluded). The
+    // returned seeds are then formed (under a unique lock) by the caller. Lets
+    // Khora burn the idle cores searching for its next good abstraction.
+    std::vector<std::pair<std::string, double>>
+    scout_abstractions(std::size_t samples, unsigned threads,
+                       double min_coherence = 0.0) const;
+
     std::size_t abstraction_count() const noexcept { return abstractions_.size(); }
     int         abstraction_depth() const noexcept;            // highest level reached
     std::vector<std::string> abstraction_names(std::size_t n) const;  // recent, with levels
@@ -327,6 +338,10 @@ private:
     // abstractions (or a word and an abstraction) are, through the corpus.
     double leafset_affinity_(const std::unordered_set<std::string>& a,
                              const std::unordered_set<std::string>& b) const;
+    // Read-only coherence a word seed WOULD yield as an abstraction (its top
+    // PMI kin's mean pairwise affinity, squashed). No mutation — the Furnace's
+    // parallel scout uses this to rank candidates across cores.
+    double seed_coherence_(const std::string& seed) const;
 
     std::size_t resonance_k_            = 5;
     double      novelty_threshold_      = 0.20;

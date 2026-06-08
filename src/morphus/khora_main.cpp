@@ -38,8 +38,10 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <deque>
 #include <shared_mutex>
 #include <sstream>
+#include <thread>
 #include <string>
 
 namespace {
@@ -1638,6 +1640,10 @@ int main(int argc, char** argv) {
     column.set_max_associations(hw.recommended_assoc_cap);
     lex.set_max_vocabulary(hw.recommended_vocab_cap);
 
+    // Warm the concept field once (single-threaded, before any background loop)
+    // so the Furnace has a populated concept set to scout from immediately.
+    (void)mind.wandering_seed(0);
+
     // 7. Start the background loops, paced to the hardware.
     scheduler.start(std::chrono::milliseconds(hw.recommended_reverie_ms));
     whet.start(std::chrono::milliseconds(hw.recommended_whetstone_ms));
@@ -1672,6 +1678,48 @@ int main(int argc, char** argv) {
         });
     governor.start(std::chrono::seconds(1));
 
+    // 7.7 The FURNACE — burns the idle cores. Each beat it scouts thousands of
+    //     candidate abstraction seeds ACROSS ALL CORES (read-only plexus-cluster
+    //     coherence), holding only a SHARED lock so every writer (cognition,
+    //     study, dream — all take the unique lock) is excluded and the parallel
+    //     reads are race-free. It then forges the single most coherent find under
+    //     the unique lock — throttled and capped so the tower grows with quality,
+    //     not bloat. This is the continuous, parallel use of the machine the
+    //     operator asked for: the heavy work is pure reads of immutable state, so
+    //     it is safe to run as wide as the hardware allows.
+    const unsigned furnace_cores = std::max(1u, std::thread::hardware_concurrency());
+    std::atomic<bool> furnace_run{true};
+    std::atomic<std::uint64_t> furnace_scouts{0}, furnace_forged{0};
+    std::thread furnace([&]() {
+        std::deque<std::string> recent;     // recently forged seeds — skip repeats
+        std::uint64_t beat = 0;
+        while (furnace_run.load(std::memory_order_acquire)) {
+            std::vector<std::pair<std::string, double>> cands;
+            {
+                std::shared_lock<std::shared_mutex> lk(shared_mu);
+                cands = mind.scout_abstractions(/*samples*/16384, furnace_cores, abstraction_bar);
+            }
+            furnace_scouts.fetch_add(1, std::memory_order_relaxed);
+
+            // Forge the best find: throttled (~every 2 s at this cadence), strongly
+            // coherent, not a recent repeat, tower not yet large.
+            if (!cands.empty() && (beat % 130 == 0)
+                && cands.front().second >= 0.50
+                && mind.abstraction_count() < 600
+                && std::find(recent.begin(), recent.end(), cands.front().first) == recent.end()) {
+                {
+                    std::unique_lock<std::shared_mutex> lk(shared_mu);
+                    mind.form_abstraction(cands.front().first, 5, abstraction_bar);
+                }
+                recent.push_back(cands.front().first);
+                if (recent.size() > 64) recent.pop_front();
+                furnace_forged.fetch_add(1, std::memory_order_relaxed);
+            }
+            ++beat;
+            std::this_thread::sleep_for(std::chrono::milliseconds(6));
+        }
+    });
+
     // 8. Interactive REPL.
     print_banner();
     std::cout << "[reverie + self-training active; ballast governing RAM @ "
@@ -1694,6 +1742,11 @@ int main(int argc, char** argv) {
     }
 
     // 9. Stop background loops before saving.
+    furnace_run.store(false, std::memory_order_release);
+    if (furnace.joinable()) furnace.join();
+    std::cout << "[furnace: " << furnace_scouts.load() << " parallel scouts on "
+              << furnace_cores << " cores, " << furnace_forged.load()
+              << " abstractions forged this session]\n";
     governor.stop();
     scheduler.stop();
     whet.stop();

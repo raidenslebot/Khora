@@ -10,6 +10,7 @@
 #include <future>
 #include <span>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace khora::cogitator {
@@ -270,6 +271,84 @@ double Cogitator::leafset_affinity_(const std::unordered_set<std::string>& a,
     double s = 0.0;
     for (std::size_t i = 0; i < topn; ++i) s += bridges[i];
     return s / static_cast<double>(topn);
+}
+
+double Cogitator::seed_coherence_(const std::string& seed) const {
+    if (!plexus_ || !plexus_->has(seed)) return 0.0;
+    const auto kin = plexus_->associates(seed, 8);
+    if (kin.size() < 2) return 0.0;
+
+    // Build the seed's 2-HOP neighbourhood — its kin, plus each kin's own top
+    // kin — and measure the cohesion of that whole region. This is a truer,
+    // heavier signal of whether the seed anchors a genuinely coherent concept
+    // cluster than the 1-hop star, and it is the substantial parallel work the
+    // Furnace burns the idle cores on.
+    std::vector<std::string> region{ seed };
+    for (const auto& kv : kin) {
+        if (region.size() >= 9) break;
+        if (kv.first != seed) region.push_back(kv.first);
+    }
+    const std::size_t inner = region.size();
+    for (std::size_t m = 1; m < inner; ++m) {
+        if (region.size() >= 28) break;
+        for (const auto& kv : plexus_->associates(region[m], 4)) {
+            if (region.size() >= 28) break;
+            if (std::find(region.begin(), region.end(), kv.first) == region.end())
+                region.push_back(kv.first);
+        }
+    }
+
+    double aff_sum = 0.0; std::size_t pairs = 0;
+    for (std::size_t i = 0; i < region.size(); ++i)
+        for (std::size_t j = i + 1; j < region.size(); ++j) {
+            aff_sum += plexus_->affinity(region[i], region[j]);
+            ++pairs;
+        }
+    const double mean_aff = pairs ? aff_sum / static_cast<double>(pairs) : 0.0;
+    return mean_aff / (mean_aff + kPmiCoherenceScale);
+}
+
+std::vector<std::pair<std::string, double>>
+Cogitator::scout_abstractions(std::size_t samples, unsigned threads,
+                              double min_coherence) const {
+    if (!plexus_ || concepts_.empty() || samples == 0) return {};
+    if (threads < 1)  threads = 1;
+    if (threads > 64) threads = 64;
+    const std::size_t N = concepts_.size();
+
+    // Each thread scores a disjoint band of sample indices into `out` (no shared
+    // writes), reading only the const Plexus + concept set. Pure parallel reads.
+    std::vector<std::pair<std::string, double>> out(samples);
+    auto work = [this, &out, N](std::size_t lo, std::size_t hi) {
+        for (std::size_t s = lo; s < hi; ++s) {
+            const std::size_t idx =
+                static_cast<std::size_t>((s * 2654435761ull + 1099511628211ull) % N);
+            const std::string& seed = concepts_[idx];
+            out[s] = { seed, seed_coherence_(seed) };
+        }
+    };
+    std::vector<std::thread> pool;
+    pool.reserve(threads);
+    const std::size_t chunk = (samples + threads - 1) / threads;
+    for (unsigned t = 0; t < threads; ++t) {
+        const std::size_t lo = static_cast<std::size_t>(t) * chunk;
+        const std::size_t hi = std::min(samples, lo + chunk);
+        if (lo >= hi) break;
+        pool.emplace_back(work, lo, hi);
+    }
+    for (auto& th : pool) th.join();
+
+    std::sort(out.begin(), out.end(),
+              [](const auto& a, const auto& b) { return a.second > b.second; });
+    std::vector<std::pair<std::string, double>> top;
+    std::unordered_set<std::string> seen;
+    for (auto& c : out) {
+        if (c.first.empty() || c.second < min_coherence) continue;
+        if (!seen.insert(c.first).second) continue;   // dedupe repeated samples
+        top.push_back(c);
+        if (top.size() >= 8) break;
+    }
+    return top;
 }
 
 std::string Cogitator::form_abstraction_over_abstractions_(const std::string& seed,
