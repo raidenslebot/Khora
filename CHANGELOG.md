@@ -3,6 +3,37 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.79.0 — Reasoning: goal-directed inference (Khora thinks toward an answer)
+
+**Author:** Morphus
+
+Everything before this was structure and association. This is the first faculty
+that REASONS — that thinks *toward* a goal instead of wandering. `infer_path`
+(tool: `infer <start> <goal>`) runs an A*-style beam search over the Plexus:
+each candidate chain is scored by its cumulative edge affinity (how coherent the
+path is so far) PLUS a heuristic pull toward the goal (the frontier node's
+affinity to the target). The goal heuristic is the whole difference — it heads at
+the answer rather than drifting. Every step is a real PMI edge, so the chain is
+grounded and verifiable; this is inference, not retrieval.
+
+**Verified live — genuine reasoned derivations:**
+```
+  force -> acting -> particle -> motion     (Newtonian mechanics, derived)
+  light -> ray -> heat                       (radiant heat, 2 steps)
+  energy -> dissipation -> idleness -> luxury -> life
+  number -> music : "no full path within depth" -> honest closest approach
+```
+`force -> acting -> particle -> motion` is the shape of real reasoning: a
+conceptual derivation, not a word association. And when no path exists (number to
+music) it SAYS SO and returns its closest reasoned approach instead of fabricating
+a connection — honest inference.
+
+This is the distinction from `ruminate` (wanders) and `consult` (retrieves): it
+walks the clean structure with PURPOSE. The foundation the whole hub-problem arc
+was for — now that the structure is coherent, reasoning can stand on it. 10/10
+suites pass. Next: chain inference into explanation/answering, and verify paths
+against the abstraction tower.
+
 ## v0.78.0 — Generation cleaned: hub-free, loop-free, topic-leaning voice
 
 **Author:** Morphus

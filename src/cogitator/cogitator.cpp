@@ -1208,4 +1208,53 @@ Rumination Cogitator::ruminate(std::string_view stimulus, std::size_t max_depth)
     return r;
 }
 
+std::vector<std::string> Cogitator::infer_path(const std::string& start,
+                                               const std::string& goal,
+                                               std::size_t max_depth) const {
+    if (!plexus_ || !plexus_->has(start) || !plexus_->has(goal)) return {};
+    if (start == goal) return { start };
+
+    // Beam search over the Plexus, A*-style: each candidate path is scored by its
+    // cumulative edge affinity (how coherent the chain is so far) PLUS a heuristic
+    // pull toward the goal (the affinity of the frontier node to the goal). The
+    // heuristic is what makes this REASONING toward an answer rather than the
+    // aimless wandering of ruminate.
+    struct Path { std::vector<std::string> nodes; double score; };
+    constexpr std::size_t kBeam   = 24;   // paths kept per level
+    constexpr std::size_t kExpand = 16;   // associates explored per frontier node
+    const double          kGoalPull = 1.5;
+
+    std::vector<Path> beam{ { { start }, 0.0 } };
+    std::vector<std::string> best_partial{ start };
+    double best_h = plexus_->affinity(start, goal);
+
+    for (std::size_t d = 0; d < max_depth; ++d) {
+        std::vector<Path> next;
+        next.reserve(beam.size() * kExpand);
+        for (const auto& p : beam) {
+            const std::string& last = p.nodes.back();
+            for (const auto& kv : plexus_->associates(last, kExpand)) {
+                const std::string& kin = kv.first;
+                if (std::find(p.nodes.begin(), p.nodes.end(), kin) != p.nodes.end())
+                    continue;                                   // no cycles within a path
+                Path np;
+                np.nodes = p.nodes;
+                np.nodes.push_back(kin);
+                if (kin == goal) return np.nodes;               // reached — inference complete
+                const double to_goal = plexus_->affinity(kin, goal);
+                np.score = p.score + kv.second + kGoalPull * to_goal;
+                if (to_goal > best_h) { best_h = to_goal; best_partial = np.nodes; }
+                next.push_back(std::move(np));
+            }
+        }
+        if (next.empty()) break;
+        const std::size_t keep = std::min(kBeam, next.size());
+        std::partial_sort(next.begin(), next.begin() + keep, next.end(),
+                          [](const Path& a, const Path& b) { return a.score > b.score; });
+        next.resize(keep);
+        beam = std::move(next);
+    }
+    return best_partial;   // the closest reasoned approach when no full path is found
+}
+
 } // namespace khora::cogitator

@@ -1360,6 +1360,35 @@ int main(int argc, char** argv) {
         }
     });
 
+    // infer — Khora's first reasoning faculty: a goal-directed inference path
+    // connecting two concepts, every step a verifiable association. Not wandering
+    // (ruminate) and not retrieval (consult) — thinking TOWARD an answer.
+    shell.register_tool({
+        "infer",
+        "Khora reasons a path connecting two concepts (usage: infer <start> [to] <goal>)",
+        [&mind](const carapace::Intent& i) -> carapace::ToolResult {
+            if (i.args.size() < 2) return {false, "", "usage: infer <start> <goal>"};
+            auto norm = [](const std::string& s) {
+                auto t = khora::lexicon::tokenize(s);
+                return t.empty() ? s : t.front();
+            };
+            const std::string start = norm(i.args.front());
+            const std::string goal  = norm(i.args.back());
+            const auto path = mind.infer_path(start, goal, 7);
+            if (path.empty())
+                return {false, "", "cannot reason between '" + start + "' and '" + goal +
+                        "' — one is unknown to the plexus"};
+            std::ostringstream os;
+            os << "Khora reasons from '" << start << "' to '" << goal << "':\n  ";
+            for (std::size_t k = 0; k < path.size(); ++k) { if (k) os << " -> "; os << path[k]; }
+            if (path.back() == goal)
+                os << "\n  (connected in " << (path.size() - 1) << " steps — every link a real association)";
+            else
+                os << "\n  (no full path within depth; this is its closest reasoned approach to '" << goal << "')";
+            return {true, os.str(), ""};
+        }
+    });
+
     shell.register_tool({
         "study",
         "absorb a tome from the pool into actual knowledge  (usage: study <title> [max_tokens])",
