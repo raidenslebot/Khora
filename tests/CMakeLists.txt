@@ -21,3 +21,7 @@ add_test(NAME SomaTest COMMAND soma_test)
 add_executable(reverie_test reverie_test.cpp)
 target_link_libraries(reverie_test PRIVATE khora::reverie)
 add_test(NAME ReverieTest COMMAND reverie_test)
+
+add_executable(carapace_test carapace_test.cpp)
+target_link_libraries(carapace_test PRIVATE khora::carapace)
+add_test(NAME CarapaceTest COMMAND carapace_test)

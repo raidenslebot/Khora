@@ -1,0 +1,323 @@
+#include "khora/carapace/builtin_tools.hpp"
+
+#include <chrono>
+#include <ctime>
+#include <filesystem>
+#include <fstream>
+#include <sstream>
+#include <string>
+
+namespace khora::carapace {
+
+namespace {
+
+ToolResult make_ok(std::string output) { return {true, std::move(output), ""}; }
+ToolResult make_err(std::string error) { return {false, "", std::move(error)}; }
+
+std::string join_args(const std::vector<std::string>& args, std::size_t start = 0) {
+    std::string out;
+    for (std::size_t i = start; i < args.size(); ++i) {
+        if (i > start) out.push_back(' ');
+        out += args[i];
+    }
+    return out;
+}
+
+std::string now_iso() {
+    const auto t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    std::tm tm{};
+#if defined(_WIN32)
+    localtime_s(&tm, &t);
+#else
+    localtime_r(&t, &tm);
+#endif
+    char buf[32];
+    std::strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%S", &tm);
+    return buf;
+}
+
+constexpr std::uintmax_t kMaxReadBytes = 4ULL * 1024ULL * 1024ULL;  // 4 MB cap on cat
+
+} // namespace
+
+void register_core_tools(Carapace& c) {
+    c.register_tool({
+        "help",
+        "list all registered tools",
+        [&c](const Intent&) -> ToolResult {
+            std::ostringstream os;
+            os << "Khora tools:\n";
+            for (const auto& name : c.list_tools()) {
+                const auto* t = c.find_tool(name);
+                os << "  " << name;
+                if (t && !t->description.empty()) os << "  -- " << t->description;
+                os << "\n";
+            }
+            return make_ok(os.str());
+        }
+    });
+
+    c.register_tool({
+        "echo",
+        "echo arguments back",
+        [](const Intent& i) -> ToolResult {
+            return make_ok(join_args(i.args));
+        }
+    });
+
+    c.register_tool({
+        "now",
+        "current local time in ISO-8601",
+        [](const Intent&) -> ToolResult {
+            return make_ok(now_iso());
+        }
+    });
+
+    c.register_tool({
+        "pwd",
+        "print current working directory",
+        [](const Intent&) -> ToolResult {
+            std::error_code ec;
+            auto p = std::filesystem::current_path(ec);
+            if (ec) return make_err(ec.message());
+            return make_ok(p.string());
+        }
+    });
+
+    c.register_tool({
+        "ls",
+        "list directory  (usage: ls [path])",
+        [](const Intent& i) -> ToolResult {
+            namespace fs = std::filesystem;
+            const fs::path p = i.args.empty() ? fs::current_path() : fs::path(i.args[0]);
+            std::error_code ec;
+            if (!fs::exists(p, ec)) return make_err("no such path: " + p.string());
+            if (!fs::is_directory(p, ec)) {
+                std::ostringstream os;
+                os << p.filename().string() << "  (" << fs::file_size(p, ec) << " bytes)";
+                return make_ok(os.str());
+            }
+            std::ostringstream os;
+            for (const auto& entry : fs::directory_iterator(p, ec)) {
+                const bool dir = entry.is_directory(ec);
+                os << (dir ? "[d] " : "[f] ") << entry.path().filename().string();
+                if (!dir) {
+                    auto sz = entry.file_size(ec);
+                    if (!ec) os << "  (" << sz << " bytes)";
+                }
+                os << "\n";
+            }
+            return make_ok(os.str());
+        }
+    });
+
+    c.register_tool({
+        "cat",
+        "read a file  (usage: cat <path>, max 4 MB)",
+        [](const Intent& i) -> ToolResult {
+            namespace fs = std::filesystem;
+            if (i.args.empty()) return make_err("usage: cat <path>");
+            const fs::path p(i.args[0]);
+            std::error_code ec;
+            if (!fs::exists(p, ec)) return make_err("no such file: " + p.string());
+            if (fs::is_directory(p, ec)) return make_err("is a directory: " + p.string());
+            const auto sz = fs::file_size(p, ec);
+            if (sz > kMaxReadBytes) {
+                return make_err("file too large (" + std::to_string(sz) +
+                                " bytes; cap is " + std::to_string(kMaxReadBytes) + ")");
+            }
+            std::ifstream is(p, std::ios::binary);
+            if (!is) return make_err("cannot open: " + p.string());
+            std::ostringstream os;
+            os << is.rdbuf();
+            return make_ok(os.str());
+        }
+    });
+
+    c.register_tool({
+        "stat",
+        "file metadata  (usage: stat <path>)",
+        [](const Intent& i) -> ToolResult {
+            namespace fs = std::filesystem;
+            if (i.args.empty()) return make_err("usage: stat <path>");
+            const fs::path p(i.args[0]);
+            std::error_code ec;
+            if (!fs::exists(p, ec)) return make_err("no such path: " + p.string());
+            std::ostringstream os;
+            os << "path : " << p.string() << "\n";
+            os << "type : " << (fs::is_directory(p, ec) ? "directory" :
+                                fs::is_regular_file(p, ec) ? "file" : "other") << "\n";
+            if (fs::is_regular_file(p, ec)) {
+                os << "size : " << fs::file_size(p, ec) << " bytes\n";
+            }
+            return make_ok(os.str());
+        }
+    });
+
+    c.register_tool({
+        "write",
+        "write a file  (usage: write <path> \"<content>\")",
+        [](const Intent& i) -> ToolResult {
+            namespace fs = std::filesystem;
+            if (i.args.size() < 2) return make_err("usage: write <path> <content>");
+            const fs::path p(i.args[0]);
+            std::error_code ec;
+            if (p.has_parent_path()) fs::create_directories(p.parent_path(), ec);
+            std::ofstream os(p, std::ios::binary | std::ios::trunc);
+            if (!os) return make_err("cannot open for write: " + p.string());
+            const std::string content = join_args(i.args, 1);
+            os.write(content.data(), static_cast<std::streamsize>(content.size()));
+            os.close();
+            return make_ok("wrote " + std::to_string(content.size()) +
+                           " bytes to " + p.string());
+        }
+    });
+}
+
+void register_memory_tools(Carapace& c, khora::lattice::Lattice& memory) {
+    using khora::lattice::Glyph;
+
+    c.register_tool({
+        "memorize",
+        "store a label as a glyph in the Lattice  (usage: memorize <label>)",
+        [&memory](const Intent& i) -> ToolResult {
+            if (i.args.empty()) return make_err("usage: memorize <label>");
+            const std::string& label = i.args[0];
+            memory.store(label, Glyph::from_hash(label));
+            return make_ok("memorized: " + label + "  (lattice size = " +
+                           std::to_string(memory.size()) + ")");
+        }
+    });
+
+    c.register_tool({
+        "recall",
+        "confirm a label is in the Lattice and show its glyph stats",
+        [&memory](const Intent& i) -> ToolResult {
+            if (i.args.empty()) return make_err("usage: recall <label>");
+            const auto g = memory.recall(i.args[0]);
+            if (!g) return make_err("not in lattice: " + i.args[0]);
+            std::ostringstream os;
+            os << "recalled: " << i.args[0]
+               << "  popcount=" << g->popcount()
+               << "  density=" << g->density();
+            return make_ok(os.str());
+        }
+    });
+
+    c.register_tool({
+        "query",
+        "find lattice glyphs nearest to a text-hash probe  (usage: query <text> [k])",
+        [&memory](const Intent& i) -> ToolResult {
+            if (i.args.empty()) return make_err("usage: query <text> [k]");
+            std::size_t k = 3;
+            if (i.args.size() >= 2) {
+                try { k = static_cast<std::size_t>(std::stoul(i.args[1])); }
+                catch (...) {}
+            }
+            const Glyph probe = Glyph::from_hash(i.args[0]);
+            const auto matches = memory.query(probe, k);
+            if (matches.empty()) return make_ok("no matches (lattice empty)");
+            std::ostringstream os;
+            os << "top-" << matches.size() << " matches for \"" << i.args[0] << "\":\n";
+            for (std::size_t j = 0; j < matches.size(); ++j) {
+                os << "  " << (j + 1) << ". " << matches[j].label
+                   << "  hamming=" << matches[j].hamming
+                   << "  sim=" << matches[j].similarity << "\n";
+            }
+            return make_ok(os.str());
+        }
+    });
+}
+
+void register_cortex_tools(Carapace& c, khora::cortex::PredictiveColumn& cortex) {
+    using khora::lattice::Glyph;
+
+    c.register_tool({
+        "learn",
+        "feed a text token into the cortex  (usage: learn <text>)",
+        [&cortex](const Intent& i) -> ToolResult {
+            if (i.args.empty()) return make_err("usage: learn <text>");
+            const auto r = cortex.step(Glyph::from_hash(i.args[0]));
+            std::ostringstream os;
+            os << "fed \"" << i.args[0] << "\"  sim=" << r.similarity
+               << "  novel=" << (r.novel_context ? "yes" : "no")
+               << "  obs=" << cortex.observations()
+               << "  recent_acc=" << cortex.recent_accuracy();
+            return make_ok(os.str());
+        }
+    });
+
+    c.register_tool({
+        "predict",
+        "show cortex's next-step prediction stats",
+        [&cortex](const Intent&) -> ToolResult {
+            const auto g = cortex.predict();
+            std::ostringstream os;
+            os << "prediction popcount=" << g.popcount()
+               << "  density=" << g.density()
+               << "  associations=" << cortex.associations()
+               << "  recent_acc=" << cortex.recent_accuracy();
+            return make_ok(os.str());
+        }
+    });
+
+    c.register_tool({
+        "cortex_stats",
+        "summarize the predictive cortex column",
+        [&cortex](const Intent&) -> ToolResult {
+            std::ostringstream os;
+            os << "Cortex column:\n"
+               << "  observations  : " << cortex.observations() << "\n"
+               << "  associations  : " << cortex.associations() << "\n"
+               << "  recent_accuracy: " << cortex.recent_accuracy() << "\n";
+            return make_ok(os.str());
+        }
+    });
+}
+
+void register_soma_tools(Carapace& c, khora::soma::SomaNexus& soma) {
+    using khora::soma::Drive;
+    using khora::soma::drive_name;
+    using khora::soma::kDriveCount;
+
+    auto drive_from_name = [](const std::string& s) -> int {
+        for (std::size_t i = 0; i < kDriveCount; ++i) {
+            if (s == drive_name(static_cast<Drive>(i))) return static_cast<int>(i);
+        }
+        return -1;
+    };
+
+    c.register_tool({
+        "mood",
+        "print all drive strengths",
+        [&soma](const Intent&) -> ToolResult {
+            const auto snap = soma.snapshot();
+            std::ostringstream os;
+            os << "Soma snapshot:\n";
+            for (std::size_t i = 0; i < kDriveCount; ++i) {
+                os << "  " << drive_name(static_cast<Drive>(i)) << " = " << snap[i] << "\n";
+            }
+            return make_ok(os.str());
+        }
+    });
+
+    c.register_tool({
+        "stimulate",
+        "adjust a drive  (usage: stimulate <drive_name> <delta>)",
+        [&soma, drive_from_name](const Intent& i) -> ToolResult {
+            if (i.args.size() < 2) return make_err("usage: stimulate <drive_name> <delta>");
+            const int idx = drive_from_name(i.args[0]);
+            if (idx < 0) return make_err("unknown drive: " + i.args[0]);
+            double delta = 0.0;
+            try { delta = std::stod(i.args[1]); }
+            catch (...) { return make_err("bad delta: " + i.args[1]); }
+            soma.stimulate(static_cast<Drive>(idx), delta);
+            std::ostringstream os;
+            os << "stimulated " << i.args[0] << " by " << delta
+               << " -> " << soma.strength(static_cast<Drive>(idx));
+            return make_ok(os.str());
+        }
+    });
+}
+
+} // namespace khora::carapace

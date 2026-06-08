@@ -3,6 +3,45 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.7.0 — Carapace v0.1 + the khora runtime
+
+**Author:** Morphus
+
+The version that makes Khora usable. A real interactive shell that
+brings up all five subsystems, persists Lattice state across runs, and
+exposes 19 tools to the operator.
+
+Shipped:
+
+- `khora::carapace::Carapace` — registry of named Tools dispatched by
+  Intent. Whitespace + double-quoted-string parser, throw-safe
+  dispatch, alphabetised tool listing.
+- 19 built-in tools across four registration helpers:
+  - **core**: help, echo, now, pwd, ls, cat, stat, write
+  - **memory**: memorize, recall, query
+  - **cortex**: learn, predict, cortex_stats
+  - **soma**: mood, stimulate
+  - **runtime (khora_main)**: stats, dream, save
+- `khora.exe` — actual user-facing runtime. Auto-loads any prior
+  Lattice state from `data/lattice_archive/main.klat` at startup,
+  auto-saves on exit (both interactive REPL and single-command
+  invocation). Two operating modes:
+  - **Interactive**: `khora.exe` opens a REPL prompt.
+  - **Single-command**: `khora.exe <verb> [args...]` runs one tool
+    and exits, saving state along the way.
+- `carapace_test` — ten assertions covering whitespace + quoted parsing,
+  empty input, unknown verb, echo, help, memory round-trip, cortex/soma
+  wiring, and exception-safe dispatch.
+
+Verified end-to-end across multiple process invocations:
+```
+> khora memorize alpha   ->  lattice size = 1
+> khora memorize bravo   ->  [loaded 1 glyphs from ...]  size = 2
+> khora query alpha 2    ->  1. alpha  sim=1.000   2. bravo  sim=-0.011
+```
+
+Tests passing: **7/7 ctest suites, 52 assertions total.**
+
 ## v0.6.0 — Reverie Loom
 
 **Author:** Morphus
