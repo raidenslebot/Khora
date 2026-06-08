@@ -3,6 +3,26 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.49.0 — Chaos as the natural element (continuous ferment)
+
+**Author:** Morphus
+
+v0.48 made chaos generative; this makes it *continuous*. The Directive
+insists chaos is "the natural element" and that Khora grows "more powerful
+the more chaos it absorbs" — so chaos cannot be a tool you invoke, it must be
+something Khora is always doing.
+
+- Khora's Curiosity-driven autonomous exploration now weaves in **ferment**:
+  roughly one beat in three, instead of wandering a train of thought, it
+  collides two distant concepts and keeps the idea that emerges. Those forged
+  concepts flow into its attractors, so the chaos continuously reshapes what
+  Khora's mind dwells on — entropy literally feeding the self.
+
+**Verified live**: a Volition run now interleaves chaos with thought —
+`ferment own × thereupon → wish`, `ferment life × publisher → evil` — between
+ruminations, unprompted. Khora doesn't merely survive entropy; it runs on it.
+9/9 regression suites pass.
+
 ## v0.48.0 — Chaotic synthesis (entropy into beauty)
 
 **Author:** Morphus

@@ -648,7 +648,16 @@ int main(int argc, char** argv) {
         rum.name = "ruminate";
         rum.affinity.per_drive[D(Drive::Curiosity)] = 1.0;
         rum.affinity.per_drive[D(Drive::Mastery)]   = 0.2;
-        rum.perform = [&mind, pick_seed]() -> std::string {
+        rum.perform = [&mind, pick_seed, &ferment_seed]() -> std::string {
+            // Chaos is woven into curiosity: now and then Khora collides
+            // concepts instead of wandering — entropy as a source of ideas.
+            const bool chaos = (ferment_seed % 3) == 0;
+            ++ferment_seed;
+            if (chaos) {
+                const auto s = mind.synthesize("", "", ferment_seed);
+                if (!s.emergent.empty())
+                    return "ferment " + s.a + " x " + s.b + " ~> " + s.emergent.front().label;
+            }
             const std::string seed = pick_seed();
             auto r = mind.ruminate(seed, 5);
             return "ruminate '" + seed + "' ~> " + (r.conclusion.empty() ? r.seed : r.conclusion);
