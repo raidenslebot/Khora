@@ -34,6 +34,7 @@
 #include "khora/soma/soma_nexus.hpp"
 
 #include <cstddef>
+#include <cstdint>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -56,6 +57,51 @@ struct Thought {
     std::string                                chosen_label;      // resolved answer, or empty
 };
 
+// --- Non-linear cognition: the Prism ---
+//
+// A stimulus does not travel one path. It refracts into parallel Facets,
+// each viewing the problem through a different Lens. The Facets explore
+// concurrently (real threads), then compete; the Soma arbitrates by
+// drive-valence; the coherent coalition collapses into a single thought.
+// Meaning emerges from the whole chorus, not a linear chain.
+
+enum class Lens : std::uint8_t {
+    Holistic,     // the whole stimulus, balanced
+    Leading,      // weight the front of the stimulus
+    Trailing,     // weight the tail of the stimulus
+    Broad,        // cast a wide resonance net (high k)
+    Focused,      // the single sharpest match (k = 1)
+    Curious,      // deliberately chase a non-obvious alternative
+    Associative,  // follow the cortex's forward projection
+    Chaotic,      // perturb the probe with entropy and explore nearby
+    _Count
+};
+
+const char* lens_name(Lens l) noexcept;
+
+struct Facet {
+    Lens                                       lens = Lens::Holistic;
+    khora::lattice::Glyph                      probe;
+    khora::lattice::Glyph                      candidate;    // this facet's answer-glyph
+    std::vector<khora::lattice::LatticeMatch>  resonances;
+    double                                     confidence = 0.0;
+    double                                     valence = 0.0;  // soma's drive-weighted score
+    bool                                       novel = true;
+    std::string                                label;          // top resonance label, if any
+};
+
+struct Deliberation {
+    std::string                stimulus;
+    std::vector<std::string>   tokens;
+    std::vector<Facet>         facets;        // the parallel explorations
+    int                        winner = -1;   // index of the arbitrated winner
+    double                     coherence = 0.0; // how much the facets agreed (0..1)
+    double                     entropy = 0.0;   // spread of valences (chaos in the chorus)
+    khora::lattice::Glyph      collapsed;     // the coherent coalition, bundled
+    std::string                chosen_label;  // winner's answer, or empty
+    bool                       learned = false;
+};
+
 class Cogitator {
 public:
     Cogitator(khora::lexicon::Lexicon&         lex,
@@ -75,19 +121,28 @@ public:
     std::size_t max_resolve_attempts()const noexcept { return max_attempts_; }
     bool        learn_from_thoughts() const noexcept { return learn_from_thoughts_; }
 
-    // One act of thought — runs the full resolve loop.
+    // One act of thought — runs the full (linear) resolve loop.
     Thought think(std::string_view stimulus);
+
+    // Non-linear cognition: refract the stimulus into parallel Facets,
+    // let them compete, and collapse the coherent coalition. `facets`
+    // caps how many lenses to spawn (default: all of them).
+    Deliberation deliberate(std::string_view stimulus,
+                            std::size_t facets = static_cast<std::size_t>(Lens::_Count));
 
     // Stats
     std::size_t thoughts_completed() const noexcept { return thoughts_; }
     std::size_t novel_thoughts()     const noexcept { return novel_count_; }
     std::size_t hypotheses_formed()  const noexcept { return hypotheses_formed_; }
     std::size_t total_attempts()     const noexcept { return total_attempts_; }
+    std::size_t deliberations()      const noexcept { return deliberations_; }
 
 private:
     khora::lattice::Glyph encode_(const std::vector<std::string>& tokens) const;
     khora::lattice::Glyph gestalt_(const khora::lattice::Glyph& probe,
                                    const std::vector<khora::lattice::LatticeMatch>& res) const;
+    Facet explore_facet_(const std::vector<std::string>& tokens, Lens lens,
+                         std::uint64_t entropy_seed) const;
 
     khora::lexicon::Lexicon&         lex_;
     khora::lattice::Lattice&         memory_;
@@ -105,6 +160,7 @@ private:
     std::size_t hypotheses_formed_ = 0;
     std::size_t total_attempts_    = 0;
     std::size_t hypothesis_seq_    = 0;
+    std::size_t deliberations_     = 0;
 };
 
 } // namespace khora::cogitator

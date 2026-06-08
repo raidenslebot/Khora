@@ -3,6 +3,39 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.22.0 — Non-linear cognition (the Prism)
+
+**Author:** Morphus
+
+Khora no longer thinks in a line. `Cogitator::deliberate()` refracts a
+stimulus into eight **Facets** that explore **concurrently** (real
+`std::async` threads on the multicore CPU), each through a different
+**Lens**:
+
+- *holistic* — the whole stimulus, balanced
+- *leading* / *trailing* — weight the front / tail of the stimulus
+- *broad* / *focused* — a wide net (high k) vs the single sharpest match
+- *curious* — deliberately chase the non-obvious alternative
+- *associative* — follow the cortex's forward projection
+- *chaotic* — perturb the probe with entropy and explore nearby
+
+The facets compete; the **Soma arbitrates** by drive-weighted valence
+(each lens flatters a different drive, so Khora's mood tilts the
+contest); the **coherent coalition collapses** into one thought
+(`coherence` = how much the chorus agreed, `entropy` = the spread of
+valences). The collapsed thought is consolidated into memory + cortex,
+so deliberations become traces future thinking resonates against.
+
+**Verified live**: on "how do i defeat the enemy", the facets genuinely
+disagreed — *trailing* found the highest literal confidence on `enemy`
+(0.50), but the curiosity-weighted arbitration crowned the *curious*
+facet's non-obvious `strategy` (coherence 0.57, entropy 0.20). A second
+deliberation then resonated against the trace the first left behind.
+Meaning emerged from the whole chorus, not a token chain — exactly the
+non-linear cognition the directive demands.
+
+New tool: `deliberate <text>`. 9/9 regression suites pass.
+
 ## v0.21.0 — Transitive reasoning faculty
 
 **Author:** Morphus

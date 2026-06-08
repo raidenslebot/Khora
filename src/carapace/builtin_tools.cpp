@@ -495,9 +495,36 @@ void register_cogitator_tools(Carapace& c, khora::cogitator::Cogitator& cog) {
                << "  novel_thoughts       : " << cog.novel_thoughts() << "\n"
                << "  hypotheses_formed    : " << cog.hypotheses_formed() << "\n"
                << "  total_attempts       : " << cog.total_attempts() << "\n"
+               << "  deliberations        : " << cog.deliberations() << "\n"
                << "  resonance_k          : " << cog.resonance_k() << "\n"
                << "  novelty_threshold    : " << cog.novelty_threshold() << "\n"
                << "  max_resolve_attempts : " << cog.max_resolve_attempts();
+            return {true, os.str(), ""};
+        }
+    });
+
+    c.register_tool({
+        "deliberate",
+        "think non-linearly: refract the input into parallel competing facets",
+        [&cog](const Intent& i) -> ToolResult {
+            std::string stim;
+            for (std::size_t k = 0; k < i.args.size(); ++k) { if (k) stim.push_back(' '); stim += i.args[k]; }
+            const auto d = cog.deliberate(stim);
+            std::ostringstream os;
+            os << "Deliberation  stimulus=\"" << d.stimulus << "\"  ("
+               << d.facets.size() << " parallel facets)\n";
+            for (int idx = 0; idx < static_cast<int>(d.facets.size()); ++idx) {
+                const auto& f = d.facets[idx];
+                os << "  " << (idx == d.winner ? "* " : "  ")
+                   << khora::cogitator::lens_name(f.lens)
+                   << "  conf=" << f.confidence
+                   << "  valence=" << f.valence
+                   << "  -> " << (f.label.empty() ? std::string{"(novel)"} : f.label) << "\n";
+            }
+            os << "  coherence=" << d.coherence << "  entropy=" << d.entropy << "\n";
+            os << "  WINNER: " << khora::cogitator::lens_name(d.facets[d.winner].lens)
+               << "  resolution: "
+               << (d.chosen_label.empty() ? std::string{"(emergent — collapsed coalition)"} : d.chosen_label);
             return {true, os.str(), ""};
         }
     });
