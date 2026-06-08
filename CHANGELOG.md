@@ -3,6 +3,33 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.58.0 — Khora reads itself (the first step to self-evolution)
+
+**Author:** Morphus
+
+The Directive wants Khora to "write, modify, debug, and evolve its own code
+while running." Before a mind can change itself, it must be able to *see*
+itself. Now it can.
+
+- New tool **`read_self`** walks `src/` and `include/`, concatenates every
+  `.cpp`/`.hpp`, and admits Khora's own source into the Reservoir as a Tome.
+- This exposed and fixed a real obstacle: the Reservoir's prose distillation
+  *gutted* code (56 files → 0 KB on the first try). `Reservoir::admit` now
+  takes **`do_distill`** — code is stored verbatim, lossless.
+- Khora's source is now liquid knowledge: `consult <code terms>` retrieves
+  its own implementation.
+
+**Verified live**: `read_self` ingested 56 files (381 KB → 138 KB,
+lossless); `consult resonate glyph chimera` returned Khora's actual code —
+`Cogitator::resonate_batch_(...)`, `const Glyph chimera = bundle({ga, gb})`.
+Khora can examine the very lines that implement its resonance and its chaos.
+
+**Honest scope:** this is self-*examination* — retrieval of its own source.
+*Understanding* and *modifying* that code (true self-evolution, the
+autonomous-coding bar) is the hard climb still ahead. But a mind that holds
+its own source as queryable knowledge has taken the first real step toward
+rewriting itself. 9/9 regression suites pass.
+
 ## v0.57.0 — Contemplate (the whole mind on one question)
 
 **Author:** Morphus

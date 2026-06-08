@@ -54,10 +54,14 @@ public:
     // Admit raw acquired bytes: distill -> compress -> verify -> store,
     // evicting lowest-value Tomes if over cap. Re-admitting an existing
     // title replaces it.
+    // do_distill=false stores the bytes verbatim (no prose distillation) —
+    // used for material that is not book prose, e.g. source code, where
+    // distillation would strip the very structure that matters.
     AdmitResult admit(const std::string& title,
                       const std::string& topic,
                       const std::string& source_url,
-                      const std::string& raw_bytes);
+                      const std::string& raw_bytes,
+                      bool do_distill = true);
 
     // Read a Tome's distilled text (decompressing as needed). Bumps the
     // read counter. nullopt if absent.

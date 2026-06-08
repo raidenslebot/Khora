@@ -1065,6 +1065,40 @@ int main(int argc, char** argv) {
         }
     });
     shell.register_tool({
+        "read_self",
+        "Khora ingests its own source code into its liquid knowledge  (usage: read_self)",
+        [&pool](const carapace::Intent&) -> carapace::ToolResult {
+            namespace fs = std::filesystem;
+            std::string code;
+            std::size_t files = 0;
+            for (const char* root : {"src", "include"}) {
+                std::error_code ec;
+                if (!fs::exists(root, ec)) continue;
+                for (const auto& e : fs::recursive_directory_iterator(root, ec)) {
+                    if (!e.is_regular_file()) continue;
+                    const auto ext = e.path().extension().string();
+                    if (ext != ".cpp" && ext != ".hpp") continue;
+                    std::ifstream f(e.path(), std::ios::binary);
+                    if (!f) continue;
+                    std::stringstream ss; ss << f.rdbuf();
+                    code += "\n// ==== " + e.path().generic_string() + " ====\n";
+                    code += ss.str();
+                    ++files;
+                }
+            }
+            if (files == 0)
+                return {false, "", "no source found — run Khora from its project root (C:/Ai/Khora)"};
+            const auto r = pool.admit("Khora Source Code", "code", "self", code, /*do_distill=*/false);
+            std::ostringstream os;
+            os << "Khora read itself: " << files << " source files, "
+               << (r.original_bytes / 1024) << " KB -> " << (r.stored_bytes / 1024)
+               << " KB stored (" << r.compression_ratio << "x, lossless="
+               << (r.verified_lossless ? "yes" : "no")
+               << "). Its own code is now liquid knowledge — consult it.";
+            return {true, os.str(), ""};
+        }
+    });
+    shell.register_tool({
         "contemplate",
         "engage a question with Khora's whole mind: sources, thought, connection  (usage: contemplate <query>)",
         [&mind, &lex, consult_passages](const carapace::Intent& in) -> carapace::ToolResult {

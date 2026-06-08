@@ -73,14 +73,16 @@ bool Reservoir::write_tome_file_(const std::string& title, std::uint8_t method,
 }
 
 AdmitResult Reservoir::admit(const std::string& title, const std::string& topic,
-                             const std::string& source_url, const std::string& raw_bytes) {
+                             const std::string& source_url, const std::string& raw_bytes,
+                             bool do_distill) {
     AdmitResult r;
     r.title = title;
 
-    // 1. Distill to clean canonical text.
+    // 1. Distill to clean canonical text — unless the caller opted out (e.g.
+    //    source code, which distillation would gut).
     DistillStats ds;
-    const std::string clean = distill(raw_bytes, &ds);
-    if (clean.empty()) { r.error = "distillation produced empty text"; return r; }
+    const std::string clean = do_distill ? distill(raw_bytes, &ds) : raw_bytes;
+    if (clean.empty()) { r.error = "nothing to admit"; return r; }
 
     const std::vector<std::uint8_t> bytes(clean.begin(), clean.end());
 
