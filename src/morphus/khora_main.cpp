@@ -14,6 +14,7 @@
 #include "khora/lattice/lattice.hpp"
 #include "khora/lattice/persistence.hpp"
 #include "khora/lexicon/lexicon.hpp"
+#include "khora/lodestone/lodestone.hpp"
 #include "khora/reservoir/aqueduct.hpp"
 #include "khora/reservoir/reservoir.hpp"
 #include "khora/reverie/reverie_loom.hpp"
@@ -125,6 +126,16 @@ int main(int argc, char** argv) {
     carapace::register_soma_tools(shell, nexus);
     carapace::register_lexicon_tools(shell, lex);
     carapace::register_cogitator_tools(shell, mind);
+
+    shell.register_tool({
+        "hardware",
+        "gauge the machine and show the adaptive operating profile",
+        [&column](const carapace::Intent&) -> carapace::ToolResult {
+            const auto hw = lodestone::gauge("data");
+            column.set_max_associations(hw.recommended_assoc_cap);
+            return {true, hw.summary(), ""};
+        }
+    });
 
     // System-level tools that close over multiple subsystems.
     shell.register_tool({
@@ -474,10 +485,19 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    // 7. Start the background loops for interactive mode: Khora dreams
-    //    and sharpens itself the whole time the operator is present.
-    scheduler.start(std::chrono::milliseconds(100));
-    whet.start(std::chrono::milliseconds(250));
+    // 6.5 Gauge the hardware and adapt cognitive complexity to it. The
+    //     only limit is physics — so measure where it sits and fill the
+    //     space it leaves. (Interactive mode only; the benchmark costs a
+    //     couple of seconds and single-command runs are short-lived.)
+    const auto hw = lodestone::gauge("data");
+    std::cout << hw.summary() << "\n\n";
+    column.set_max_associations(hw.recommended_assoc_cap);
+
+    // 7. Start the background loops for interactive mode: Khora dreams and
+    //    sharpens itself the whole time the operator is present, paced to
+    //    what the hardware can carry.
+    scheduler.start(std::chrono::milliseconds(hw.recommended_reverie_ms));
+    whet.start(std::chrono::milliseconds(hw.recommended_whetstone_ms));
 
     // 8. Interactive REPL.
     print_banner();

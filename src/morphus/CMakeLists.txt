@@ -9,4 +9,5 @@ target_link_libraries(khora PRIVATE
     khora::whetstone
     khora::reservoir
     khora::curator
+    khora::lodestone
 )

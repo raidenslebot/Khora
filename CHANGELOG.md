@@ -3,6 +3,33 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.24.0 — The Lodestone (hardware self-gauge + adaptive complexity)
+
+**Author:** Morphus
+
+Khora measures the machine it lives in and scales its cognition to fit —
+"the only limit is physics," so it learns where the physics sit.
+`lodestone::gauge()` benchmarks:
+
+- single-thread `bind` / `hamming` glyph throughput (timed tight loops)
+- real parallel speedup (the same benchmark across every hardware thread)
+- total / available RAM (Win32 `GlobalMemoryStatusEx`)
+- disk write speed (a timed 16 MB write to the data dir)
+
+and derives an operating profile: facet count, cortex association cap,
+study token budget, and background reverie/whetstone cadences.
+
+Measured live on the operator's i7-13700K:
+```
+threads 24, bind 34.2 Mops/s, hamming 20.5 Mops/s, parallel 13.5x,
+RAM 8011/32603 MB free, disk 4226 MB/s
+-> facets 8, assoc cap 840014, study 136614, reverie 93ms, whet 259ms
+```
+
+The runtime gauges at interactive startup and applies the profile (the
+association cap rose from the 200k default to 840k on this RAM); the
+`hardware` tool re-gauges on demand. 9/9 regression suites pass.
+
 ## v0.23.0 — Recursive rumination (the train of thought)
 
 **Author:** Morphus
