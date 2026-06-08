@@ -3,6 +3,40 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.36.0 — Cognition resonates through the GPU semantic field
+
+**Author:** Morphus
+
+This is the one the whole Maelstrom arc was for: **thought itself now
+ranges over everything Khora has read**, on the GPU, in distributional-
+semantic space. Until now the Cogitator resonated only over `memory_` — a
+few hundred promoted concepts plus its own hypotheses. Now it resonates
+over the entire learned vocabulary.
+
+- The Cogitator holds a **Resonator over the Lexicon's content field**
+  (salient words, pure context glyphs, centrality hubs demoted — the same
+  recipe that made `nearest` sing). It rebuilds lazily, only when the
+  vocabulary changes, never mid-thought.
+- **Deliberation now batches**: the eight facets' probes are built serially,
+  resonated in **one** `resonate_batch` dispatch, then finished concurrently.
+  One GPU call instead of eight, and no shared-context hazard — the parallel
+  cognition is preserved, not serialized.
+- Cognition moved into **context-glyph space**: `encode_`/`facet_probe_`
+  build probes from each token's distributional context glyph (structural
+  fallback for unlearned words), so resonance follows *meaning*, not spelling
+  or function-word hubs.
+
+**Verified live** on the real 8,659-word vocabulary (Pride and Prejudice +
+The Republic). Trains of thought went from `justice → then → they → in → to`
+(function-word mush) to genuine concept walks:
+- `justice → injustice → profitable → easier → expectation → dismissed`
+- `war → hellenes → advantageous → precise → deed → punished`
+- `love → done → hurry → laughter → complexion → criminal`
+
+`deliberate "the nature of the soul"` lands its leading facet on **nature**
+and trailing on **soul**. The GPU is now powering actual cognition. 9/9
+regression suites pass.
+
 ## v0.35.0 — Resonance-centrality (all-vs-all on the GPU)
 
 **Author:** Morphus

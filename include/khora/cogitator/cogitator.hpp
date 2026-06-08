@@ -31,6 +31,7 @@
 #include "khora/cortex/predictive_column.hpp"
 #include "khora/lattice/lattice.hpp"
 #include "khora/lexicon/lexicon.hpp"
+#include "khora/maelstrom/maelstrom.hpp"
 #include "khora/soma/soma_nexus.hpp"
 
 #include <cstddef>
@@ -157,13 +158,37 @@ private:
     khora::lattice::Glyph encode_(const std::vector<std::string>& tokens) const;
     khora::lattice::Glyph gestalt_(const khora::lattice::Glyph& probe,
                                    const std::vector<khora::lattice::LatticeMatch>& res) const;
-    Facet explore_facet_(const std::vector<std::string>& tokens, Lens lens,
-                         std::uint64_t entropy_seed) const;
+
+    // Build a lens-shaped probe (the "view" each facet takes), and finish a
+    // facet given its already-resolved resonances — split so a deliberation
+    // can resonate all its facets in ONE batched call before they finish
+    // concurrently (one GPU dispatch, not eight; no shared-context hazard).
+    khora::lattice::Glyph facet_probe_(const std::vector<std::string>& tokens,
+                                       Lens lens, std::uint64_t entropy_seed) const;
+    Facet finish_facet_(Lens lens, const khora::lattice::Glyph& query_probe,
+                        std::vector<khora::lattice::LatticeMatch> resonances) const;
+
+    // Resonance over Khora's knowledge. The primary field is the Lexicon's
+    // whole learned vocabulary (indexed in the Resonator, GPU-accelerated at
+    // scale); memory_ holds the provisional concepts cognition itself coins.
+    void ensure_field_();
+    // A token's glyph for cognition: its pure distributional context glyph
+    // (so resonance follows meaning, not spelling), or the structural
+    // baseline as a fallback when Khora hasn't learned the word yet.
+    khora::lattice::Glyph token_glyph_(const std::string& tok) const;
+    std::vector<khora::lattice::LatticeMatch> resonate_(const khora::lattice::Glyph& probe,
+                                                        std::size_t k) const;
+    std::vector<std::vector<khora::lattice::LatticeMatch>> resonate_batch_(
+        const std::vector<khora::lattice::Glyph>& probes, std::size_t k) const;
+    khora::lattice::Glyph recall_(const std::string& label) const;
 
     khora::lexicon::Lexicon&         lex_;
     khora::lattice::Lattice&         memory_;
     khora::cortex::PredictiveColumn& cortex_;
     khora::soma::SomaNexus&          soma_;
+
+    maelstrom::Resonator field_{1024};        // GPU crossover for cognition
+    std::size_t          indexed_vocab_ = static_cast<std::size_t>(-1);
 
     std::size_t resonance_k_            = 5;
     double      novelty_threshold_      = 0.20;

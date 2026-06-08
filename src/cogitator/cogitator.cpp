@@ -22,11 +22,16 @@ Cogitator::Cogitator(khora::lexicon::Lexicon&         lex,
                      khora::soma::SomaNexus&          soma)
     : lex_(lex), memory_(memory), cortex_(cortex), soma_(soma) {}
 
+Glyph Cogitator::token_glyph_(const std::string& tok) const {
+    const Glyph g = lex_.context_glyph(tok);            // distributional meaning
+    return g.popcount() > 0 ? g : lex_.glyph_for(tok);  // structural fallback if unlearned
+}
+
 Glyph Cogitator::encode_(const std::vector<std::string>& tokens) const {
     if (tokens.empty()) return Glyph::zero();
     std::vector<Glyph> gs;
     gs.reserve(tokens.size());
-    for (const auto& t : tokens) gs.push_back(lex_.glyph_for(t));
+    for (const auto& t : tokens) gs.push_back(token_glyph_(t));
     return bundle(std::span<const Glyph>{gs.data(), gs.size()});
 }
 
@@ -36,16 +41,92 @@ Glyph Cogitator::gestalt_(const Glyph& probe,
     ingredients.reserve(1 + res.size());
     if (probe.popcount() > 0) ingredients.push_back(probe);
     for (const auto& m : res) {
-        if (auto g = memory_.recall(m.label)) ingredients.push_back(*g);
+        const Glyph g = recall_(m.label);
+        if (g.popcount() > 0) ingredients.push_back(g);
     }
     if (ingredients.empty()) return Glyph::zero();
     return bundle(std::span<const Glyph>{ingredients.data(), ingredients.size()});
+}
+
+// (Re)index the resonance field from the Lexicon whenever the vocabulary
+// has changed. The field is every learned word's glyph_for — cognition's
+// probe (a bundle of glyph_for tokens) lives in the same space, so the
+// match is exact. Rebuilds are lazy: one per vocabulary change, never
+// mid-deliberation.
+void Cogitator::ensure_field_() {
+    const std::size_t v = lex_.vocabulary_size();
+    if (v == indexed_vocab_) return;
+
+    // Resonate over CONTENT words only — the salient vocabulary, with the
+    // ubiquitous function words already filtered out — so cognition lands on
+    // meaning, not connective tissue. Fall back to the whole field for a
+    // small lexicon.
+    std::vector<std::pair<std::string, Glyph>> entries;
+    {
+        const auto salient = lex_.salient_tokens(200000, 3);
+        entries.reserve(salient.size());
+        for (const auto& w : salient) entries.emplace_back(w, lex_.context_glyph(w));
+        if (entries.size() < 50) entries = lex_.context_field();
+    }
+    field_.build(entries);
+
+    // Demote any residual distributional hubs (centrality outliers, mean+2σ)
+    // so thought resonates with content, not connective tissue.
+    if (entries.size() > 64) {
+        const auto deg = field_.centrality(10);
+        if (deg.size() == entries.size()) {
+            double mean = 0.0;
+            for (auto dd : deg) mean += dd;
+            mean /= static_cast<double>(deg.size());
+            double var = 0.0;
+            for (auto dd : deg) { const double e = dd - mean; var += e * e; }
+            var /= static_cast<double>(deg.size());
+            const double cut = mean + 2.0 * std::sqrt(var);
+            std::vector<std::pair<std::string, Glyph>> clean;
+            clean.reserve(entries.size());
+            for (std::size_t i = 0; i < entries.size(); ++i)
+                if (deg[i] <= cut) clean.push_back(std::move(entries[i]));
+            if (clean.size() >= 2 && clean.size() < entries.size())
+                field_.build(clean);
+        }
+    }
+    indexed_vocab_ = v;
+}
+
+// Single-probe resonance: the Lexicon field if populated, else the
+// provisional memory_. Callers on the linear path (think) only.
+std::vector<LatticeMatch> Cogitator::resonate_(const Glyph& probe, std::size_t k) const {
+    if (field_.size() > 0) return field_.query(probe, k);
+    if (memory_.size() > 0) return memory_.query(probe, k);
+    return {};
+}
+
+// Batched resonance: every probe in one shot. One GPU dispatch over the
+// field when active, so a deliberation's facets never contend for the
+// device. CPU/memory fallback preserves behaviour with no field.
+std::vector<std::vector<LatticeMatch>> Cogitator::resonate_batch_(
+    const std::vector<Glyph>& probes, std::size_t k) const {
+    if (field_.size() > 0) return field_.query_batch(probes, k);
+    std::vector<std::vector<LatticeMatch>> out;
+    out.reserve(probes.size());
+    for (const auto& p : probes)
+        out.push_back(memory_.size() > 0 ? memory_.query(p, k) : std::vector<LatticeMatch>{});
+    return out;
+}
+
+// Recover the glyph behind a resonance label: a coined concept from memory_,
+// or a learned word's glyph from the Lexicon. Zero if neither knows it.
+Glyph Cogitator::recall_(const std::string& label) const {
+    if (auto g = memory_.recall(label)) return *g;
+    if (lex_.has(label)) return lex_.glyph_for(label);
+    return Glyph::zero();
 }
 
 Thought Cogitator::think(std::string_view stimulus) {
     Thought t;
     t.stimulus = std::string(stimulus);
     ++thoughts_;
+    ensure_field_();
 
     // ENCODE
     t.tokens = khora::lexicon::tokenize(stimulus);
@@ -59,8 +140,8 @@ Thought Cogitator::think(std::string_view stimulus) {
 
         // RESONATE
         t.resonances.clear();
-        if (memory_.size() > 0 && t.probe.popcount() > 0) {
-            t.resonances = memory_.query(t.probe, resonance_k_);
+        if (t.probe.popcount() > 0) {
+            t.resonances = resonate_(t.probe, resonance_k_);
         }
         t.confidence = t.resonances.empty() ? 0.0 : t.resonances.front().similarity;
         t.gestalt    = gestalt_(t.probe, t.resonances);
@@ -89,11 +170,10 @@ Thought Cogitator::think(std::string_view stimulus) {
         if (t.probe.popcount() > 0) fragments.push_back(t.probe);
         for (const auto& tok : t.tokens) {
             const Glyph tg = lex_.glyph_for(tok);
-            if (memory_.size() > 0) {
-                const auto fm = memory_.query(tg, 1);
-                if (!fm.empty() && fm.front().similarity > novelty_threshold_ * 0.5) {
-                    if (auto g = memory_.recall(fm.front().label)) fragments.push_back(*g);
-                }
+            const auto fm = resonate_(tg, 1);
+            if (!fm.empty() && fm.front().similarity > novelty_threshold_ * 0.5) {
+                const Glyph g = recall_(fm.front().label);
+                if (g.popcount() > 0) fragments.push_back(g);
             }
             fragments.push_back(tg);
         }
@@ -156,66 +236,71 @@ const char* lens_name(Lens l) noexcept {
     }
 }
 
-Facet Cogitator::explore_facet_(const std::vector<std::string>& tokens, Lens lens,
-                                std::uint64_t entropy_seed) const {
-    Facet f;
-    f.lens = lens;
+// The breadth each lens resonates with.
+static std::size_t lens_k(Lens lens, std::size_t base) {
+    if (lens == Lens::Broad)   return std::max<std::size_t>(base, 8);
+    if (lens == Lens::Focused) return 1;
+    if (lens == Lens::Curious) return std::max<std::size_t>(base, 4);
+    return base;
+}
 
-    // 1. Build a probe shaped by the lens — different facets literally
-    //    look at different aspects of the stimulus.
+// Build the lens-shaped probe — different facets literally look at
+// different aspects of the stimulus. No resonance here; that is batched.
+Glyph Cogitator::facet_probe_(const std::vector<std::string>& tokens, Lens lens,
+                              std::uint64_t entropy_seed) const {
     std::vector<Glyph> parts;
     parts.reserve(tokens.size());
     const std::size_t n = tokens.size();
     switch (lens) {
         case Lens::Leading: {
             const std::size_t half = (n + 1) / 2;
-            for (std::size_t i = 0; i < half; ++i) parts.push_back(lex_.glyph_for(tokens[i]));
+            for (std::size_t i = 0; i < half; ++i) parts.push_back(token_glyph_(tokens[i]));
             break;
         }
         case Lens::Trailing: {
             const std::size_t start = n / 2;
-            for (std::size_t i = start; i < n; ++i) parts.push_back(lex_.glyph_for(tokens[i]));
+            for (std::size_t i = start; i < n; ++i) parts.push_back(token_glyph_(tokens[i]));
             break;
         }
         default:
-            for (const auto& tok : tokens) parts.push_back(lex_.glyph_for(tok));
+            for (const auto& tok : tokens) parts.push_back(token_glyph_(tok));
             break;
     }
-    f.probe = parts.empty() ? Glyph::zero()
-                            : bundle(std::span<const Glyph>{parts.data(), parts.size()});
+    Glyph probe = parts.empty() ? Glyph::zero()
+                                : bundle(std::span<const Glyph>{parts.data(), parts.size()});
 
     // The chaotic lens injects entropy — it explores a perturbed nearby
     // region of the manifold, the engine's way of courting the unexpected.
-    if (lens == Lens::Chaotic && f.probe.popcount() > 0) {
+    if (lens == Lens::Chaotic && probe.popcount() > 0) {
         std::uint64_t s = entropy_seed;
         const std::size_t flips = khora::lattice::kGlyphBits / 50;  // ~2% perturbation
         for (std::size_t i = 0; i < flips; ++i) {
             s = s * 6364136223846793005ULL + 1442695040888963407ULL;
-            f.probe.flip_bit(static_cast<std::size_t>(s % khora::lattice::kGlyphBits));
+            probe.flip_bit(static_cast<std::size_t>(s % khora::lattice::kGlyphBits));
         }
     }
 
     // The associative lens follows the cortex's forward projection instead
     // of the literal stimulus — thinking about what tends to come next.
-    Glyph query_probe = f.probe;
     if (lens == Lens::Associative) {
         const Glyph proj = cortex_.predict();
-        if (proj.popcount() > 0) {
-            query_probe = (f.probe.popcount() > 0) ? bundle({f.probe, proj}) : proj;
-        }
+        if (proj.popcount() > 0)
+            return (probe.popcount() > 0) ? bundle({probe, proj}) : proj;
     }
+    return probe;
+}
 
-    // 2. Resonate with a lens-specific breadth.
-    std::size_t k = resonance_k_;
-    if (lens == Lens::Broad)   k = std::max<std::size_t>(resonance_k_, 8);
-    if (lens == Lens::Focused) k = 1;
-    if (lens == Lens::Curious) k = std::max<std::size_t>(resonance_k_, 4);
+// Finish a facet given its already-resolved resonances (computed in one
+// batched dispatch). Pure post-processing — runs concurrently across
+// facets with no device contention.
+Facet Cogitator::finish_facet_(Lens lens, const Glyph& query_probe,
+                               std::vector<LatticeMatch> resonances) const {
+    Facet f;
+    f.lens       = lens;
+    f.probe      = query_probe;
+    f.resonances = std::move(resonances);
 
-    if (memory_.size() > 0 && query_probe.popcount() > 0) {
-        f.resonances = memory_.query(query_probe, k);
-    }
-
-    // 3. Choose this facet's candidate.
+    // Choose this facet's candidate.
     std::size_t pick = 0;
     if (lens == Lens::Curious && f.resonances.size() > 1) {
         // Deliberately chase a non-obvious alternative (second-best) — the
@@ -225,17 +310,17 @@ Facet Cogitator::explore_facet_(const std::vector<std::string>& tokens, Lens len
     if (!f.resonances.empty()) {
         f.confidence = f.resonances.front().similarity;       // confidence = best available
         const auto& chosen = f.resonances[std::min(pick, f.resonances.size() - 1)];
-        f.label = chosen.label;
-        if (auto g = memory_.recall(chosen.label)) f.candidate = *g;
-        else                                       f.candidate = query_probe;
+        f.label     = chosen.label;
+        f.candidate = recall_(chosen.label);
+        if (f.candidate.popcount() == 0) f.candidate = query_probe;
     } else {
         f.candidate  = query_probe;
         f.confidence = 0.0;
     }
     f.novel = f.confidence < novelty_threshold_;
 
-    // 4. Score this facet through the drives — each lens flatters a
-    //    different drive, so the Soma's current mood tilts the contest.
+    // Score this facet through the drives — each lens flatters a different
+    // drive, so the Soma's current mood tilts the contest.
     Affinity a{};
     a.per_drive[static_cast<std::size_t>(Drive::Curiosity)] =
         (lens == Lens::Curious || lens == Lens::Chaotic) ? 1.0 : (f.novel ? 0.6 : 0.2);
@@ -256,18 +341,41 @@ Deliberation Cogitator::deliberate(std::string_view stimulus, std::size_t facets
     const std::size_t n_lenses = std::min<std::size_t>(
         facets, static_cast<std::size_t>(Lens::_Count));
     if (n_lenses == 0) return d;
+    ensure_field_();
 
-    // Spawn the facets to explore CONCURRENTLY. Exploration is read-only
-    // over memory / lexicon / cortex, so genuine parallelism is safe — the
-    // chorus thinks at once, not in turn.
-    std::vector<std::future<Facet>> futures;
-    futures.reserve(n_lenses);
+    // 1. Build every lens's probe (serial, cheap). Each facet looks at a
+    //    different aspect of the stimulus.
+    std::vector<Glyph>       probes(n_lenses);
+    std::vector<std::size_t> ks(n_lenses);
     for (std::size_t i = 0; i < n_lenses; ++i) {
         const Lens lens = static_cast<Lens>(i);
         const std::uint64_t seed =
             0xC0FFEEULL ^ (static_cast<std::uint64_t>(deliberations_) << 20) ^ (i * 0x9E3779B9ULL);
+        probes[i] = facet_probe_(d.tokens, lens, seed);
+        ks[i]     = lens_k(lens, resonance_k_);
+    }
+
+    // 2. Resonate ALL facets in a single batched dispatch — one GPU call,
+    //    no device contention, instead of eight concurrent ones. Each facet
+    //    then keeps its own lens-specific breadth from the shared result.
+    std::size_t kmax = 1;
+    for (auto k : ks) kmax = std::max(kmax, k);
+    const auto batched = resonate_batch_(probes, kmax);
+
+    // 3. Finish the facets CONCURRENTLY — pure post-processing (candidate
+    //    choice, drive valence), read-only and device-free, so the chorus
+    //    still thinks at once.
+    std::vector<std::future<Facet>> futures;
+    futures.reserve(n_lenses);
+    for (std::size_t i = 0; i < n_lenses; ++i) {
+        const Lens lens = static_cast<Lens>(i);
+        std::vector<LatticeMatch> res =
+            (i < batched.size()) ? batched[i] : std::vector<LatticeMatch>{};
+        if (res.size() > ks[i]) res.resize(ks[i]);   // lens-specific breadth
         futures.push_back(std::async(std::launch::async,
-            [this, &d, lens, seed] { return explore_facet_(d.tokens, lens, seed); }));
+            [this, lens, p = probes[i], r = std::move(res)]() mutable {
+                return finish_facet_(lens, p, std::move(r));
+            }));
     }
     d.facets.reserve(n_lenses);
     for (auto& fut : futures) d.facets.push_back(fut.get());

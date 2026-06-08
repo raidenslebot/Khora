@@ -756,6 +756,31 @@ std::vector<std::uint32_t> Resonator::centrality(std::size_t k) const {
     return deg;
 }
 
+std::vector<std::vector<lattice::LatticeMatch>> Resonator::query_batch(
+    const std::vector<lattice::Glyph>& probes, std::size_t k) const {
+    const auto to_sim = [](std::uint32_t h) {
+        return 1.0 - 2.0 * static_cast<double>(h) / static_cast<double>(lattice::kGlyphBits);
+    };
+    std::vector<std::vector<lattice::LatticeMatch>> out;
+    out.reserve(probes.size());
+
+    if (r_->gpu_active && !probes.empty()) {
+        const auto nb = r_->storm.resonate_batch(probes, k);
+        if (nb.size() == probes.size()) {
+            for (const auto& list : nb) {
+                std::vector<lattice::LatticeMatch> m;
+                m.reserve(list.size());
+                for (const auto& e : list)
+                    m.push_back({ r_->labels[e.index], e.hamming, to_sim(e.hamming) });
+                out.push_back(std::move(m));
+            }
+            return out;
+        }
+    }
+    for (const auto& p : probes) out.push_back(query(p, k));
+    return out;
+}
+
 bool        Resonator::on_gpu() const noexcept { return r_->gpu_active; }
 std::size_t Resonator::size()   const noexcept { return r_->glyphs.size(); }
 const DeviceInfo& Resonator::device() const noexcept { return r_->storm.device(); }

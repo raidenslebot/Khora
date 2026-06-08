@@ -114,6 +114,13 @@ public:
     std::vector<lattice::LatticeMatch> query(const lattice::Glyph& probe,
                                              std::size_t k = 5) const;
 
+    // Batched query: many probes resolved in one shot (the Maelstrom's
+    // batched dispatch when the GPU is active, else a CPU loop). One result
+    // list per probe, in input order. Lets a caller resonate, say, the eight
+    // facets of a deliberation in a single GPU call instead of eight.
+    std::vector<std::vector<lattice::LatticeMatch>> query_batch(
+        const std::vector<lattice::Glyph>& probes, std::size_t k = 5) const;
+
     // In-degree resonance-centrality of each field entry: how many other
     // entries hold it within their k nearest. Distributional hubs (function
     // words that keep everyone's company) score far above the rest.
