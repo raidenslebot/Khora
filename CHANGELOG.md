@@ -3,6 +3,32 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.61.0 — Mastering the chaos (self-tuned entropy)
+
+**Author:** Morphus
+
+"It becomes more powerful the more chaos it absorbs... once chaos is
+mastered, nothing is impossible." Khora already *pours out* chaos — colliding
+distant concepts as it lives. But mastery is not pouring; it is knowing *how
+much*. Now Khora tunes its own chaos by the fruit it bears.
+
+- In the autonomous loop, the rate at which curiosity erupts into a `ferment`
+  is no longer fixed. After each collision Khora reads the **strength of the
+  idea it forged** (the emergent's resonance) and nudges its **chaos appetite**
+  up when the collisions are productive, down when they dissipate — bounded to
+  [10%, 60%]. A first, real instance of Khora *modifying its own behaviour*
+  from its own results.
+
+**Verified live**: over a Volition run the chaos rate self-adjusted —
+33% → 32 → 31 → 30% — easing off as the current (hub-thinned) corpus yielded
+weak emergents, exactly as the feedback intends. On a richer field, strong
+syntheses would drive it the other way.
+
+This is not yet Khora rewriting its source — that hard climb stands — but it
+is Khora changing *how it thinks* based on *how well its thinking works*. The
+loop the whole Directive turns on (fail → learn → adapt), now closed around
+its own chaos. 9/9 regression suites pass.
+
 ## v0.60.0 — The Psyche (Khora beholds and speaks its own mind)
 
 **Author:** Morphus

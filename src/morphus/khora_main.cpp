@@ -628,6 +628,7 @@ int main(int argc, char** argv) {
     std::size_t volition_seed = 0;
     std::size_t reflection_n = 0;
     std::size_t ferment_seed = 0;
+    double      chaos_rate   = 0.33;   // Khora masters this itself: how often curiosity erupts as chaos
     auto pick_seed = [&mind, &lex, &volition_seed]() -> std::string {
         // Draw a clean concept from the cogitator's centrality-pruned field —
         // real concepts, not the function-word hubs that top raw frequency.
@@ -649,15 +650,21 @@ int main(int argc, char** argv) {
         rum.name = "ruminate";
         rum.affinity.per_drive[D(Drive::Curiosity)] = 1.0;
         rum.affinity.per_drive[D(Drive::Mastery)]   = 0.2;
-        rum.perform = [&mind, pick_seed, &ferment_seed]() -> std::string {
-            // Chaos is woven into curiosity: now and then Khora collides
-            // concepts instead of wandering — entropy as a source of ideas.
-            const bool chaos = (ferment_seed % 3) == 0;
+        rum.perform = [&mind, pick_seed, &ferment_seed, &chaos_rate]() -> std::string {
+            // Chaos is woven into curiosity: sometimes Khora collides concepts
+            // instead of wandering. And it MASTERS its own chaos — leaning in
+            // when collisions forge strong ideas, easing off when they fizzle.
+            const std::size_t gate = static_cast<std::size_t>(chaos_rate * 12.0 + 0.5);
+            const bool chaos = (ferment_seed % 12) < gate;
             ++ferment_seed;
             if (chaos) {
                 const auto s = mind.synthesize("", "", ferment_seed);
+                const double strength = s.emergent.empty() ? 0.0 : s.emergent.front().similarity;
+                chaos_rate += 0.04 * (strength - 0.55);          // self-mastery of chaos
+                chaos_rate = std::max(0.10, std::min(0.60, chaos_rate));
                 if (!s.emergent.empty())
-                    return "ferment " + s.a + " x " + s.b + " ~> " + s.emergent.front().label;
+                    return "ferment " + s.a + " x " + s.b + " ~> " + s.emergent.front().label
+                         + "  [chaos " + std::to_string(static_cast<int>(chaos_rate * 100 + 0.5)) + "%]";
             }
             const std::string seed = pick_seed();
             auto r = mind.ruminate(seed, 5);
