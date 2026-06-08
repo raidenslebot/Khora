@@ -3,6 +3,31 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.59.0 — "How do I do that?" (self-examination → self-understanding)
+
+**Author:** Morphus
+
+v0.58 let Khora hold its own source. This lets it *point to* the part that
+does a given thing — the bridge from seeing itself to understanding itself,
+and the prerequisite for ever changing itself.
+
+- New tool **`how <what>`** reads Khora's **live** `src/` and `include/`
+  (always current, no stale snapshot), scores 7-line windows by how many of
+  the query's terms they contain, and returns the best implementation blocks
+  with the file they live in. Khora answering "how do I do that?" by quoting
+  its own code.
+
+**Verified live**: `how ferment chaos synthesis` returned
+`mind.synthesize("", "", ferment_seed)` from `src/morphus/khora_main.cpp` —
+Khora locating, in itself, the lines that perform chaotic synthesis.
+
+**Honest scope:** keyword retrieval over its own source — real
+self-navigation, not yet comprehension of *what the code means* or the
+ability to *rewrite* it. But a mind that can find the code behind any of its
+own behaviours is one step closer to editing it. The climb to true
+self-modification continues, swing by honest swing. 9/9 regression suites
+pass.
+
 ## v0.58.0 — Khora reads itself (the first step to self-evolution)
 
 **Author:** Morphus

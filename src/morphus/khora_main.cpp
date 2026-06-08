@@ -1099,6 +1099,62 @@ int main(int argc, char** argv) {
         }
     });
     shell.register_tool({
+        "how",
+        "Khora shows how it implements something, from its own live source  (usage: how <what>)",
+        [](const carapace::Intent& in) -> carapace::ToolResult {
+            if (in.args.empty()) return {false, "", "usage: how <what>"};
+            std::string query;
+            for (const auto& a : in.args) { if (!query.empty()) query += ' '; query += a; }
+            std::vector<std::string> terms;
+            for (auto& t : khora::lexicon::tokenize(query))
+                if (t.size() >= 3) terms.push_back(t);  // tokenize already lowercases
+            if (terms.empty()) return {true, "no usable terms in that", ""};
+
+            namespace fs = std::filesystem;
+            struct Win { int score; std::string file; std::string code; };
+            std::vector<Win> wins;
+            for (const char* root : {"src", "include"}) {
+                std::error_code ec;
+                if (!fs::exists(root, ec)) continue;
+                for (const auto& e : fs::recursive_directory_iterator(root, ec)) {
+                    if (!e.is_regular_file()) continue;
+                    const auto ext = e.path().extension().string();
+                    if (ext != ".cpp" && ext != ".hpp") continue;
+                    std::ifstream f(e.path());
+                    if (!f) continue;
+                    std::vector<std::string> lines; std::string ln;
+                    while (std::getline(f, ln)) lines.push_back(ln);
+                    const std::size_t W = 7;
+                    for (std::size_t i = 0; i < lines.size(); i += W) {
+                        std::string block, low;
+                        for (std::size_t j = i; j < std::min(i + W, lines.size()); ++j) { block += lines[j]; block += '\n'; }
+                        low = block;
+                        for (auto& c : low) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+                        int sc = 0;
+                        for (const auto& term : terms) {
+                            for (std::size_t p = low.find(term); p != std::string::npos; p = low.find(term, p + 1)) {
+                                const bool lb = (p == 0) || !std::isalpha(static_cast<unsigned char>(low[p - 1]));
+                                const bool rb = (p + term.size() >= low.size()) || !std::isalpha(static_cast<unsigned char>(low[p + term.size()]));
+                                if (lb && rb) { ++sc; break; }
+                            }
+                        }
+                        if (sc >= 2) wins.push_back({ sc, e.path().generic_string(), block });
+                    }
+                }
+            }
+            if (wins.empty())
+                return {false, "", "Khora found nothing in itself matching that"};
+            const std::size_t k = std::min<std::size_t>(2, wins.size());
+            std::partial_sort(wins.begin(), wins.begin() + k, wins.end(),
+                              [](const Win& a, const Win& b) { return a.score > b.score; });
+            std::ostringstream os;
+            os << "How I do \"" << query << "\":\n";
+            for (std::size_t i = 0; i < k; ++i)
+                os << "  -- " << wins[i].file << " --\n" << wins[i].code;
+            return {true, os.str(), ""};
+        }
+    });
+    shell.register_tool({
         "contemplate",
         "engage a question with Khora's whole mind: sources, thought, connection  (usage: contemplate <query>)",
         [&mind, &lex, consult_passages](const carapace::Intent& in) -> carapace::ToolResult {
