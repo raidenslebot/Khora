@@ -1,5 +1,7 @@
 #include "khora/cogitator/cogitator.hpp"
 
+#include "khora/plexus/plexus.hpp"
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -173,7 +175,75 @@ Glyph Cogitator::concept_glyph_any_(const std::string& name, int& level) const {
     return lex_.context_glyph(name);
 }
 
+namespace {
+// PMI affinities are unbounded (0 .. ~15); the coherence bar is in [0,1]. This
+// scale squashes mean pairwise affinity into [0,1) via aff/(aff+scale): a mean
+// affinity equal to the scale maps to 0.5. Tuned to the real corpus so coherent
+// clusters land in the self-escalating bar's working range.
+constexpr double kPmiCoherenceScale = 2.5;
+} // namespace
+
+std::string Cogitator::form_abstraction_plexus_(const std::string& seed, std::size_t k,
+                                                double min_coherence) {
+    int seed_level = 0;
+    const Glyph seedG = concept_glyph_any_(seed, seed_level);
+    if (seedG.popcount() == 0) return {};
+
+    // Sharp kin by mutual information — the hubs already divided out. This is
+    // the clean structure the Spire starved for on the Hamming field.
+    const auto kin = plexus_->associates(seed, k + 6);
+    if (kin.size() < 1) return {};
+
+    std::vector<Glyph> parts{ seedG };
+    std::vector<std::string> members{ seed };
+    for (const auto& [w, aff] : kin) {
+        if (members.size() >= k + 1) break;
+        if (w == seed) continue;
+        int l = 0;
+        const Glyph g = concept_glyph_any_(w, l);
+        if (g.popcount() == 0) continue;     // must be representable as a concept
+        parts.push_back(g);
+        members.push_back(w);
+    }
+    if (members.size() < 2) return {};
+
+    // Coherence by mutual information: mean pairwise PMI affinity across ALL
+    // members (not just spokes from the seed), so a tightly inter-associated
+    // cluster scores high and a mere star scores low. Squashed into [0,1] so
+    // the self-escalating coherence bar transfers unchanged.
+    double aff_sum = 0.0; std::size_t pairs = 0;
+    for (std::size_t i = 0; i < members.size(); ++i)
+        for (std::size_t j = i + 1; j < members.size(); ++j) {
+            aff_sum += plexus_->affinity(members[i], members[j]);
+            ++pairs;
+        }
+    const double mean_aff = pairs ? aff_sum / static_cast<double>(pairs) : 0.0;
+    const double coh = mean_aff / (mean_aff + kPmiCoherenceScale);
+    if (coh < min_coherence) return {};
+
+    Abstraction a;
+    a.glyph     = bundle(std::span<const Glyph>{parts.data(), parts.size()});
+    a.level     = seed_level + 1;
+    a.coherence = coh;
+    a.members   = members;
+    a.name = "{";
+    const std::size_t mn = std::min<std::size_t>(3, members.size());
+    for (std::size_t i = 0; i < mn; ++i) { if (i) a.name += "+"; a.name += members[i]; }
+    if (members.size() > mn) a.name += "+..";
+    a.name += "}#" + std::to_string(abstraction_seq_++);
+    abstractions_.push_back(std::move(a));
+    return abstractions_.back().name;
+}
+
 std::string Cogitator::form_abstraction(const std::string& seed, std::size_t k, double min_coherence) {
+    // Hub-proof path: when the Plexus knows this seed word, it is AUTHORITATIVE —
+    // members are its PMI kin and coherence is mutual information. A refusal here
+    // is a true refusal; we do NOT fall back to the looser Hamming field (which
+    // would readmit the very hub-fouled clusters the bar exists to reject). The
+    // field path remains for seeds the Plexus can't judge (e.g. abstractions).
+    if (plexus_ && plexus_->has(seed))
+        return form_abstraction_plexus_(seed, k, min_coherence);
+
     ensure_field_();
     int seed_level = 0;
     const Glyph seedG = concept_glyph_any_(seed, seed_level);

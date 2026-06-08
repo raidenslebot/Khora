@@ -10,8 +10,16 @@ namespace khora::plexus {
 namespace {
 
 // Co-occurrences seen fewer than this many times are treated as noise at query
-// time: a single chance meeting of two rare words is not an association.
-constexpr std::uint32_t kMinCoocQuery = 2;
+// time: a couple of chance meetings of two rare words is not an association.
+constexpr std::uint32_t kMinCoocQuery = 3;
+
+// Content filter for surfaced associates: a word in the ubiquitous
+// high-frequency tail IS a function word (this is the definition, not a
+// hand-list). Such words form real syntactic collocations ("knowledge OF")
+// but carry no semantic kinship, so they are excluded from associates() —
+// the same principle the Lexicon's salience filter uses. Affinity math is
+// untouched; only the surfaced/selected kin are filtered.
+constexpr double kStopFraction = 0.006;  // > ~0.6% of all tokens = function word
 
 // Context-distribution smoothing exponent (Levy & Goldberg, 2014): raising the
 // context probability to 0.75 lifts rare contexts, blunting PMI's notorious
@@ -135,21 +143,33 @@ Plexus::associates(std::string_view word, std::size_t k) const {
     if (ia < 0 || k == 0) return out;
 
     const auto a = static_cast<std::uint32_t>(ia);
-    std::vector<std::pair<double, std::uint32_t>> scored;
+    // Rank by CONFIDENCE-WEIGHTED PMI: ppmi * log2(1+cooc). Pure PPMI over-rewards
+    // rare single-meeting pairs (its well-known low-frequency bias); weighting by
+    // evidence demotes that noise while leaving genuinely surprising, well-attested
+    // kin on top. We still REPORT the pure PMI (interpretable bits of association).
+    struct Cand { double rank; double ppmi; std::uint32_t nb; };
+    std::vector<Cand> scored;
     scored.reserve(adj_[a].size());
+    // The function-word filter needs enough corpus for frequency stats to mean
+    // anything; below that (e.g. unit tests) it is disabled so tiny vocabularies
+    // stay intact.
+    const double stop_occ = (total_tokens_ >= 10000)
+        ? static_cast<double>(total_tokens_) * kStopFraction
+        : static_cast<double>(total_tokens_) + 1.0;   // unreachable => no filtering
     for (const auto& [nb, c] : adj_[a]) {
         if (c < kMinCoocQuery) continue;
-        const double s = ppmi_(a, nb, c);
-        if (s > 0.0) scored.emplace_back(s, nb);
+        if (static_cast<double>(occ_[nb]) > stop_occ) continue;  // function word — no semantic kinship
+        const double p = ppmi_(a, nb, c);
+        if (p > 0.0) scored.push_back({ p * std::log2(1.0 + static_cast<double>(c)), p, nb });
     }
     if (scored.empty()) return out;
 
     const std::size_t keep = std::min(k, scored.size());
     std::partial_sort(scored.begin(), scored.begin() + keep, scored.end(),
-                      [](const auto& x, const auto& y) { return x.first > y.first; });
+                      [](const Cand& x, const Cand& y) { return x.rank > y.rank; });
     out.reserve(keep);
     for (std::size_t i = 0; i < keep; ++i)
-        out.emplace_back(word_[scored[i].second], scored[i].first);
+        out.emplace_back(word_[scored[i].nb], scored[i].ppmi);
     return out;
 }
 

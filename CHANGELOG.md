@@ -3,6 +3,57 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.69.0 — The Spire drinks from the clean well (abstraction on PMI kin)
+
+**Author:** Morphus
+
+v0.68 built the hub-proof memory; this fires it. The Spire — recursive
+abstraction, the combinatorial engine — now forms abstractions **through the
+Plexus**: when it knows the seed word, the Plexus is authoritative — members are
+its sharp PMI kin, and coherence is judged by mutual information, not the
+density-fouled Hamming field. A refusal there is a true refusal (no fallback to
+the looser field that would readmit the very grab-bags the bar exists to reject).
+
+**Verified live — and the contrast is the whole thesis in one number.** Forging
+abstractions from charged seeds on the freshly-woven graph (60,263 nodes, 3.06M
+edges, 5.09M tokens of the prose corpus):
+
+```
+  OLD (Hamming-formed, v0.65-67)        NEW (Plexus-formed, v0.69)
+  {justice+cause+question}   c0         {justice+chief+administration}  c36
+  {back+down+round}          c0         {virtue+vice+bestowing}         c31
+  (the deep tower L2-L4)     c0         {love+eternity}                 c29
+                                        {war+peace+art}                 c26
+                                        {knowledge+divisions+ignorance} c22
+```
+
+The old field-formed abstractions cohere at **zero** — they were grab-bags. The
+new ones cohere at **0.22-0.36** and *mean something*: `virtue+vice` (the ethical
+opposition unified), `war+peace`, `knowledge` against `ignorance`. Feed the Spire
+clean structure and it forges genuine conceptual unifications. Those values land
+squarely in the self-escalating bar's range (~0.35), so the autonomous loop now
+accepts the strong ones and keeps raising its standard — the engine no longer
+starves.
+
+Also this release:
+- **`associates` ranking refined** to confidence-weighted PMI (`ppmi *
+  log2(1+cooc)`): pure PPMI over-rewards rare single-meeting pairs; weighting by
+  evidence surfaces well-attested kin (chose `injustice` over `cavaliero`). A
+  frequency-based content filter (a word in the ubiquitous >0.6% tail IS a
+  function word — the definition, not a hand-list; disabled on tiny corpora)
+  removes syntactic collocates like "of". Result: `justice -> injustice,
+  distributive, courts, temperance, equity`; `knowledge -> ignorance, branch,
+  faculty, thirst, pursuit`; `power -> executive, legislative, coercive, naval`.
+- **`plexus_forge`** — a standalone tool that weaves the whole graph over the
+  full corpus in under a minute (no cortex, no token cap), decoupled from the
+  slow predictive training. The Plexus can now be rebuilt any time. 10/10 pass.
+
+Honest edge: the loudest intrinsic hubs (`love`, 4760x) stay diffuse — used
+everywhere, they genuinely lack sharp distinctive kin, and PMI reports that
+faithfully rather than inventing it. Next: route rumination and chaos collisions
+through the Plexus too, so trains of thought and creative collisions walk the
+same clean structure the Spire now does.
+
 ## v0.68.0 — The Plexus: the hub problem falls to graph + PMI
 
 **Author:** Morphus

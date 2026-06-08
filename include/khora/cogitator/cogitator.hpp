@@ -44,6 +44,8 @@
 #include <utility>
 #include <vector>
 
+namespace khora::plexus { class Plexus; }   // associative graph (hub-proof kin)
+
 namespace khora::cogitator {
 
 struct Thought {
@@ -156,6 +158,12 @@ public:
     void set_max_resolve_attempts(std::size_t n) { max_attempts_ = (n == 0 ? 1 : n); }
     void set_learn_from_thoughts(bool b)       { learn_from_thoughts_ = b; }
     void set_consolidate_hypotheses(bool b)    { consolidate_hypotheses_ = b; }
+
+    // Wire in the Plexus (associative graph). When set, the Spire forms
+    // abstractions from hub-proof PMI kin and judges coherence by mutual
+    // information, instead of the density-fouled Hamming field. Optional —
+    // without it, abstraction falls back to the substrate field.
+    void set_plexus(const khora::plexus::Plexus* p) { plexus_ = p; }
 
     std::size_t resonance_k()         const noexcept { return resonance_k_; }
     double      novelty_threshold()   const noexcept { return novelty_threshold_; }
@@ -288,6 +296,7 @@ private:
     std::vector<std::string>        concepts_;      // clean concepts for seeding thought
     std::unordered_map<std::string, std::uint32_t> attractors_;  // emergent preoccupations
     std::vector<Abstraction>        abstractions_;   // the rising tower
+    const khora::plexus::Plexus*    plexus_ = nullptr;  // associative graph (hub-proof kin)
     std::size_t                     abstraction_seq_ = 0;
     std::size_t                    indexed_vocab_ = static_cast<std::size_t>(-1);
     std::size_t                    indexed_abstractions_ = 0;  // rebuild field as the tower grows
@@ -295,6 +304,13 @@ private:
     // Glyph + level of any concept name (a learned word = level 0, or an
     // existing abstraction = its level).
     khora::lattice::Glyph concept_glyph_any_(const std::string& name, int& level) const;
+
+    // Hub-proof abstraction: select members from the Plexus's PMI associates
+    // and judge coherence by mutual information. Used when plexus_ knows the
+    // seed; returns empty if it cannot (too few representable kin, or the
+    // cluster cohered below min_coherence).
+    std::string form_abstraction_plexus_(const std::string& seed, std::size_t k,
+                                         double min_coherence);
 
     std::size_t resonance_k_            = 5;
     double      novelty_threshold_      = 0.20;

@@ -7,7 +7,7 @@ target_include_directories(khora_cogitator
 )
 
 target_link_libraries(khora_cogitator
-    PUBLIC khora::lattice khora::lexicon khora::cortex khora::soma khora::maelstrom
+    PUBLIC khora::lattice khora::lexicon khora::cortex khora::soma khora::maelstrom khora::plexus
 )
 
 add_library(khora::cogitator ALIAS khora_cogitator)

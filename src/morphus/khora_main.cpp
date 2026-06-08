@@ -78,6 +78,7 @@ int main(int argc, char** argv) {
     plexus::Plexus    plex;   // associative graph memory — the hub-proof kin
     reverie::ReverieLoom dream(memory, column, nexus);
     cogitator::Cogitator mind(lex, memory, column, nexus);
+    mind.set_plexus(&plex);   // the Spire forms abstractions on hub-proof PMI kin
 
     // Liquid knowledge: the Reservoir holds source texts (~20 GB cap),
     // the Aqueduct channels new ones in from the public domain.
