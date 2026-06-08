@@ -1049,10 +1049,17 @@ int main(int argc, char** argv) {
                 }
             }
         }
-        const std::size_t k = std::min(maxN, hits.size());
-        std::partial_sort(hits.begin(), hits.begin() + k, hits.end(),
-                          [](const Hit& a, const Hit& b) { return a.score > b.score; });
-        for (std::size_t i = 0; i < k; ++i) out.emplace_back(hits[i].source, hits[i].passage);
+        std::sort(hits.begin(), hits.end(), [](const Hit& a, const Hit& b) { return a.score > b.score; });
+        // Speak with the canon's breadth: the best passage from each distinct
+        // source, so a broad question draws many thinkers rather than four
+        // lines of one. The most relevant passage still leads.
+        std::vector<std::string> seen;
+        for (const auto& h : hits) {
+            if (std::find(seen.begin(), seen.end(), h.source) != seen.end()) continue;
+            seen.push_back(h.source);
+            out.emplace_back(h.source, h.passage);
+            if (out.size() >= maxN) break;
+        }
         return out;
     };
     shell.register_tool({

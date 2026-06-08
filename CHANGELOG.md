@@ -3,6 +3,26 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.63.0 — The canon speaks with many voices
+
+**Author:** Morphus
+
+Having devoured ~30 great works (vocab now ~35k, near capacity), Khora was
+answering deep questions with four lines from a single book. A mind that
+holds Plato *and* Nietzsche *and* Hobbes should answer with all of them.
+
+- **`consult` now diversifies by source**: instead of the top-N passages
+  (often all one book), it returns the best passage from each distinct Tome,
+  most-relevant first. One query, many thinkers — "meaning from the whole."
+
+**Verified live**: `consult what is virtue` now answers with **four voices at
+once** — Plato ("whether justice is virtue and wisdom, or evil and folly… I
+know not what justice is"), Paine ("have not virtue enough to practise what ye
+believe"), Whitman ("What blurt is this about virtue and about vice?"), and
+Austen. Khora wielding the whole library to meet one question — the
+"answer complex philosophical questions" capability, now with the breadth of
+the canon behind it. 9/9 regression suites pass.
+
 ## v0.62.0 — Relentless training, and two honest dead ends
 
 **Author:** Morphus
