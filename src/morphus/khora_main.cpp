@@ -16,6 +16,7 @@
 #include "khora/ballast/ballast.hpp"
 #include "khora/lexicon/lexicon.hpp"
 #include "khora/lodestone/lodestone.hpp"
+#include "khora/maelstrom/maelstrom.hpp"
 #include "khora/reservoir/aqueduct.hpp"
 #include "khora/reservoir/reservoir.hpp"
 #include "khora/reverie/reverie_loom.hpp"
@@ -24,6 +25,7 @@
 #include "khora/whetstone/whetstone.hpp"
 #include "khora/whetstone/whetstone_scheduler.hpp"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdio>
@@ -158,6 +160,134 @@ int main(int argc, char** argv) {
                << "  lexicon vocab     : " << lex.vocabulary_size() << " / "
                << lex.max_vocabulary() << " cap";
             return {true, os.str(), ""};
+        }
+    });
+    shell.register_tool({
+        "maelstrom",
+        "ignite the GPU resonance engine; verify vs CPU + benchmark the crossover  (usage: maelstrom [N])",
+        [](const carapace::Intent& in) -> carapace::ToolResult {
+            using namespace khora::lattice;
+            using clock = std::chrono::steady_clock;
+            auto ms = [](clock::duration d) {
+                return std::chrono::duration<double, std::milli>(d).count();
+            };
+
+            std::size_t N = 200000;
+            if (!in.args.empty()) {
+                try { N = static_cast<std::size_t>(std::stoul(in.args[0])); } catch (...) {}
+            }
+            if (N < 1000)    N = 1000;
+            if (N > 1200000) N = 1200000; // single-buffer ceiling headroom
+
+            maelstrom::Maelstrom storm;
+            if (!storm.ignite()) {
+                return {false, "", "Maelstrom could not ignite: " + storm.device().note};
+            }
+            const auto& dev = storm.device();
+
+            std::ostringstream os;
+            os << "Maelstrom ignited  -  GPU parallel-resonance engine\n"
+               << "  adapter      : " << dev.adapter << "\n"
+               << "  VRAM         : " << dev.vram_mb << " MB   (feature level " << dev.feature << ")\n";
+
+            // Synthetic glyph database (decorrelated random hypervectors).
+            std::vector<Glyph> db;
+            db.reserve(N);
+            for (std::size_t i = 0; i < N; ++i)
+                db.push_back(Glyph::random(0x9E3779B97F4A7C15ull * (i + 1) + 0xD1B54A32D192ED03ull));
+
+            const clock::time_point c0 = clock::now();
+            if (!storm.charge(db)) {
+                return {false, "", "charge failed: " + storm.device().note};
+            }
+            const double charge_ms = ms(clock::now() - c0);
+            os << "  charged      : " << storm.charged() << " glyphs into VRAM ("
+               << (storm.vram_bytes() / (1024 * 1024)) << " MB) in "
+               << charge_ms << " ms\n\n";
+
+            // ---- Correctness: GPU hamming must equal CPU hamming bit-for-bit.
+            auto verify = [&](const Glyph& probe, const char* tag) {
+                const auto gpu = storm.hamming_all(probe);
+                std::size_t mism = 0, first = SIZE_MAX;
+                for (std::size_t i = 0; i < db.size(); ++i) {
+                    const auto cpu = static_cast<std::uint32_t>(probe.hamming(db[i]));
+                    if (i < gpu.size() && gpu[i] != cpu) {
+                        if (first == SIZE_MAX) first = i;
+                        ++mism;
+                    }
+                }
+                os << "  verify " << tag << " : "
+                   << (mism == 0 ? "EXACT" : "MISMATCH")
+                   << " (" << mism << " of " << db.size() << " differ";
+                if (mism) os << ", first @" << first;
+                os << ")\n";
+                return mism == 0;
+            };
+            const bool ok1 = verify(db[N / 3], "self-probe ");
+            const bool ok2 = verify(Glyph::random(0xC0FFEE15600DULL), "random-probe");
+
+            // ---- Benchmark: CPU lattice scan vs GPU resonance, across scales.
+            const std::size_t K = 8;
+            std::vector<Glyph> probes;
+            for (int p = 0; p < 16; ++p)
+                probes.push_back(Glyph::random(0x5EED0000ull + static_cast<std::uint64_t>(p) * 7919));
+
+            auto cpu_topk = [&](const Glyph& probe, std::size_t m, std::vector<std::uint32_t>& outH) {
+                std::vector<std::uint32_t> d(m);
+                for (std::size_t i = 0; i < m; ++i) d[i] = static_cast<std::uint32_t>(probe.hamming(db[i]));
+                std::vector<std::uint32_t> idx(m);
+                for (std::uint32_t i = 0; i < m; ++i) idx[i] = i;
+                const std::size_t kk = std::min(K, m);
+                std::partial_sort(idx.begin(), idx.begin() + kk, idx.end(),
+                    [&](std::uint32_t a, std::uint32_t b) {
+                        if (d[a] != d[b]) return d[a] < d[b];
+                        return a < b;
+                    });
+                outH.clear();
+                for (std::size_t i = 0; i < kk; ++i) outH.push_back(d[idx[i]]);
+            };
+
+            os << "\n  scale       CPU scan      GPU resonate     speedup   top-" << K << "\n";
+            const std::size_t sizes[] = { 10000, 50000, 200000, 500000, 1000000 };
+            bool topk_ok = true;
+            for (std::size_t sz : sizes) {
+                if (sz > N) continue;
+                storm.charge(std::vector<Glyph>(db.begin(), db.begin() + sz));
+
+                // warm the GPU pipeline (first dispatch pays driver setup).
+                (void)storm.resonate(probes[0], K);
+
+                clock::duration cpu_t{}, gpu_t{};
+                for (const auto& pr : probes) {
+                    std::vector<std::uint32_t> cpuH, gpuH;
+                    clock::time_point t0 = clock::now();
+                    cpu_topk(pr, sz, cpuH);
+                    cpu_t += clock::now() - t0;
+
+                    t0 = clock::now();
+                    const auto neigh = storm.resonate(pr, K);
+                    gpu_t += clock::now() - t0;
+                    for (const auto& nb : neigh) gpuH.push_back(nb.hamming);
+
+                    if (cpuH != gpuH) topk_ok = false;
+                }
+                const double cpu_avg = ms(cpu_t) / probes.size();
+                const double gpu_avg = ms(gpu_t) / probes.size();
+                char line[160];
+                std::snprintf(line, sizeof(line),
+                    "  %8zu   %8.3f ms   %8.3f ms     %6.1fx   %s\n",
+                    sz, cpu_avg, gpu_avg,
+                    gpu_avg > 0 ? cpu_avg / gpu_avg : 0.0,
+                    topk_ok ? "match" : "DIVERGED");
+                os << line;
+            }
+
+            os << "\n  correctness  : "
+               << ((ok1 && ok2 && topk_ok) ? "GPU is bit-exact with the CPU oracle"
+                                           : "DISCREPANCY DETECTED - GPU path is wrong")
+               << "\n  (synthetic benchmark; the Maelstrom is now wired as the lattice's "
+                  "scale-out k-NN accelerator.)";
+            return {ok1 && ok2 && topk_ok, os.str(), ""};
         }
     });
 

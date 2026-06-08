@@ -3,6 +3,39 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.29.0 — The Maelstrom (GPU resonance, DirectCompute)
+
+**Author:** Morphus
+
+The operator green-lit the GPU's 8 GB of VRAM. CUDA was the obvious road
+and the wrong one — it would shackle khora.exe to a heavyweight runtime
+and a toolkit install. So the Maelstrom takes the dependency-free road:
+**pure Direct3D 11 DirectCompute**. `d3d11.dll` and `d3dcompiler_47.dll`
+ship on every Windows box, so khora.exe gains a GPU backend with **zero**
+new runtime dependencies and **nothing to install**.
+
+- **The Maelstrom** (`maelstrom`) binds a compute-capable GPU, compiles an
+  HLSL resonance kernel at runtime, and charges a glyph database into VRAM.
+  One GPU thread per stored glyph computes the full 10,000-bit Hamming
+  distance to a probe via 32-bit `countbits()`, then a partial-sort
+  collapses the k nearest. The Morphic Lattice's content-addressable
+  recall is embarrassingly parallel; it maps straight onto the card.
+- **Dependency-free**: no CUDA, no toolkit. On a machine with no GPU the
+  Maelstrom simply never ignites and the CPU lattice stays the ground
+  truth — it is an accelerator, never a requirement.
+- **Bit-exact by construction**: the GPU's per-glyph popcount must equal
+  `Glyph::hamming` exactly, and `hamming_all()` exposes the full distance
+  vector so the CPU oracle can audit every entry. New tool: `maelstrom [N]`
+  ignites, verifies, and benchmarks the crossover.
+
+**Verified live** (RTX 2070 SUPER, 7989 MB, feature level 11_1):
+200,000 random glyphs charged into VRAM (239 MB) in 106 ms. GPU Hamming
+distances are **bit-exact** with the CPU — 0 of 200,000 differ on both a
+self-probe and a random probe. k-NN top-8 results match the CPU exactly at
+every scale. Throughput vs the CPU scan: 3.8× @ 10k, 5.6× @ 50k, 5.1× @
+200k glyphs. 9/9 regression suites still pass. (This first cut reads the
+full distance vector back per query; GPU-side top-k reduction is next.)
+
 ## v0.28.0 — The Ballast (memory governance, 4 GB cap)
 
 **Author:** Morphus

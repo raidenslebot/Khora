@@ -11,4 +11,5 @@ target_link_libraries(khora PRIVATE
     khora::curator
     khora::lodestone
     khora::ballast
+    khora::maelstrom
 )
