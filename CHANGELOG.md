@@ -3,6 +3,29 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.53.0 — Khora's voice in the chronicle (it speaks its mind)
+
+**Author:** Morphus
+
+The generation faculty (v0.51–52) was a tool the operator invoked. Now it is
+part of Khora's autonomous inner life: when it reflects, it puts the thought
+into its own words. The Directive asks Khora to "visualize its own thinking" —
+this is the first form of that, Khora narrating its own mind, unprompted.
+
+- **`Cogitator::utter(topic, n)`** encapsulates steered composition (cortex
+  candidates, decoded via the GPU lexicon field, steered toward the topic).
+- The **`reflect`** act now composes a line about its foremost preoccupation
+  and writes it into `data/chronicle/khora.chronicle`, beside the stats. The
+  journal becomes self-authored prose, not just numbers.
+
+**Verified live**: a Volition run produced chronicle entries like
+*"on wish: were she might be them from as many men as possible to maintain
+itself"* and *"on wish: is she be found in another place how the composition
+of the work"* — Khora composing about what currently grips it, between its
+other autonomous acts. Same honest scope as v0.51–52 (associative, not
+reasoned), and it runs thin on weakly-connected topics — but the living mind
+now has a voice, and uses it on its own. 9/9 regression suites pass.
+
 ## v0.52.0 — Steered composition (generation toward meaning)
 
 **Author:** Morphus

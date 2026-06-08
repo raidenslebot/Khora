@@ -711,6 +711,11 @@ int main(int argc, char** argv) {
             if (themes.empty()) entry << "(nothing has gripped me yet)";
             else for (const auto& [name, count] : themes) entry << name << "(" << count << ") ";
             entry << "\n";
+            // Khora puts the thought into its own words.
+            if (!themes.empty()) {
+                const std::string voice = mind.utter(themes.front().first, 14);
+                if (!voice.empty()) entry << "  on " << themes.front().first << ": " << voice << "\n";
+            }
             std::ofstream f("data/chronicle/khora.chronicle", std::ios::app);
             f << entry.str();
             return "reflected -> chronicle (#" + std::to_string(reflection_n) + ", "

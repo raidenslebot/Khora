@@ -161,6 +161,40 @@ std::string Cogitator::focused_seed(std::uint64_t n) {
     return top[n % top.size()].first;
 }
 
+std::string Cogitator::utter(const std::string& topic, std::size_t n) {
+    ensure_field_();
+    if (n == 0) return {};
+    const Glyph topicG = lex_.glyph_for(topic);
+
+    // Decoder over the full glyph_for field (any generated token can resolve).
+    maelstrom::Resonator dec(256);
+    dec.build(lex_.semantic_field());
+
+    std::vector<Glyph> ctx;
+    ctx.push_back(topicG);
+    std::string out, last;
+    for (std::size_t s = 0; s < n; ++s) {
+        const auto cands = cortex_.predict_candidates(ctx, 6);
+        if (cands.empty()) break;
+        double best = -1e9; std::string word; Glyph wg; int rank = 0;
+        for (const auto& cg : cands) {
+            const auto d = dec.query(cg, 1);
+            ++rank;
+            if (d.empty()) continue;
+            const std::string w = d.front().label;
+            const Glyph wgl = lex_.glyph_for(w);
+            const double score = (1.0 - 0.12 * (rank - 1)) + 0.8 * wgl.similarity(topicG);
+            if (w != last && score > best) { best = score; word = w; wg = wgl; }
+        }
+        if (word.empty()) break;
+        if (!out.empty()) out += ' ';
+        out += word; last = word;
+        ctx.push_back(wg);
+        if (ctx.size() > 8) ctx.erase(ctx.begin());
+    }
+    return out;
+}
+
 Synthesis Cogitator::synthesize(const std::string& a_in, const std::string& b_in, std::uint64_t seed) {
     ensure_field_();
     Synthesis s;
