@@ -3,6 +3,33 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.20.0 — Continuous self-education (background Curator)
+
+**Author:** Morphus
+
+Khora now educates itself continuously while it runs. `CuratorScheduler`
+drives the Curator on a background thread: forage what it lacks, study
+what it holds, seek the next — unprompted, into its real mind (the
+studies accumulate into the live Lexicon + Cortex that persist on exit).
+
+Threading: each knowledge action mutates the live cognitive state, so it
+is taken under the same `shared_mutex` the Cogitator/Reverie/operator
+use. A background study briefly holds that lock, so it is opt-in and
+paced slowly (default one action every 120s); the operator enables it
+deliberately and can pause it any time.
+
+New tool: `curator_auto on|off [period_s]` (and status). Clean shutdown
+stops it before the final save so no study is mid-flight.
+
+**Verified live**: launched the runtime, enabled `curator_auto on 5`,
+and left it idle 45s — Khora autonomously took 4 self-education actions,
+foraging and studying across topics (last: The Republic, philosophy;
+vocab grown to 8,659) with no operator input, and reported "curator took
+4 self-education actions this session" on exit. Continuous autonomous
+self-education, live.
+
+9/9 regression suites pass.
+
 ## v0.19.0 — Sharper semantics (IDF weighting + subsampling)
 
 **Author:** Morphus

@@ -1,5 +1,6 @@
 add_library(khora_curator STATIC
     curator.cpp
+    curator_scheduler.cpp
 )
 
 target_include_directories(khora_curator

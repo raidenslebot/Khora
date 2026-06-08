@@ -9,6 +9,7 @@
 #include "khora/carapace/carapace.hpp"
 #include "khora/cogitator/cogitator.hpp"
 #include "khora/curator/curator.hpp"
+#include "khora/curator/curator_scheduler.hpp"
 #include "khora/cortex/predictive_column.hpp"
 #include "khora/lattice/lattice.hpp"
 #include "khora/lattice/persistence.hpp"
@@ -295,6 +296,30 @@ int main(int argc, char** argv) {
             return {true, std::string("next: ") + kind + " — " + d.rationale, ""};
         }
     });
+    // Background self-education. Opt-in: a background study briefly holds
+    // the cognitive lock, so the operator enables it deliberately.
+    curator::CuratorScheduler curator_bg(curator, shared_mu);
+    shell.register_tool({
+        "curator_auto",
+        "toggle continuous background self-education  (usage: curator_auto on|off [period_s])",
+        [&curator_bg](const carapace::Intent& i) -> carapace::ToolResult {
+            if (i.args.empty()) {
+                std::ostringstream os;
+                os << "background self-education: " << (curator_bg.is_running() ? "ON" : "OFF")
+                   << "  (actions=" << curator_bg.actions() << ")";
+                if (!curator_bg.last_account().empty())
+                    os << "\nlast:\n" << curator_bg.last_account();
+                return {true, os.str(), ""};
+            }
+            if (i.args[0] == "off") { curator_bg.stop(); return {true, "background self-education paused", ""}; }
+            int period_s = 120;
+            if (i.args.size() >= 2) { try { period_s = std::stoi(i.args[1]); } catch (...) {} if (period_s < 5) period_s = 5; }
+            curator_bg.start(std::chrono::seconds(period_s), 60000);
+            std::ostringstream os;
+            os << "background self-education ON (one knowledge action every " << period_s << "s)";
+            return {true, os.str(), ""};
+        }
+    });
     shell.register_tool({
         "reservoir_evict",
         "evict a tome (or the lowest-value one)  (usage: reservoir_evict [title])",
@@ -476,7 +501,10 @@ int main(int argc, char** argv) {
     // 9. Stop background loops before saving.
     scheduler.stop();
     whet.stop();
+    curator_bg.stop();
     std::cout << "[whetstone trained " << whet.rounds_run() << " rounds this session]\n";
+    if (curator_bg.actions() > 0)
+        std::cout << "[curator took " << curator_bg.actions() << " self-education actions this session]\n";
 
     // 10. Save Lattice + Cortex on exit.
     try {
