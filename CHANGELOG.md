@@ -3,6 +3,36 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.6.0 — Reverie Loom
+
+**Author:** Morphus
+
+First emergent composition. The Reverie Loom takes the Morphic Lattice,
+the Stratiform Cortex, and the Soma Nexus as collaborators and produces
+synthetic glyphs ("dreams") that weren't directly observed.
+
+Shipped:
+
+- `khora::reverie::ReverieLoom` — takes references to a memory Lattice,
+  a PredictiveColumn, and a SomaNexus. Each `dream_once()` picks two
+  random memories, applies bit-flip perturbation, bundles them into a
+  dream glyph, computes familiarity as `cosine(dream, cortex.predict())`,
+  and asks the Soma Nexus to score the dream via an Affinity that
+  modulates Mastery by familiarity. Dreams above the satisfaction
+  threshold are retained in an internal dream Lattice. Deterministic
+  under fixed seed.
+- `reverie_test` — five assertions covering empty-memory no-op, mass
+  retention under permissive threshold, zero retention under unattainable
+  threshold, dream-vs-memory inequality (every dream is genuinely new),
+  and seed-determinism.
+- `reverie_demo` — builds a 200-glyph memory, trains a cortex column on
+  a repeating phrase, biases drives toward Curiosity+Mastery, runs 1,000
+  dream cycles. Observed: 1,000 dreams retained at mean satisfaction
+  0.90, each dream ~0.49 similar to its nearest source memory
+  (exactly the bundle-of-two-perturbed-memories signature).
+
+Tests passing: **6/6 ctest suites, 42 assertions total.**
+
 ## v0.5.0 — Soma Nexus
 
 **Author:** Morphus

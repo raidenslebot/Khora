@@ -17,3 +17,7 @@ add_test(NAME CortexTest COMMAND cortex_test)
 add_executable(soma_test soma_test.cpp)
 target_link_libraries(soma_test PRIVATE khora::soma)
 add_test(NAME SomaTest COMMAND soma_test)
+
+add_executable(reverie_test reverie_test.cpp)
+target_link_libraries(reverie_test PRIVATE khora::reverie)
+add_test(NAME ReverieTest COMMAND reverie_test)

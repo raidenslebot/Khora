@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(Khora VERSION 0.5.0 LANGUAGES CXX)
+project(Khora VERSION 0.6.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -23,6 +23,7 @@ add_subdirectory(src/lattice)
 add_subdirectory(src/synapse)
 add_subdirectory(src/cortex)
 add_subdirectory(src/soma)
+add_subdirectory(src/reverie)
 add_subdirectory(src/morphus)
 
 if(KHORA_BUILD_TESTS)
