@@ -31,8 +31,9 @@
 
 namespace {
 
-constexpr const char* kArchivePath        = "data/lattice_archive/main.klat";
-constexpr const char* kCortexArchivePrefix = "data/cortex_archive/main";
+constexpr const char* kArchivePath          = "data/lattice_archive/main.klat";
+constexpr const char* kCortexArchivePrefix  = "data/cortex_archive/main";
+constexpr const char* kLexiconArchivePrefix = "data/lexicon_archive/main";
 
 std::string read_line_prompt(const std::string& prompt) {
     std::cout << prompt << std::flush;
@@ -91,6 +92,18 @@ int main(int argc, char** argv) {
                           << "recent_acc=" << column.recent_accuracy() << "]\n";
             } catch (const lattice::PersistError& e) {
                 std::cout << "[warning: could not load cortex archive: " << e.what() << "]\n";
+            }
+        }
+    }
+    {
+        fs::path lex_sem = kLexiconArchivePrefix; lex_sem += ".sem.klat";
+        if (fs::exists(lex_sem)) {
+            try {
+                lex.load(kLexiconArchivePrefix);
+                std::cout << "[loaded lexicon: " << lex.vocabulary_size()
+                          << " words, " << lex.total_observations() << " observations]\n";
+            } catch (const lattice::PersistError& e) {
+                std::cout << "[warning: could not load lexicon archive: " << e.what() << "]\n";
             }
         }
     }
@@ -259,8 +272,8 @@ int main(int argc, char** argv) {
             // accuracy without the O(N) cost on every token.
             for (std::size_t ti = 0; ti < tokens.size(); ++ti) {
                 const auto g = lex.glyph_for(tokens[ti]);
-                if ((ti & 0xFF) == 0) column.step(g);  // periodic measured step
-                else                  column.learn(g); // fast store
+                if ((ti & 0x3FF) == 0) column.step(g);  // periodic measured step (every 1024)
+                else                   column.learn(g); // fast store
             }
             const std::size_t pairs = lex.expose_sequence(tokens, 3);
 
@@ -403,10 +416,12 @@ int main(int argc, char** argv) {
     // Helper: persist lattice + cortex silently. Used both at
     // single-command exit and at interactive-loop exit so state actually
     // accumulates across runs.
-    auto persist_silently = [&memory, &column]() {
+    auto persist_silently = [&memory, &column, &lex]() {
         try { (void)lattice::save(memory, kArchivePath); }
         catch (...) { /* swallow — best effort */ }
         try { column.save(kCortexArchivePrefix); }
+        catch (...) { /* swallow — best effort */ }
+        try { lex.save(kLexiconArchivePrefix); }
         catch (...) { /* swallow — best effort */ }
     };
 
@@ -479,6 +494,13 @@ int main(int argc, char** argv) {
                   << " associations) to " << kCortexArchivePrefix << ".*]\n";
     } catch (const std::exception& e) {
         std::cerr << "[cortex save failed: " << e.what() << "]\n";
+    }
+    try {
+        lex.save(kLexiconArchivePrefix);
+        std::cout << "[saved lexicon (" << lex.vocabulary_size()
+                  << " words) to " << kLexiconArchivePrefix << ".*]\n";
+    } catch (const std::exception& e) {
+        std::cerr << "[lexicon save failed: " << e.what() << "]\n";
     }
     std::cout << "Khora out.\n";
     return 0;

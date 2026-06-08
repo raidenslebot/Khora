@@ -3,6 +3,37 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.16.0 — Durable, fast knowledge (Random Indexing lexicon)
+
+**Author:** Morphus
+
+The Lexicon is reforged on **Random Indexing** (Kanerva/Sahlgren — pure
+HD computing, no LLM), closing both known limits from v0.15 at once:
+
+- **Persistence** — each word's distributional state is now a compact
+  binarised context glyph, persisted through the Lattice
+  (`<prefix>.sem.klat` + `.lexobs`). Studied semantics survive process
+  restarts. **Verified**: studied the whole Art of War in one process;
+  a *separate* process loaded 6,632 words and recalled `enemy~army`=0.25,
+  `war~victory`=0.09 with the original exposure counts intact. Knowledge
+  is durable.
+- **Speed** — each cooccurrence adds a neighbour's sparse ternary index
+  vector (~24 nonzeros) instead of scanning ~5,000 set bits. Studying a
+  full 56,687-token book dropped from **150s to ~28s** (~5x). The
+  remaining cost is now the substrate's O(N) `permute` in per-token
+  context building, not the lexicon — the next throughput target.
+
+Wired into `khora.exe`: lexicon auto-loads at startup and auto-saves on
+exit (interactive and single-command), alongside the Lattice and Cortex.
+
+Regression net: **9/9 suites pass** (lexicon_test confirms Random
+Indexing preserves structural similarity, typo tolerance, cooccurrence
+convergence, and orthogonality of unrelated words).
+
+Honest note: distributional similarity magnitudes are modest over a
+whole book (common function words dilute the signal); inverse-frequency
+weighting is a known sharpening technique left for a later pass.
+
 ## v0.15.0 — The Reservoir + Aqueduct (liquid knowledge)
 
 **Author:** Morphus
