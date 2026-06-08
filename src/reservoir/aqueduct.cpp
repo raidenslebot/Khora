@@ -145,6 +145,17 @@ const std::vector<Source>& seed_catalog() {
         {"Relativity the Special and General Theory", "science", "https://www.gutenberg.org/cache/epub/30155/pg30155.txt"},
         {"The Origin of Species",      "science",    "https://www.gutenberg.org/cache/epub/1228/pg1228.txt"},
         {"The Voyage of the Beagle",   "science",    "https://www.gutenberg.org/cache/epub/944/pg944.txt"},
+        // mathematics — the productive spine: reasoning by quantity, form, proof.
+        // (Notation-heavy texts like Calculus Made Easy / Boole are TeX-only on
+        // Gutenberg, no plain text; the prose-and-problems works carry through.)
+        {"Amusements in Mathematics",  "mathematics","https://www.gutenberg.org/cache/epub/16713/pg16713.txt"},
+        {"The First Six Books of the Elements of Euclid", "mathematics", "https://www.gutenberg.org/cache/epub/21076/pg21076.txt"},
+        // physics — matter, motion, light, energy
+        {"Treatise on Light",          "physics",    "https://www.gutenberg.org/cache/epub/14725/pg14725.txt"},
+        // chemistry — substance and reaction
+        {"The Chemical History of a Candle", "chemistry", "https://www.gutenberg.org/cache/epub/14474/pg14474.txt"},
+        // engineering — machinery, manufacture, the calculating engine's father
+        {"On the Economy of Machinery and Manufactures", "engineering", "https://www.gutenberg.org/cache/epub/4238/pg4238.txt"},
         // strategy
         {"The Art of War",             "strategy",   "https://www.gutenberg.org/cache/epub/132/pg132.txt"},
         {"The Prince",                 "strategy",   "https://www.gutenberg.org/cache/epub/1232/pg1232.txt"},

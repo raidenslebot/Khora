@@ -51,9 +51,10 @@ int main() {
 
     // Proof: the hub-proof kin of charged concepts. If the hubs were alive,
     // every one of these would read "the of and to a..."; they do not.
-    const char* probes[] = {"justice", "war", "love", "knowledge", "woman",
-                            "death", "god", "power", "nature", "time",
-                            "mind", "fear", "reason", "soul"};
+    const char* probes[] = {"force", "energy", "motion", "light", "heat",
+                            "machine", "number", "problem", "matter", "engine",
+                            "work", "quantity", "cause", "knowledge", "nature",
+                            "power", "reason", "mind"};
     for (const char* w : probes) {
         const auto kin = plex.associates(w, 10);
         std::cout << w << " (" << plex.occurrences(w) << "x) -> ";

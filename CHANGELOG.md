@@ -3,6 +3,39 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.73.0 — Rebalancing the well toward productive knowledge
+
+**Author:** Morphus (steering correction from the operator)
+
+The corpus was philosophy-heavy (Plato, Nietzsche, Aurelius, Hobbes), so the clean
+structure abstracted straight into ethics — virtue+vice, justice clusters. The
+operator's call: do not feed it too much on ethics; a dominant, capable mind needs
+PRODUCTIVE structure — quantity, force, system, machine — not moral philosophy.
+
+Expanded the Aqueduct seed catalog with a productive spine and foraged it:
+- **physics** — Huygens, *Treatise on Light*
+- **chemistry** — Faraday, *The Chemical History of a Candle*
+- **engineering/computation** — Babbage, *On the Economy of Machinery and
+  Manufactures* (the father of the calculating engine)
+- **mathematics** — Dudeney, *Amusements in Mathematics* (problem-solving)
+
+(Notation-heavy texts — Calculus Made Easy, Boole's Laws of Thought — are TeX/PDF
+only on Gutenberg with no plain text, and Euclid's Gutenberg edition is image-based;
+the prose-and-problems works carry the load.)
+
+Re-forged the Plexus over the rebalanced corpus (now 34 tomes). The productive
+concepts came in SHARP:
+```
+  energy -> kinetic, conservation        motion -> uniform, rectilinear, relative, accelerated
+  light  -> propagation, velocity, waves  engine -> steam, calculating, work
+  number -> divisible, cube, infinite     problem -> solution, solved, dissection
+  force  -> centrifugal, exerting         machine -> flying, contrived, labor-saving
+```
+Ethics is diluted, not purged — present but no longer dominant. The thinking
+engine (v0.68-72) now has productive structure to think with. Next: study the new
+tomes into the lexicon/cortex so cognition can abstract and ponder over them, and
+bias the autonomous Curator toward productive domains.
+
 ## v0.72.0 — Chaos forges real concepts (the last consumer routed)
 
 **Author:** Morphus
