@@ -127,9 +127,8 @@ const std::vector<Source>& seed_catalog() {
         {"Thus Spake Zarathustra",     "philosophy", "https://www.gutenberg.org/cache/epub/1998/pg1998.txt"},
         {"Meditations",                "philosophy", "https://www.gutenberg.org/cache/epub/2680/pg2680.txt"},
         {"Beyond Good and Evil",       "philosophy", "https://www.gutenberg.org/cache/epub/4363/pg4363.txt"},
-        // science / math
+        // science
         {"Relativity the Special and General Theory", "science", "https://www.gutenberg.org/cache/epub/30155/pg30155.txt"},
-        {"Calculus Made Easy",         "math",       "https://www.gutenberg.org/cache/epub/33283/pg33283.txt"},
         {"The Origin of Species",      "science",    "https://www.gutenberg.org/cache/epub/1228/pg1228.txt"},
         // strategy
         {"The Art of War",             "strategy",   "https://www.gutenberg.org/cache/epub/132/pg132.txt"},

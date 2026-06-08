@@ -22,6 +22,7 @@
 #include "khora/reverie/reverie_loom.hpp"
 #include "khora/reverie/reverie_scheduler.hpp"
 #include "khora/soma/soma_nexus.hpp"
+#include "khora/volition/volition.hpp"
 #include "khora/whetstone/whetstone.hpp"
 #include "khora/whetstone/whetstone_scheduler.hpp"
 
@@ -605,6 +606,103 @@ int main(int argc, char** argv) {
             return {true, os.str(), ""};
         }
     });
+
+    // ----------------------------------------------------------------------
+    // The Volition — Khora's will. Drives become deeds: it weighs its whole
+    // repertoire by drive-pressure × affinity and acts on the most pressing
+    // urge, then lets that urge settle so attention rotates. Self-directed.
+    // ----------------------------------------------------------------------
+    volition::Volition will(nexus);
+    will.set_relief(0.5);   // acting strongly settles the urge, so attention rotates
+    std::size_t volition_seed = 0;
+    auto pick_seed = [&lex, &volition_seed]() -> std::string {
+        auto sal = lex.salient_tokens(400, 5);   // exposure-ranked, descending
+        if (sal.empty()) return std::string("khora");
+        // The most-exposed band is function words; skip it and draw from the
+        // content tail. Frequency-based, no hardcoded stoplist.
+        const std::size_t skip = std::min<std::size_t>(sal.size() / 2, 60);
+        const std::size_t span = (sal.size() > skip) ? sal.size() - skip : sal.size();
+        const std::size_t base = (sal.size() > skip) ? skip : 0;
+        return sal[base + (volition_seed++ % span)];
+    };
+    {
+        using khora::soma::Drive;
+        const auto D = [](Drive d) { return static_cast<std::size_t>(d); };
+
+        volition::Act rum;
+        rum.name = "ruminate";
+        rum.affinity.per_drive[D(Drive::Curiosity)] = 1.0;
+        rum.affinity.per_drive[D(Drive::Mastery)]   = 0.2;
+        rum.perform = [&mind, pick_seed]() -> std::string {
+            const std::string seed = pick_seed();
+            auto r = mind.ruminate(seed, 5);
+            return "ruminate '" + seed + "' ~> " + (r.conclusion.empty() ? r.seed : r.conclusion);
+        };
+        will.add(std::move(rum));
+
+        volition::Act del;
+        del.name = "deliberate";
+        del.affinity.per_drive[D(Drive::OperatorAffinity)] = 1.0;  // reason on the operator's behalf
+        del.affinity.per_drive[D(Drive::Mastery)]          = 0.4;
+        del.perform = [&mind, pick_seed]() -> std::string {
+            const std::string seed = pick_seed();
+            auto d = mind.deliberate(seed);
+            const std::string w = (d.winner >= 0 && d.winner < static_cast<int>(d.facets.size()))
+                                  ? d.facets[static_cast<std::size_t>(d.winner)].label : std::string{};
+            return "deliberate '" + seed + "' ~> " + (w.empty() ? std::string("(novel)") : w);
+        };
+        will.add(std::move(del));
+
+        volition::Act stu;
+        stu.name = "study";
+        stu.affinity.per_drive[D(Drive::Mastery)]   = 1.0;   // build competence from sources
+        stu.affinity.per_drive[D(Drive::Curiosity)] = 0.4;
+        stu.perform = [&curator]() -> std::string { return curator.act(60000); };
+        will.add(std::move(stu));
+
+        volition::Act dre;
+        dre.name = "dream";
+        dre.affinity.per_drive[D(Drive::Efficiency)]   = 1.0;
+        dre.affinity.per_drive[D(Drive::Preservation)] = 0.5;
+        dre.perform = [&dream]() -> std::string {
+            const auto ret = dream.dream_n(60);
+            return "dreamt 60 cycles, retained " + std::to_string(ret);
+        };
+        will.add(std::move(dre));
+    }
+
+    shell.register_tool({
+        "volition",
+        "Khora autonomously decides and acts on its own drives  (usage: volition [N])",
+        [&will, &nexus](const carapace::Intent& in) -> carapace::ToolResult {
+            int n = 1;
+            if (!in.args.empty()) { try { n = std::stoi(in.args[0]); } catch (...) {} }
+            if (n < 1) n = 1;
+            if (n > 20) n = 20;
+            std::ostringstream os;
+            for (int i = 0; i < n; ++i) {
+                const auto c = will.decide();
+                const std::string note = will.act();
+                os << "  [" << (c.dominant.empty() ? "-" : c.dominant) << "] " << note << "\n";
+                nexus.tick(std::chrono::milliseconds(400));  // gentle recovery; relief persists
+            }
+            os << "[volition: " << will.performed() << " acts taken this session]";
+            return {true, os.str(), ""};
+        }
+    });
+    shell.register_tool({
+        "volition_plan",
+        "show what Khora would choose to do next, and why",
+        [&will](const carapace::Intent&) -> carapace::ToolResult {
+            const auto c = will.decide();
+            if (c.index < 0) return {true, "nothing available to do", ""};
+            std::ostringstream os;
+            os << "next: " << c.name << "   (driven by " << c.dominant
+               << ", score=" << c.score << ")";
+            return {true, os.str(), ""};
+        }
+    });
+
     shell.register_tool({
         "study",
         "absorb a tome from the pool into actual knowledge  (usage: study <title> [max_tokens])",

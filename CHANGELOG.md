@@ -3,6 +3,37 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.38.0 — The Volition (cognition becomes action)
+
+**Author:** Morphus
+
+Until now Khora could think, learn, and dream — but only when told to. The
+Volition is the layer where **drives become deeds**: Khora decides, on its
+own motivation, what to do next.
+
+- **`volition::Volition`** holds a repertoire of **Acts** (ruminate, study,
+  deliberate, dream), each declaring which Soma drives it serves. On each
+  beat it scores every available act by **drive-pressure × affinity**,
+  performs the most-pressing one, then lets that drive settle (`set_relief`)
+  so attention rotates instead of fixating. It generalises the
+  knowledge-only Curator into agency over the whole self.
+- The four acts are given **distinct dominant drives** — ruminate↔Curiosity,
+  study↔Mastery, deliberate↔OperatorAffinity, dream↔Efficiency — so the
+  homeostatic Soma naturally cycles Khora through reflection, learning,
+  reasoning, and consolidation. Thought seeds are drawn from the content
+  tail of the vocabulary (skipping the high-exposure function-word band).
+- New tools: `volition [N]` (take N autonomous beats), `volition_plan`
+  (what it would choose, and which drive drives it).
+
+**Verified live** on the real studied corpus. Khora rotated across acts by
+drive and produced genuine autonomous thought from what it had read:
+`deliberate 'theory' → relativity`, `ruminate 'general' → 1916` (general
+relativity, 1916), `deliberate 'miss' → bingley`, `ruminate 'elizabeth' →
+replied`. On an earlier beat it chose, unprompted, to **study** — absorbing
+Relativity and growing its vocabulary 8,659 → 9,643 words. Also pruned a
+dead Gutenberg link (Calculus Made Easy, 404) from the Aqueduct catalog.
+9/9 regression suites pass.
+
 ## v0.37.0 — Content-focused probes (cognition lands on meaning)
 
 **Author:** Morphus

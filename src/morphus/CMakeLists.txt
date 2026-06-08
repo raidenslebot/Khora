@@ -12,4 +12,5 @@ target_link_libraries(khora PRIVATE
     khora::lodestone
     khora::ballast
     khora::maelstrom
+    khora::volition
 )
