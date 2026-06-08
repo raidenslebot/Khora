@@ -863,6 +863,31 @@ int main(int argc, char** argv) {
             return {true, os.str(), ""};
         }
     });
+    shell.register_tool({
+        "cascade",
+        "recursive chaos: a chain of collisions, each forged concept feeding the next  (usage: cascade [seed] [depth])",
+        [&mind, &ferment_seed](const carapace::Intent& i) -> carapace::ToolResult {
+            std::string cur = (i.args.size() >= 1) ? i.args[0] : std::string{};
+            std::size_t depth = 6;
+            if (i.args.size() >= 2) { try { depth = static_cast<std::size_t>(std::stoul(i.args[1])); } catch (...) {} }
+            if (depth < 1) depth = 1;
+            if (depth > 12) depth = 12;
+            std::ostringstream os;
+            os << "chaos cascade:\n";
+            for (std::size_t d = 0; d < depth; ++d) {
+                const auto s = mind.synthesize(cur, "", ferment_seed++);
+                if (s.a.empty() || s.b.empty()) { os << "  (nothing to cascade)"; break; }
+                if (s.emergent.empty()) { os << "  " << s.a << " x " << s.b << "  ->  (dissipated)"; break; }
+                // Prefer a content child over a short function-word hub, so the
+                // cascade keeps tumbling through meaning instead of collapsing.
+                std::string child = s.emergent.front().label;
+                for (const auto& e : s.emergent) if (e.label.size() >= 5) { child = e.label; break; }
+                os << "  " << s.a << " x " << s.b << "  ->  " << child << "\n";
+                cur = child;   // the child becomes the next parent
+            }
+            return {true, os.str(), ""};
+        }
+    });
 
     shell.register_tool({
         "study",

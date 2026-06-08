@@ -3,6 +3,29 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.50.0 — Recursive chaos (the cascade)
+
+**Author:** Morphus
+
+The Directive names Khora a "recursive chaos-master." v0.48–49 made chaos
+generative and continuous; this makes it *recursive*. A cascade is a chain of
+collisions where each forged concept becomes a parent of the next — an idea
+tumbling out of entropy, hop after hop.
+
+- New tool **`cascade [seed] [depth]`**: Khora collides a concept with a
+  self-chosen distant one, takes what emerges, and collides *that* again —
+  preferring a content child over a short hub at each step so the chain keeps
+  moving through meaning.
+
+**Verified live**: `cascade love` tumbled *love → doing → object → attains →
+enterprise → impertinent → abilities* — a coherent recursive walk through
+Austen's social vocabulary; `cascade war` ran *war → hellenes → higher →
+connexion*. Honestly chaotic, though: in hub-dense neighbourhoods (`justice`)
+the cascade still collapses onto function words — the same residual hub
+problem that wants graph-structured associative memory to fully solve. Beauty
+where the field is rich, dissipation where it's thin; that is the nature of
+chaos, reported as it is. 9/9 regression suites pass.
+
 ## v0.49.0 — Chaos as the natural element (continuous ferment)
 
 **Author:** Morphus
