@@ -25,3 +25,7 @@ add_test(NAME ReverieTest COMMAND reverie_test)
 add_executable(carapace_test carapace_test.cpp)
 target_link_libraries(carapace_test PRIVATE khora::carapace)
 add_test(NAME CarapaceTest COMMAND carapace_test)
+
+add_executable(lexicon_test lexicon_test.cpp)
+target_link_libraries(lexicon_test PRIVATE khora::lexicon)
+add_test(NAME LexiconTest COMMAND lexicon_test)

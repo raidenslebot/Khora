@@ -174,16 +174,22 @@ void register_core_tools(Carapace& c) {
     });
 }
 
-void register_memory_tools(Carapace& c, khora::lattice::Lattice& memory) {
+void register_memory_tools(Carapace& c,
+                           khora::lattice::Lattice& memory,
+                           khora::lexicon::Lexicon* lex) {
     using khora::lattice::Glyph;
+
+    auto encode = [lex](const std::string& s) -> Glyph {
+        return lex ? lex->glyph_for(s) : Glyph::from_hash(s);
+    };
 
     c.register_tool({
         "memorize",
         "store a label as a glyph in the Lattice  (usage: memorize <label>)",
-        [&memory](const Intent& i) -> ToolResult {
+        [&memory, encode](const Intent& i) -> ToolResult {
             if (i.args.empty()) return make_err("usage: memorize <label>");
             const std::string& label = i.args[0];
-            memory.store(label, Glyph::from_hash(label));
+            memory.store(label, encode(label));
             return make_ok("memorized: " + label + "  (lattice size = " +
                            std::to_string(memory.size()) + ")");
         }
@@ -206,15 +212,15 @@ void register_memory_tools(Carapace& c, khora::lattice::Lattice& memory) {
 
     c.register_tool({
         "query",
-        "find lattice glyphs nearest to a text-hash probe  (usage: query <text> [k])",
-        [&memory](const Intent& i) -> ToolResult {
+        "find lattice glyphs nearest to a token probe  (usage: query <text> [k])",
+        [&memory, encode](const Intent& i) -> ToolResult {
             if (i.args.empty()) return make_err("usage: query <text> [k]");
             std::size_t k = 3;
             if (i.args.size() >= 2) {
                 try { k = static_cast<std::size_t>(std::stoul(i.args[1])); }
                 catch (...) {}
             }
-            const Glyph probe = Glyph::from_hash(i.args[0]);
+            const Glyph probe = encode(i.args[0]);
             const auto matches = memory.query(probe, k);
             if (matches.empty()) return make_ok("no matches (lattice empty)");
             std::ostringstream os;
@@ -229,15 +235,21 @@ void register_memory_tools(Carapace& c, khora::lattice::Lattice& memory) {
     });
 }
 
-void register_cortex_tools(Carapace& c, khora::cortex::PredictiveColumn& cortex) {
+void register_cortex_tools(Carapace& c,
+                           khora::cortex::PredictiveColumn& cortex,
+                           khora::lexicon::Lexicon* lex) {
     using khora::lattice::Glyph;
+
+    auto encode = [lex](const std::string& s) -> Glyph {
+        return lex ? lex->glyph_for(s) : Glyph::from_hash(s);
+    };
 
     c.register_tool({
         "learn",
         "feed a text token into the cortex  (usage: learn <text>)",
-        [&cortex](const Intent& i) -> ToolResult {
+        [&cortex, encode](const Intent& i) -> ToolResult {
             if (i.args.empty()) return make_err("usage: learn <text>");
-            const auto r = cortex.step(Glyph::from_hash(i.args[0]));
+            const auto r = cortex.step(encode(i.args[0]));
             std::ostringstream os;
             os << "fed \"" << i.args[0] << "\"  sim=" << r.similarity
                << "  novel=" << (r.novel_context ? "yes" : "no")
@@ -276,8 +288,8 @@ void register_cortex_tools(Carapace& c, khora::cortex::PredictiveColumn& cortex)
 
     c.register_tool({
         "train",
-        "train cortex on a text file  (usage: train <path> [per_char|per_word] [max_tokens])",
-        [&cortex](const Intent& i) -> ToolResult {
+        "train cortex (and lexicon if wired) on a text file  (usage: train <path> [per_char|per_word] [max_tokens])",
+        [&cortex, lex, encode](const Intent& i) -> ToolResult {
             namespace fs = std::filesystem;
             if (i.args.empty()) return make_err("usage: train <path> [per_char|per_word] [max_tokens]");
             const fs::path p(i.args[0]);
@@ -301,21 +313,30 @@ void register_cortex_tools(Carapace& c, khora::cortex::PredictiveColumn& cortex)
             const auto t0 = std::chrono::steady_clock::now();
             std::size_t fed = 0;
             double      acc_before = cortex.recent_accuracy();
+            std::size_t lex_pairs = 0;
 
             if (per_word) {
-                std::istringstream s(text);
-                std::string word;
-                while (fed < max_tokens && (s >> word)) {
-                    cortex.step(khora::lattice::Glyph::from_hash(word));
+                // Tokenize once with the lexicon's tokenizer, feed cortex
+                // word-by-word, and ALSO expose the lexicon to the same
+                // stream so cooccurrence semantics builds while predictive
+                // memory does.
+                auto tokens = khora::lexicon::tokenize(text);
+                if (tokens.size() > max_tokens) tokens.resize(max_tokens);
+                for (const auto& w : tokens) {
+                    cortex.step(encode(w));
                     ++fed;
                 }
+                if (lex) lex_pairs = lex->expose_sequence(tokens, 3);
             } else {
                 for (char c : text) {
                     if (fed >= max_tokens) break;
                     char tk[2] = { c, '\0' };
-                    cortex.step(khora::lattice::Glyph::from_hash(tk));
+                    cortex.step(encode(tk));
                     ++fed;
                 }
+                // Even in per_char mode, expose lexicon to the same text
+                // at word granularity so semantic drift still accrues.
+                if (lex) lex_pairs = lex->expose_text(text, 3);
             }
             const auto t1 = std::chrono::steady_clock::now();
             const double secs = std::chrono::duration<double>(t1 - t0).count();
@@ -327,8 +348,58 @@ void register_cortex_tools(Carapace& c, khora::cortex::PredictiveColumn& cortex)
                << "  duration         : " << secs << "s ("
                << (secs > 0 ? static_cast<double>(fed) / secs : 0.0) << " tokens/s)\n"
                << "  recent_accuracy  : " << acc_before << " -> " << acc_after << "\n"
-               << "  associations     : " << cortex.associations() << "\n"
-               << "  observations     : " << cortex.observations();
+               << "  cortex assoc     : " << cortex.associations() << "\n"
+               << "  cortex obs       : " << cortex.observations();
+            if (lex) {
+                os << "\n  lexicon vocab    : " << lex->vocabulary_size()
+                   << "\n  lexicon obs      : " << lex->total_observations()
+                   << "  (+" << lex_pairs << " this call)";
+            }
+            return make_ok(os.str());
+        }
+    });
+}
+
+void register_lexicon_tools(Carapace& c, khora::lexicon::Lexicon& lex) {
+    c.register_tool({
+        "lex_stats",
+        "show lexicon vocabulary size and total observations",
+        [&lex](const Intent&) -> ToolResult {
+            std::ostringstream os;
+            os << "Lexicon:\n"
+               << "  vocabulary    : " << lex.vocabulary_size() << " tokens\n"
+               << "  observations  : " << lex.total_observations();
+            return make_ok(os.str());
+        }
+    });
+
+    c.register_tool({
+        "lex_sim",
+        "semantic similarity between two tokens  (usage: lex_sim <a> <b>)",
+        [&lex](const Intent& i) -> ToolResult {
+            if (i.args.size() < 2) return make_err("usage: lex_sim <a> <b>");
+            const double s = lex.similarity(i.args[0], i.args[1]);
+            std::ostringstream os;
+            os << i.args[0] << " ~ " << i.args[1] << "  sim=" << s
+               << "  (a_exp=" << lex.exposures_for(i.args[0])
+               << ", b_exp=" << lex.exposures_for(i.args[1]) << ")";
+            return make_ok(os.str());
+        }
+    });
+
+    c.register_tool({
+        "lex_expose",
+        "expose lexicon to a text  (usage: lex_expose <text> [window])",
+        [&lex](const Intent& i) -> ToolResult {
+            if (i.args.empty()) return make_err("usage: lex_expose <text> [window]");
+            std::size_t window = 3;
+            if (i.args.size() >= 2) {
+                try { window = static_cast<std::size_t>(std::stoul(i.args[1])); }
+                catch (...) {}
+            }
+            const std::size_t pairs = lex.expose_text(i.args[0], window);
+            std::ostringstream os;
+            os << "exposed: +" << pairs << " pairs  (vocab=" << lex.vocabulary_size() << ")";
             return make_ok(os.str());
         }
     });

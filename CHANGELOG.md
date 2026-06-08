@@ -3,6 +3,49 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.11.0 — The Lexicon (semantic encoding)
+
+**Author:** Morphus
+
+Replaces random-hash token encoding with two-layer semantic glyphs:
+
+- **Structural baseline** — every token encoded as the bundle of its
+  position-permuted character trigrams, with `^` / `$` sentinels.
+  Produces real overlap for related forms:
+  - `cat ~ cats` = +0.37 (shared trigrams `^ca`, `cat`)
+  - `install ~ instal` = +0.52 (typo tolerance)
+  - `install ~ isntall` = +0.29 (transposition)
+  - `aardvark ~ zephyr` = +0.07 (correctly orthogonal)
+- **Cooccurrence accumulator** — every cooccurrence within a window
+  contributes votes to per-bit counters; reading thresholds the
+  counters against the observation count. Words that share contexts
+  drift toward similar glyphs over exposure. Verified on a tiny corpus:
+  - `cat ~ purr` = +0.50  (was 0.003 before fix)
+  - `cat ~ feline` = +0.52
+  - `dog ~ bark` = +0.46
+  - `dog ~ canine` = +0.38
+  - `cat ~ zephyr` (unseen) = +0.16 — correctly low
+
+Wired into the runtime: `memorize`, `query`, `recall`, `learn`, `train`
+all encode tokens through the Lexicon when available. The `train` tool
+exposes the Lexicon to the same corpus it feeds the Cortex, so
+semantic and predictive learning happen in parallel. Three new
+carapace tools: `lex_stats`, `lex_sim`, `lex_expose`.
+
+Live demo across separate process invocations after wiring:
+```
+> khora memorize cat
+> khora memorize cats
+> khora memorize installation
+> khora query kats      -> #1 cats           sim=+0.44
+> khora query instal    -> #1 installation   sim=+0.45
+```
+
+Real fuzzy retrieval on the substrate. No LLM.
+
+Tests passing: **8/8 ctest suites, 71 assertions total** (+7 new
+lexicon assertions).
+
 ## v0.10.0 — Reverie consolidation (dreams train cortex)
 
 **Author:** Morphus

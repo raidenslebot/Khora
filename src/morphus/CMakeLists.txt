@@ -16,6 +16,9 @@ target_link_libraries(soma_demo PRIVATE khora::soma)
 add_executable(reverie_demo reverie_demo.cpp)
 target_link_libraries(reverie_demo PRIVATE khora::reverie)
 
+add_executable(lexicon_demo lexicon_demo.cpp)
+target_link_libraries(lexicon_demo PRIVATE khora::lexicon)
+
 # The actual user-facing Khora runtime.
 add_executable(khora khora_main.cpp)
-target_link_libraries(khora PRIVATE khora::carapace khora::reverie)
+target_link_libraries(khora PRIVATE khora::carapace khora::reverie khora::lexicon)

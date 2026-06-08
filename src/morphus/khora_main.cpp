@@ -10,6 +10,7 @@
 #include "khora/cortex/predictive_column.hpp"
 #include "khora/lattice/lattice.hpp"
 #include "khora/lattice/persistence.hpp"
+#include "khora/lexicon/lexicon.hpp"
 #include "khora/reverie/reverie_loom.hpp"
 #include "khora/reverie/reverie_scheduler.hpp"
 #include "khora/soma/soma_nexus.hpp"
@@ -51,6 +52,7 @@ int main(int argc, char** argv) {
     lattice::Lattice memory;
     cortex::PredictiveColumn column(3);
     soma::SomaNexus nexus;
+    lexicon::Lexicon lex;
     reverie::ReverieLoom dream(memory, column, nexus);
 
     // 2. Try to load persisted lattice + cortex state.
@@ -85,12 +87,13 @@ int main(int argc, char** argv) {
     //    the background reverie thread.
     std::shared_mutex shared_mu;
 
-    // 4. Register tools.
+    // 4. Register tools (with lexicon wired into memory + cortex).
     carapace::Carapace shell;
     carapace::register_core_tools(shell);
-    carapace::register_memory_tools(shell, memory);
-    carapace::register_cortex_tools(shell, column);
+    carapace::register_memory_tools(shell, memory, &lex);
+    carapace::register_cortex_tools(shell, column, &lex);
     carapace::register_soma_tools(shell, nexus);
+    carapace::register_lexicon_tools(shell, lex);
 
     // System-level tools that close over multiple subsystems.
     shell.register_tool({
