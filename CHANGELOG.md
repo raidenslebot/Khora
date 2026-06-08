@@ -3,6 +3,48 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.8.0 — Cortex persistence + training pipeline
+
+**Author:** Morphus
+
+Khora now learns across sessions. The Stratiform Cortex serialises its
+full state to disk and reloads on next launch; a new `train` tool feeds
+a text file char-by-char or word-by-word into the cortex.
+
+Shipped:
+
+- `PredictiveColumn::save(prefix)` / `load(prefix)` — writes three files
+  under the given prefix:
+    - `<prefix>.cortex` — small binary header (magic, version,
+      context_window, observations, next_assoc_id, sliding-window
+      glyph buffer, recent-sims buffer).
+    - `<prefix>.keys.klat` — context-key Lattice (via existing v0.2
+      persistence).
+    - `<prefix>.vals.klat` — next-value Lattice.
+  Throws `lattice::PersistError` on magic / version / glyph-bit mismatch.
+- New `train` tool in `register_cortex_tools`:
+  `train <path> [per_char|per_word] [max_tokens]`. Default `per_char`,
+  `max_tokens=20000`. Reports duration, tokens/sec, accuracy delta,
+  resulting associations.
+- `khora.exe` auto-loads both Lattice and Cortex archives at startup
+  and auto-saves them on exit (both interactive and single-command).
+  Lattice: `data/lattice_archive/main.klat`. Cortex:
+  `data/cortex_archive/main.*`.
+
+Verified live across five separate process invocations:
+```
+Round 1: train 239 chars  -> recent_acc 0.0 -> 0.547
+Round 2: cortex_stats     -> [loaded cortex state: 239 obs, 238 assoc, recent_acc=0.547]
+Round 3: train 239 chars  -> recent_acc 0.547 -> 0.985
+Round 4: cortex_stats     -> [loaded cortex state: 478 obs, 477 assoc, recent_acc=0.985]
+```
+
+Real cross-process training. Cortex state on disk: 4 KB header + 600 KB
+lattices for ~477 associations.
+
+Tests passing: **7/7 ctest suites, 56 assertions total** (4 new cortex
+roundtrip assertions).
+
 ## v0.7.0 — Carapace v0.1 + the khora runtime
 
 **Author:** Morphus

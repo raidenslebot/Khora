@@ -2,7 +2,9 @@
 
 #include "khora/cortex/predictive_column.hpp"
 
+#include <cmath>
 #include <cstdio>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -97,6 +99,33 @@ int main() {
         PredictiveColumn col(2);
         auto p = col.predict();
         EXPECT(p == Glyph::zero(), "cold predict returns zero glyph");
+    }
+
+    // 7. Cortex save/load preserves state exactly.
+    {
+        namespace fs = std::filesystem;
+        const fs::path prefix = fs::temp_directory_path() / "khora_cortex_persist_test";
+
+        PredictiveColumn col(3);
+        // Train on a known sequence to build state.
+        for (int cycle = 0; cycle < 10; ++cycle) {
+            for (char c : std::string("abcabcabc")) col.step(glyph_for(c));
+        }
+        const auto pre_acc   = col.recent_accuracy();
+        const auto pre_obs   = col.observations();
+        const auto pre_assoc = col.associations();
+        const auto pre_pred  = col.predict();
+
+        col.save(prefix);
+
+        PredictiveColumn col2(1);  // wrong window — load should override
+        col2.load(prefix);
+
+        EXPECT(col2.observations() == pre_obs,   "observations preserved by load");
+        EXPECT(col2.associations() == pre_assoc, "associations preserved by load");
+        EXPECT(std::fabs(col2.recent_accuracy() - pre_acc) < 1e-9,
+               "recent_accuracy preserved by load");
+        EXPECT(col2.predict() == pre_pred, "predict() bit-identical after roundtrip");
     }
 
     std::printf("\nCortex tests: %d/%d passed (%d failed).\n",

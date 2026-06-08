@@ -273,6 +273,65 @@ void register_cortex_tools(Carapace& c, khora::cortex::PredictiveColumn& cortex)
             return make_ok(os.str());
         }
     });
+
+    c.register_tool({
+        "train",
+        "train cortex on a text file  (usage: train <path> [per_char|per_word] [max_tokens])",
+        [&cortex](const Intent& i) -> ToolResult {
+            namespace fs = std::filesystem;
+            if (i.args.empty()) return make_err("usage: train <path> [per_char|per_word] [max_tokens]");
+            const fs::path p(i.args[0]);
+            std::error_code ec;
+            if (!fs::exists(p, ec))         return make_err("no such file: " + p.string());
+            if (fs::is_directory(p, ec))    return make_err("is a directory: " + p.string());
+
+            const bool per_word = (i.args.size() >= 2 && i.args[1] == "per_word");
+            std::size_t max_tokens = 20000;
+            if (i.args.size() >= 3) {
+                try { max_tokens = static_cast<std::size_t>(std::stoul(i.args[2])); }
+                catch (...) {}
+            }
+
+            std::ifstream is(p, std::ios::binary);
+            if (!is) return make_err("cannot open: " + p.string());
+            std::ostringstream buf;
+            buf << is.rdbuf();
+            const std::string text = buf.str();
+
+            const auto t0 = std::chrono::steady_clock::now();
+            std::size_t fed = 0;
+            double      acc_before = cortex.recent_accuracy();
+
+            if (per_word) {
+                std::istringstream s(text);
+                std::string word;
+                while (fed < max_tokens && (s >> word)) {
+                    cortex.step(khora::lattice::Glyph::from_hash(word));
+                    ++fed;
+                }
+            } else {
+                for (char c : text) {
+                    if (fed >= max_tokens) break;
+                    char tk[2] = { c, '\0' };
+                    cortex.step(khora::lattice::Glyph::from_hash(tk));
+                    ++fed;
+                }
+            }
+            const auto t1 = std::chrono::steady_clock::now();
+            const double secs = std::chrono::duration<double>(t1 - t0).count();
+            const double acc_after = cortex.recent_accuracy();
+
+            std::ostringstream os;
+            os << "trained on " << fed << (per_word ? " words" : " chars")
+               << " from " << p.string() << "\n"
+               << "  duration         : " << secs << "s ("
+               << (secs > 0 ? static_cast<double>(fed) / secs : 0.0) << " tokens/s)\n"
+               << "  recent_accuracy  : " << acc_before << " -> " << acc_after << "\n"
+               << "  associations     : " << cortex.associations() << "\n"
+               << "  observations     : " << cortex.observations();
+            return make_ok(os.str());
+        }
+    });
 }
 
 void register_soma_tools(Carapace& c, khora::soma::SomaNexus& soma) {

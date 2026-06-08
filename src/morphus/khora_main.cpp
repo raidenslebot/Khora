@@ -22,7 +22,8 @@
 
 namespace {
 
-constexpr const char* kArchivePath = "data/lattice_archive/main.klat";
+constexpr const char* kArchivePath        = "data/lattice_archive/main.klat";
+constexpr const char* kCortexArchivePrefix = "data/cortex_archive/main";
 
 std::string read_line_prompt(const std::string& prompt) {
     std::cout << prompt << std::flush;
@@ -49,16 +50,31 @@ int main(int argc, char** argv) {
     soma::SomaNexus nexus;
     reverie::ReverieLoom dream(memory, column, nexus);
 
-    // 2. Try to load persisted lattice state.
+    // 2. Try to load persisted lattice + cortex state.
     namespace fs = std::filesystem;
     fs::create_directories(fs::path(kArchivePath).parent_path());
+    fs::create_directories(fs::path(kCortexArchivePrefix).parent_path());
+
     if (fs::exists(kArchivePath)) {
         try {
             memory = lattice::load(kArchivePath);
             std::cout << "[loaded " << memory.size() << " glyphs from "
                       << kArchivePath << "]\n";
         } catch (const lattice::PersistError& e) {
-            std::cout << "[warning: could not load archive: " << e.what() << "]\n";
+            std::cout << "[warning: could not load lattice archive: " << e.what() << "]\n";
+        }
+    }
+    {
+        fs::path cortex_header = kCortexArchivePrefix; cortex_header += ".cortex";
+        if (fs::exists(cortex_header)) {
+            try {
+                column.load(kCortexArchivePrefix);
+                std::cout << "[loaded cortex state: " << column.observations()
+                          << " obs, " << column.associations() << " assoc, "
+                          << "recent_acc=" << column.recent_accuracy() << "]\n";
+            } catch (const lattice::PersistError& e) {
+                std::cout << "[warning: could not load cortex archive: " << e.what() << "]\n";
+            }
         }
     }
 
@@ -124,11 +140,13 @@ int main(int argc, char** argv) {
         }
     });
 
-    // Helper: persist the lattice silently. Used both at single-command
-    // exit and at interactive-loop exit so state actually accumulates
-    // across runs.
-    auto persist_silently = [&memory]() {
+    // Helper: persist lattice + cortex silently. Used both at
+    // single-command exit and at interactive-loop exit so state actually
+    // accumulates across runs.
+    auto persist_silently = [&memory, &column]() {
         try { (void)lattice::save(memory, kArchivePath); }
+        catch (...) { /* swallow — best effort */ }
+        try { column.save(kCortexArchivePrefix); }
         catch (...) { /* swallow — best effort */ }
     };
 
@@ -169,13 +187,20 @@ int main(int argc, char** argv) {
         }
     }
 
-    // 6. Save Lattice on exit.
+    // 6. Save Lattice + Cortex on exit.
     try {
         auto s = lattice::save(memory, kArchivePath);
         std::cout << "[saved " << s.glyph_count << " glyphs to "
                   << kArchivePath << "]\n";
     } catch (const std::exception& e) {
-        std::cerr << "[save failed: " << e.what() << "]\n";
+        std::cerr << "[lattice save failed: " << e.what() << "]\n";
+    }
+    try {
+        column.save(kCortexArchivePrefix);
+        std::cout << "[saved cortex (" << column.associations()
+                  << " associations) to " << kCortexArchivePrefix << ".*]\n";
+    } catch (const std::exception& e) {
+        std::cerr << "[cortex save failed: " << e.what() << "]\n";
     }
     std::cout << "Khora out.\n";
     return 0;

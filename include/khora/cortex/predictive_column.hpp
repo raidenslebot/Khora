@@ -14,6 +14,7 @@
 
 #include <cstddef>
 #include <deque>
+#include <filesystem>
 
 namespace khora::cortex {
 
@@ -40,6 +41,14 @@ public:
     std::size_t observations()    const noexcept { return observations_; }
     std::size_t associations()    const          { return ctx_keys_.size(); }
     double      recent_accuracy() const;          // mean similarity over last 64 steps
+
+    // Persistence — writes/reads three files under the given prefix:
+    //   <prefix>.cortex      — small header (version, counters, window state)
+    //   <prefix>.keys.klat   — context-key Lattice
+    //   <prefix>.vals.klat   — next-value Lattice
+    // Throws khora::lattice::PersistError on I/O failure or format mismatch.
+    void save(const std::filesystem::path& prefix) const;
+    void load(const std::filesystem::path& prefix);
 
 private:
     std::size_t                       context_window_;

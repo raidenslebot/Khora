@@ -1,5 +1,10 @@
 #include "khora/cortex/predictive_column.hpp"
 
+#include "khora/lattice/persistence.hpp"
+
+#include <cstdint>
+#include <cstring>
+#include <fstream>
 #include <span>
 #include <string>
 #include <vector>
@@ -81,6 +86,109 @@ double PredictiveColumn::recent_accuracy() const {
     double sum = 0.0;
     for (double s : recent_sims_) sum += s;
     return sum / static_cast<double>(recent_sims_.size());
+}
+
+namespace {
+constexpr char kCortexMagic[12]   = {'K','H','O','R','A','C','O','R','T','E','X','\0'};
+constexpr std::uint32_t kCortexFormatVersion = 1;
+} // namespace
+
+void PredictiveColumn::save(const std::filesystem::path& prefix) const {
+    namespace fs = std::filesystem;
+    if (prefix.has_parent_path()) fs::create_directories(prefix.parent_path());
+
+    auto hdr_path = prefix; hdr_path += ".cortex";
+    std::ofstream os(hdr_path, std::ios::binary | std::ios::trunc);
+    if (!os) throw khora::lattice::PersistError("cannot open cortex header for write: " + hdr_path.string());
+
+    os.write(kCortexMagic, sizeof(kCortexMagic));
+    os.write(reinterpret_cast<const char*>(&kCortexFormatVersion), sizeof(kCortexFormatVersion));
+
+    const std::uint32_t cw  = static_cast<std::uint32_t>(context_window_);
+    const std::uint64_t obs = static_cast<std::uint64_t>(observations_);
+    const std::uint64_t nai = static_cast<std::uint64_t>(next_assoc_id_);
+    os.write(reinterpret_cast<const char*>(&cw),  sizeof(cw));
+    os.write(reinterpret_cast<const char*>(&obs), sizeof(obs));
+    os.write(reinterpret_cast<const char*>(&nai), sizeof(nai));
+
+    const std::uint32_t rcount = static_cast<std::uint32_t>(recent_.size());
+    os.write(reinterpret_cast<const char*>(&rcount), sizeof(rcount));
+    for (const auto& g : recent_) {
+        os.write(reinterpret_cast<const char*>(g.words().data()),
+                 static_cast<std::streamsize>(sizeof(khora::lattice::Glyph::Word) * khora::lattice::kGlyphWords));
+    }
+
+    const std::uint32_t scount = static_cast<std::uint32_t>(recent_sims_.size());
+    os.write(reinterpret_cast<const char*>(&scount), sizeof(scount));
+    for (double s : recent_sims_) {
+        os.write(reinterpret_cast<const char*>(&s), sizeof(s));
+    }
+
+    if (!os) throw khora::lattice::PersistError("cortex header write failed mid-stream");
+    os.close();
+
+    auto keys_path = prefix; keys_path += ".keys.klat";
+    auto vals_path = prefix; vals_path += ".vals.klat";
+    khora::lattice::save(ctx_keys_, keys_path);
+    khora::lattice::save(ctx_vals_, vals_path);
+}
+
+void PredictiveColumn::load(const std::filesystem::path& prefix) {
+    auto hdr_path = prefix; hdr_path += ".cortex";
+    std::ifstream is(hdr_path, std::ios::binary);
+    if (!is) throw khora::lattice::PersistError("cannot open cortex header for read: " + hdr_path.string());
+
+    char magic[12]{};
+    is.read(magic, sizeof(magic));
+    if (!is || std::memcmp(magic, kCortexMagic, sizeof(magic)) != 0) {
+        throw khora::lattice::PersistError("bad cortex header magic");
+    }
+    std::uint32_t version = 0;
+    is.read(reinterpret_cast<char*>(&version), sizeof(version));
+    if (version != kCortexFormatVersion) {
+        throw khora::lattice::PersistError("unsupported cortex version " + std::to_string(version));
+    }
+
+    std::uint32_t cw  = 0;
+    std::uint64_t obs = 0;
+    std::uint64_t nai = 0;
+    is.read(reinterpret_cast<char*>(&cw),  sizeof(cw));
+    is.read(reinterpret_cast<char*>(&obs), sizeof(obs));
+    is.read(reinterpret_cast<char*>(&nai), sizeof(nai));
+    if (!is) throw khora::lattice::PersistError("short read in cortex header");
+
+    context_window_   = static_cast<std::size_t>(cw == 0 ? 1 : cw);
+    observations_     = static_cast<std::size_t>(obs);
+    next_assoc_id_    = static_cast<std::size_t>(nai);
+
+    std::uint32_t rcount = 0;
+    is.read(reinterpret_cast<char*>(&rcount), sizeof(rcount));
+    if (!is) throw khora::lattice::PersistError("short read at recent_count");
+
+    recent_.clear();
+    for (std::uint32_t i = 0; i < rcount; ++i) {
+        khora::lattice::Glyph::Storage storage{};
+        is.read(reinterpret_cast<char*>(storage.data()),
+                static_cast<std::streamsize>(sizeof(khora::lattice::Glyph::Word) * khora::lattice::kGlyphWords));
+        if (!is) throw khora::lattice::PersistError("short read in recent[]");
+        recent_.emplace_back(storage);
+    }
+
+    std::uint32_t scount = 0;
+    is.read(reinterpret_cast<char*>(&scount), sizeof(scount));
+    if (!is) throw khora::lattice::PersistError("short read at sims_count");
+    recent_sims_.clear();
+    for (std::uint32_t i = 0; i < scount; ++i) {
+        double d = 0.0;
+        is.read(reinterpret_cast<char*>(&d), sizeof(d));
+        if (!is) throw khora::lattice::PersistError("short read in recent_sims[]");
+        recent_sims_.push_back(d);
+    }
+
+    auto keys_path = prefix; keys_path += ".keys.klat";
+    auto vals_path = prefix; vals_path += ".vals.klat";
+    ctx_keys_ = khora::lattice::load(keys_path);
+    ctx_vals_ = khora::lattice::load(vals_path);
 }
 
 } // namespace khora::cortex
