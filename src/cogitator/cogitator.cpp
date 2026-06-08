@@ -323,4 +323,55 @@ Deliberation Cogitator::deliberate(std::string_view stimulus, std::size_t facets
     return d;
 }
 
+namespace {
+bool is_trace(const std::string& label) {
+    return label.rfind("deliberation_", 0) == 0 || label.rfind("hypothesis_", 0) == 0;
+}
+
+// The concept a deliberation lands on — the strongest real resonance
+// across all facets, skipping transient trace concepts and the concept we
+// are currently standing on (`exclude`), so the train hops onward through
+// genuine knowledge rather than looping on itself trivially.
+std::string landed_concept(const Deliberation& d, const std::string& exclude) {
+    double best = -2.0; std::string best_label;
+    for (const auto& f : d.facets) {
+        for (const auto& m : f.resonances) {
+            if (is_trace(m.label) || m.label == exclude) continue;
+            if (m.similarity > best) { best = m.similarity; best_label = m.label; }
+        }
+    }
+    return best_label;
+}
+} // namespace
+
+Rumination Cogitator::ruminate(std::string_view stimulus, std::size_t max_depth) {
+    Rumination r;
+    r.seed = std::string(stimulus);
+    std::string current = r.seed;
+    std::vector<std::string> visited;
+
+    r.train.push_back(current);      // the seed is the first stop
+    for (std::size_t depth = 0; depth < max_depth; ++depth) {
+        Deliberation d = deliberate(current);
+        const std::string landed = landed_concept(d, current);
+        r.chain.push_back(std::move(d));
+
+        if (landed.empty()) break;   // nowhere new to go — stop
+        r.train.push_back(landed);
+
+        // Settled into an attractor: the train looped back to a concept it
+        // has already passed through. That recurring pull IS the conclusion.
+        if (std::find(visited.begin(), visited.end(), landed) != visited.end()) {
+            r.converged   = true;
+            r.conclusion  = landed;
+            break;
+        }
+        visited.push_back(landed);
+        current = landed;            // hop onward and think again
+    }
+
+    if (r.conclusion.empty() && !r.train.empty()) r.conclusion = r.train.back();
+    return r;
+}
+
 } // namespace khora::cogitator

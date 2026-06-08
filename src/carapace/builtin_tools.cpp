@@ -528,6 +528,32 @@ void register_cogitator_tools(Carapace& c, khora::cogitator::Cogitator& cog) {
             return {true, os.str(), ""};
         }
     });
+
+    c.register_tool({
+        "ruminate",
+        "follow a recursive train of thought  (usage: ruminate <text> [depth])",
+        [&cog](const Intent& i) -> ToolResult {
+            if (i.args.empty()) return make_err("usage: ruminate <text> [depth]");
+            std::size_t depth = 6;
+            std::size_t title_args = i.args.size();
+            if (i.args.size() >= 2) {
+                try { depth = static_cast<std::size_t>(std::stoul(i.args.back())); title_args = i.args.size() - 1; }
+                catch (...) {}
+            }
+            std::string stim;
+            for (std::size_t k = 0; k < title_args; ++k) { if (k) stim.push_back(' '); stim += i.args[k]; }
+            const auto r = cog.ruminate(stim, depth);
+            std::ostringstream os;
+            os << "Train of thought from \"" << r.seed << "\":\n  ";
+            for (std::size_t k = 0; k < r.train.size(); ++k) {
+                if (k) os << " -> ";
+                os << r.train[k];
+            }
+            os << "\n  " << (r.converged ? "converged on attractor: " : "ended at: ")
+               << r.conclusion;
+            return make_ok(os.str());
+        }
+    });
 }
 
 } // namespace khora::carapace

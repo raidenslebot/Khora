@@ -3,6 +3,32 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.23.0 — Recursive rumination (the train of thought)
+
+**Author:** Morphus
+
+Deliberation made recursive. `Cogitator::ruminate()` chains
+deliberations: each thought's landed concept becomes the next stimulus,
+so cognition hops through concept-space — an associative train of
+thought. Each hop excludes the concept it is standing on (no trivial
+self-loop) and settles when the train cycles back to a concept it has
+already passed — that recurring pull is the **attractor**, the emergent
+conclusion of the rumination.
+
+**Verified live** (after memorizing war-domain concepts):
+- "how do i win the war" -> war -> deception -> strategy -> deception
+  (converged on attractor: **deception**)
+- "deception" -> strategy -> deception -> strategy
+  (converged on attractor: **strategy**)
+
+Khora ponders "winning the war" and its recursive thinking keeps
+returning to the deception<->strategy attractor — semantically exactly
+right for the material, and an emergent conclusion no step of which was
+scripted. This is the directive's "parallel recursive threads that
+compete, combine, and collapse" taken to its recursive depth.
+
+New tool: `ruminate <text> [depth]`. 9/9 regression suites pass.
+
 ## v0.22.0 — Non-linear cognition (the Prism)
 
 **Author:** Morphus

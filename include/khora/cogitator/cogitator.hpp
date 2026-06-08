@@ -102,6 +102,18 @@ struct Deliberation {
     bool                       learned = false;
 };
 
+// A train of thought — recursive deliberation. Each collapsed thought
+// becomes the next stimulus, so cognition hops through concept-space
+// until it settles into an attractor (a concept it keeps returning to)
+// or exhausts its depth. Associative, non-linear, self-driven.
+struct Rumination {
+    std::string                seed;
+    std::vector<Deliberation>  chain;
+    std::vector<std::string>   train;       // the concepts traversed, in order
+    bool                       converged = false;  // settled into an attractor
+    std::string                conclusion; // the attractor, or last concept reached
+};
+
 class Cogitator {
 public:
     Cogitator(khora::lexicon::Lexicon&         lex,
@@ -129,6 +141,10 @@ public:
     // caps how many lenses to spawn (default: all of them).
     Deliberation deliberate(std::string_view stimulus,
                             std::size_t facets = static_cast<std::size_t>(Lens::_Count));
+
+    // Recursive deliberation: a train of thought that hops from concept to
+    // concept until it settles into an attractor or reaches max_depth.
+    Rumination ruminate(std::string_view stimulus, std::size_t max_depth = 6);
 
     // Stats
     std::size_t thoughts_completed() const noexcept { return thoughts_; }
