@@ -3,6 +3,33 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.66.0 — Closing the loop: cognition resonates over the Spire
+
+**Author:** Morphus
+
+v0.65 built the tower but left it inert — abstractions formed recursively yet
+never re-entered the thinking that built them. A ladder, not an engine. This
+closes the loop: Khora's cognition now **resonates over its abstractions**, so
+thought reaches the higher-order concepts and forges still-higher ones from a
+higher vantage. Build feeds thought feeds build.
+
+- `ensure_field_` now folds the abstraction tower into the resonance field
+  (rebuilt as the tower grows, throttled), while the Volition still *seeds*
+  thought from words only. `form_abstraction` draws word-kin from the field
+  and abstraction-kin from the tower, so it composes across both.
+
+**Verified live**: a rumination from "justice" now **walks through Khora's own
+abstractions** — `justice → {justice+cause+question}#0 → question →
+{virtue+{justice…}#0+suffer}#1 → cause → {suffer+{virtue+…}…}#2`. And with
+abstractions back in the loop, the autonomous engine forged **depth 4**
+unprompted: `{extracts+{suffer+{virtue+{justice…}…}…}#2+hsien}#3`. Cognition
+intact, 9/9 suites pass, the tower carried forward across lives.
+
+The compounding loop is real now: thought resonates over the tower → raises
+it → which re-enters thought. The combinatorial engine turns over. (Cluster
+coherence is still field-bounded — the next deepening — but the *mechanism*
+of exponential representational growth is running.)
+
 ## v0.65.0 — The Spire: recursive abstraction (the combinatorial engine)
 
 **Author:** Morphus

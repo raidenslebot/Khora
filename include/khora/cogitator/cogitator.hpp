@@ -286,6 +286,7 @@ private:
     std::vector<Abstraction>        abstractions_;   // the rising tower
     std::size_t                     abstraction_seq_ = 0;
     std::size_t                    indexed_vocab_ = static_cast<std::size_t>(-1);
+    std::size_t                    indexed_abstractions_ = 0;  // rebuild field as the tower grows
 
     // Glyph + level of any concept name (a learned word = level 0, or an
     // existing abstraction = its level).

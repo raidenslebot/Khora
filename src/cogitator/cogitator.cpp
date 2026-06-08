@@ -59,7 +59,11 @@ Glyph Cogitator::gestalt_(const Glyph& probe,
 // mid-deliberation.
 void Cogitator::ensure_field_() {
     const std::size_t v = lex_.vocabulary_size();
-    if (v == indexed_vocab_) return;
+    const std::size_t na = abstractions_.size();
+    // Rebuild when the vocabulary changes, or when the tower has grown enough
+    // that cognition should resonate over the new abstractions too.
+    if (v == indexed_vocab_ && na >= indexed_abstractions_ && na < indexed_abstractions_ + 16)
+        return;
 
     // Resonate over CONTENT words only — the salient vocabulary, with the
     // ubiquitous function words already filtered out — so cognition lands on
@@ -82,6 +86,7 @@ void Cogitator::ensure_field_() {
     // Demote any residual distributional hubs (centrality outliers, mean+2σ)
     // so thought resonates with content, not connective tissue. The surviving
     // labels become the clean concept set the Volition seeds thought from.
+    std::vector<std::pair<std::string, Glyph>> final_set;
     bool demoted = false;
     if (entries.size() > 64) {
         const auto deg = field_.centrality(10);
@@ -96,22 +101,28 @@ void Cogitator::ensure_field_() {
             std::vector<std::pair<std::string, Glyph>> clean;
             clean.reserve(entries.size());
             for (std::size_t i = 0; i < entries.size(); ++i)
-                if (deg[i] <= cut) clean.push_back(entries[i]);   // copy: keep entries intact
+                if (deg[i] <= cut) clean.push_back(entries[i]);
             if (clean.size() >= 2 && clean.size() < entries.size()) {
-                field_.build(clean);
-                concepts_.clear();
-                concepts_.reserve(clean.size());
-                for (auto& e : clean) concepts_.push_back(e.first);
+                final_set = std::move(clean);
                 demoted = true;
             }
         }
     }
-    if (!demoted) {
-        concepts_.clear();
-        concepts_.reserve(entries.size());
-        for (auto& e : entries) concepts_.push_back(e.first);
-    }
+    if (!demoted) final_set = std::move(entries);
+
+    // The content labels are what the Volition SEEDS thought from (words only).
+    concepts_.clear();
+    concepts_.reserve(final_set.size());
+    for (auto& e : final_set) concepts_.push_back(e.first);
+
+    // Fold the rising tower in: cognition now RESONATES over abstractions too,
+    // so thought reaches higher-order concepts and forges still-higher ones —
+    // the abstraction loop closing back into cognition.
+    for (const auto& a : abstractions_) final_set.emplace_back(a.name, a.glyph);
+
+    field_.build(final_set);
     indexed_vocab_ = v;
+    indexed_abstractions_ = na;
 }
 
 // Single-probe resonance: the Lexicon field if populated, else the
@@ -172,8 +183,9 @@ std::string Cogitator::form_abstraction(const std::string& seed, std::size_t k) 
     // abstractions — so a TOWER can form, not just flat word-chunks.
     struct Kin { double sim; std::string name; int level; };
     std::vector<Kin> kin;
-    for (const auto& m : field_.query(seedG, k + 2)) {
+    for (const auto& m : field_.query(seedG, k + 4)) {
         if (m.label == seed) continue;
+        if (!m.label.empty() && m.label[0] == '{') continue;  // words here; abstractions added below
         kin.push_back({ m.similarity, m.label, 0 });
     }
     for (const auto& a : abstractions_) {
