@@ -3,6 +3,37 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.72.0 — Chaos forges real concepts (the last consumer routed)
+
+**Author:** Morphus
+
+The final consumer leaves the hub-fouled field. Chaotic synthesis — colliding two
+concepts to forge a third — used to bundle them into a dense chimera glyph and
+read off the nearest Hamming match, which drifted straight into the function-word
+hubs ("great x propagation ~> this", "thou x allusion ~> thee"). Meaningless.
+
+Now a collision is routed through the Plexus: the emergent is the concept that
+**bridges** the two parents — linked to BOTH (a true bridge), or, failing that,
+the strongest combined pull of their two associate fields. Always a real concept,
+never a hub.
+
+**Verified live:**
+```
+  knowledge x power -> executive, coercive, legislative   (the forms of power)
+  nature x law      -> fundamentall, unwritten            (true bridges: natural law)
+  justice x war     -> distributive, punic, waging        (both fields in tension)
+  soul x body       -> reference, efflux, rigid
+```
+Versus the old `~> this / ~> thee`. Chaos now means something — it surfaces the
+conceptual fields a collision sets in tension, and when a genuine hidden bridge
+exists (nature+law -> the unwritten, fundamental law) it leads.
+
+With this, ALL of cognition drinks from the clean well: abstraction (v0.69), the
+tower (v0.70), trains of thought (v0.71), and now chaos (v0.72). The hub problem,
+which starved every faculty, is fully exorcised from the thinking engine. (Steered
+generation — utter/respond — still chains the cortex; that is a separate faculty,
+next.) 10/10 suites pass.
+
 ## v0.71.0 — Cognition over the clean well (coherent trains of thought)
 
 **Author:** Morphus

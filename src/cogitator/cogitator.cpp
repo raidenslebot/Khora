@@ -584,8 +584,55 @@ Synthesis Cogitator::synthesize(const std::string& a_in, const std::string& b_in
     if (ga.popcount() == 0 || gb.popcount() == 0) return s;
     s.tension = 1.0 - ga.similarity(gb);
 
+    // Plexus-routed collision: the idea forged from colliding a and b is the
+    // concept that BRIDGES them — strongly associated with BOTH parents, yet
+    // neither. Meaningful chaos: the hidden third their tension reveals, instead
+    // of the dense-chimera Hamming drift into function-word hubs. When the Plexus
+    // knows both parents it is authoritative: a real bridge, or an honest nothing
+    // (distant concepts that share no conceptual link forge nothing) — never a hub.
+    if (plexus_ && plexus_->has(a) && plexus_->has(b)) {
+        // Gather the union of both parents' kin, with each candidate's affinity to
+        // each parent. A TRUE bridge (linked to both) is the richest emergent; if
+        // none exists, the strongest combined pull still names a real concept the
+        // collision evokes — so chaos forges something meaningful, never a hub and
+        // never (for two known content words) pure nothing.
+        std::unordered_map<std::string, std::pair<double, double>> cand;  // c -> (affA, affB)
+        for (const auto& kin : plexus_->associates(a, 60)) {
+            if (kin.first != a && kin.first != b) cand[kin.first].first = kin.second;
+        }
+        for (const auto& kin : plexus_->associates(b, 60)) {
+            if (kin.first != a && kin.first != b) cand[kin.first].second = kin.second;
+        }
+        struct Em { bool both; double score; std::string label; };
+        std::vector<Em> ranked;
+        ranked.reserve(cand.size());
+        for (auto& [c, af] : cand) {
+            double aA = af.first, aB = af.second;
+            if (aA == 0.0) aA = plexus_->affinity(a, c);   // fill the cross link
+            if (aB == 0.0) aB = plexus_->affinity(b, c);
+            const bool both = (aA > 0.0 && aB > 0.0);
+            const double score = both ? std::min(aA, aB) : (aA + aB);  // bridge = weaker link
+            ranked.push_back({ both, score, c });
+        }
+        // True bridges first, then strongest pull.
+        std::sort(ranked.begin(), ranked.end(), [](const Em& x, const Em& y) {
+            if (x.both != y.both) return x.both;
+            return x.score > y.score;
+        });
+        for (std::size_t j = 0; j < ranked.size() && s.emergent.size() < 4; ++j) {
+            LatticeMatch m;
+            m.label      = ranked[j].label;
+            m.hamming    = ranked[j].both ? 0u : 1u;   // mark true bridges (hamming 0)
+            m.similarity = ranked[j].score / (ranked[j].score + 2.5);  // squash to 0..1
+            s.emergent.push_back(std::move(m));
+        }
+        if (!s.emergent.empty()) note_attractor_(s.emergent.front().label);
+        return s;  // authoritative — real concepts, never Hamming hub-drift
+    }
+
     // Superpose the two into a chimera, then see what concept that collision
-    // evokes that is NEITHER parent — the idea forged from their tension.
+    // evokes that is NEITHER parent — the idea forged from their tension. Used
+    // for parents the Plexus has not learned.
     const Glyph chimera = bundle({ga, gb});
     auto hits = (field_.size() > 0) ? field_.query(chimera, 8) : memory_.query(chimera, 8);
     for (auto& h : hits) {
