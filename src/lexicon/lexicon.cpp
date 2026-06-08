@@ -160,6 +160,22 @@ std::vector<std::pair<std::string, Glyph>> Lexicon::semantic_field() const {
     return out;
 }
 
+Glyph Lexicon::context_glyph(std::string_view token) const {
+    auto it = ctx_.find(std::string{token});
+    if (it == ctx_.end() || it->second.obs == 0) return Glyph::zero();
+    return binarise_(it->second);
+}
+
+std::vector<std::pair<std::string, Glyph>> Lexicon::context_field() const {
+    std::vector<std::pair<std::string, Glyph>> out;
+    out.reserve(ctx_.size());
+    for (const auto& [tok, c] : ctx_) {
+        if (c.obs == 0) continue;
+        out.emplace_back(tok, binarise_(c));
+    }
+    return out;
+}
+
 std::uint32_t Lexicon::exposures_for(std::string_view token) const {
     auto it = ctx_.find(std::string{token});
     return (it == ctx_.end()) ? 0 : it->second.obs;

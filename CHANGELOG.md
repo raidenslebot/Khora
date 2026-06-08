@@ -3,6 +3,34 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.33.0 — Distributional semantic recall (context glyphs)
+
+**Author:** Morphus
+
+Validating `nearest` on a real, autonomously-acquired vocabulary exposed a
+real flaw — and the fix sharpened a capability. Khora foraged and studied
+**Pride and Prejudice** and **The Republic** from Project Gutenberg (8,659
+words learned), and `nearest` ran on the GPU path over that real field,
+bit-exact. But its neighbours were dominated by *spelling*: `mind → find,
+kind, bind`. The cause: `glyph_for` bundles a word's char-trigram baseline
+*with* its context vector, and for short words the spelling overwhelms the
+meaning.
+
+- **`Lexicon::context_glyph()` / `context_field()`** expose the *pure*
+  binarised random-indexing accumulator — "keeps similar company" with the
+  spelling baseline removed. `nearest` now searches these (over salient
+  content words), so it returns genuine distributional associations.
+- The difference is night and day on the same corpus: `mind → body,
+  motive, suffer`; `love → laugh, dance, miserable, spoken`; `war →
+  hellenes, aptitude, pursuits` (Plato's guardians); `woman → simpleton,
+  fault, disappointed`. Concepts, not spellings.
+
+**Verified live**: every query GPU-path and **audit: EXACT (matches
+brute-force reference)** over the real 3,471-content-word field. This is
+the first end-to-end proof of the whole stack on real data — autonomous
+acquisition → distillation → study → GPU-accelerated semantic recall. 9/9
+regression suites pass.
+
 ## v0.32.0 — GPU semantic search over the Lexicon
 
 **Author:** Morphus

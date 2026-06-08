@@ -89,6 +89,17 @@ public:
     // of these very glyphs.
     std::vector<std::pair<std::string, khora::lattice::Glyph>> semantic_field() const;
 
+    // The pure distributional context glyph: the binarised random-indexing
+    // accumulator ALONE, without the structural (char-trigram) baseline.
+    // glyph_for() blends spelling + context, so its neighbours can be merely
+    // spelling-similar (mind~find); this isolates "keeps similar company" —
+    // distributional semantics proper. Zero glyph if the token was unseen.
+    khora::lattice::Glyph context_glyph(std::string_view token) const;
+
+    // Like semantic_field(), but over the pure context glyphs above. Only
+    // includes words actually exposed to context (obs > 0).
+    std::vector<std::pair<std::string, khora::lattice::Glyph>> context_field() const;
+
     // Persistence — survives across process restarts. Writes
     //   <prefix>.sem.klat  : token -> binarised context glyph (Lattice)
     //   <prefix>.lexobs     : per-token observation counts

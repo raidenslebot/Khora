@@ -380,10 +380,20 @@ int main(int argc, char** argv) {
             if (!lex.has(word))
                 return {false, "", "'" + word + "' is not in the lexicon yet - study or lex_expose first"};
 
-            auto field = lex.semantic_field();
+            // Search the PURE distributional context glyphs of content words
+            // (salient tokens) — isolating "keeps similar company" from mere
+            // spelling overlap, and excluding ubiquitous function-word hubs.
+            // Fall back to the full context field for a small lexicon.
+            std::vector<std::pair<std::string, Glyph>> field;
+            {
+                auto salient = lex.salient_tokens(200000, 3);
+                field.reserve(salient.size());
+                for (auto& w : salient) field.emplace_back(w, lex.context_glyph(w));
+                if (field.size() < 50) field = lex.context_field();
+            }
             if (field.size() < 2)
                 return {false, "", "lexicon has too few learned words for neighbour search"};
-            const Glyph probe = lex.glyph_for(word);
+            const Glyph probe = lex.context_glyph(word);
 
             // GPU-accelerated associative recall over the whole vocabulary.
             // The crossover is low so even a modest vocabulary exercises the
