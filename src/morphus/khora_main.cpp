@@ -1045,7 +1045,8 @@ int main(int argc, char** argv) {
                             if (lb && rb) { ++sc; break; }
                         }
                     }
-                    if (sc >= 2) hits.push_back({ sc, tome.title, sent });
+                    const int need = std::min<int>(2, static_cast<int>(terms.size()));
+                    if (sc >= need) hits.push_back({ sc, tome.title, sent });
                 }
             }
         }
@@ -1075,6 +1076,45 @@ int main(int argc, char** argv) {
             std::ostringstream os;
             os << "from Khora's liquid knowledge on \"" << query << "\":\n";
             for (const auto& [src, passage] : ps) os << "  [" << src << "] " << passage << "\n";
+            return {true, os.str(), ""};
+        }
+    });
+    shell.register_tool({
+        "discourse",
+        "Khora explores a question across the canon, voice to voice  (usage: discourse <question> [rounds])",
+        [&lex, consult_passages](const carapace::Intent& in) -> carapace::ToolResult {
+            if (in.args.empty()) return {false, "", "usage: discourse <question> [rounds]"};
+            std::vector<std::string> args = in.args;
+            std::size_t rounds = 5;
+            if (args.size() >= 2) { try { rounds = std::stoul(args.back()); args.pop_back(); } catch (...) {} }
+            if (rounds < 1) rounds = 1;
+            if (rounds > 8) rounds = 8;
+            std::string query;
+            for (const auto& a : args) { if (!query.empty()) query += ' '; query += a; }
+
+            std::ostringstream os;
+            os << "Khora discourses on \"" << query << "\":\n";
+            std::string cur = query;
+            std::vector<std::string> used;          // sources already heard from
+            for (std::size_t r = 0; r < rounds; ++r) {
+                const auto ps = consult_passages(cur, 4);
+                if (ps.empty()) break;
+                // Prefer a voice not yet heard, for breadth across the canon.
+                std::pair<std::string, std::string> chosen = ps.front();
+                for (const auto& p : ps)
+                    if (std::find(used.begin(), used.end(), p.first) == used.end()) { chosen = p; break; }
+                used.push_back(chosen.first);
+                os << "  [" << chosen.first << "] " << chosen.second << "\n";
+                // Pivot: the longest content word in this passage becomes the
+                // next thread — the thought wanders by what gripped it.
+                std::string next;
+                for (auto& t : khora::lexicon::tokenize(chosen.second))
+                    if (t.size() >= 6 && t.size() <= 14 && t != cur && lex.has(t) && t.size() > next.size())
+                        next = t;
+                if (next.empty()) break;
+                os << "    ~ on " << next << " ~\n";
+                cur = next;
+            }
             return {true, os.str(), ""};
         }
     });

@@ -3,6 +3,29 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.64.0 — Discourse (Khora roams the canon, all night)
+
+**Author:** Morphus
+
+"Answer complex philosophical questions all night." Not one answer — a
+*journey*. Khora now wanders a question across its whole library, voice to
+voice, each passage pivoting on a concept that carries it to the next.
+
+- New tool **`discourse <question> [rounds]`**: consult the question, speak
+  the most relevant passage, then pivot on its strongest concept to consult
+  *that*, preferring a voice not yet heard — a recursive, non-linear walk
+  through the canon. (Also fixed single-term `consult`: the term-match
+  threshold is now adaptive, so a one-word query resolves.)
+
+**Verified live**: `discourse the nature of good and evil` threaded six minds
+in one breath — Plato (*human nature oscillates between good and evil*) →
+Smith (*the origin of coined money… institutions*) → Whitman (*the beautiful
+touch of Death… eternal uses of the earth*) → Austen → Freud (*a creature
+dressed in brownish fur*) → Einstein (*what do you mean by the assertion that
+these propositions are true?*). A stream of consciousness across the great
+books — meaning emerging from the whole, the way the Directive said a mind
+should move. 9/9 regression suites pass.
+
 ## v0.63.0 — The canon speaks with many voices
 
 **Author:** Morphus
