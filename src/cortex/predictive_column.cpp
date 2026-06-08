@@ -44,6 +44,38 @@ Glyph PredictiveColumn::predict() const {
     return val.value_or(Glyph::zero());
 }
 
+Glyph PredictiveColumn::predict_from(const std::vector<Glyph>& context) const {
+    if (ctx_keys_.size() == 0 || context.empty()) return Glyph::zero();
+    // Encode the last `context_window_` elements, newest first, exactly as
+    // current_context_() does.
+    const std::size_t w = std::min(context.size(), context_window_);
+    std::vector<Glyph> ordered;
+    ordered.reserve(w);
+    for (std::size_t k = 0; k < w; ++k)
+        ordered.push_back(permute(context[context.size() - 1 - k], static_cast<int>(k) * 137));
+    const Glyph c = bundle(std::span<const Glyph>{ordered.data(), ordered.size()});
+    const auto m = ctx_keys_.query(c, 1);
+    if (m.empty()) return Glyph::zero();
+    return ctx_vals_.recall(m[0].label).value_or(Glyph::zero());
+}
+
+std::vector<Glyph> PredictiveColumn::predict_candidates(const std::vector<Glyph>& context,
+                                                       std::size_t k) const {
+    std::vector<Glyph> out;
+    if (ctx_keys_.size() == 0 || context.empty() || k == 0) return out;
+    const std::size_t w = std::min(context.size(), context_window_);
+    std::vector<Glyph> ordered;
+    ordered.reserve(w);
+    for (std::size_t j = 0; j < w; ++j)
+        ordered.push_back(permute(context[context.size() - 1 - j], static_cast<int>(j) * 137));
+    const Glyph c = bundle(std::span<const Glyph>{ordered.data(), ordered.size()});
+    const auto m = ctx_keys_.query(c, k);
+    out.reserve(m.size());
+    for (const auto& match : m)
+        if (auto v = ctx_vals_.recall(match.label)) out.push_back(*v);
+    return out;
+}
+
 std::vector<Glyph> PredictiveColumn::babble(const std::vector<Glyph>& seed, std::size_t n) const {
     std::vector<Glyph> out;
     if (ctx_keys_.size() == 0) return out;

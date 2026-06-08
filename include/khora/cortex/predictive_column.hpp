@@ -45,6 +45,19 @@ public:
     // Predict-without-learn — peek at what would come next.
     khora::lattice::Glyph predict() const;
 
+    // Predict the next glyph given an EXPLICIT context (newest element last),
+    // without touching the column's own window. Lets a caller drive
+    // generation step-by-step and steer the feedback — e.g. bias each chosen
+    // word toward a topic — instead of the column replaying itself.
+    khora::lattice::Glyph predict_from(const std::vector<khora::lattice::Glyph>& context) const;
+
+    // The k most plausible next glyphs for an explicit context — the next
+    // values of the k nearest context keys. These are genuine grammatical
+    // ALTERNATIVES (one per matched context), so a caller can steer among
+    // them (e.g. toward a topic) without breaking the learned grammar.
+    std::vector<khora::lattice::Glyph> predict_candidates(
+        const std::vector<khora::lattice::Glyph>& context, std::size_t k) const;
+
     // Generate a sequence by chaining prediction over a LOCAL context (does
     // not mutate the column). Seed the context with `seed`, then repeatedly
     // predict the next glyph and feed it back. This is the substrate's own

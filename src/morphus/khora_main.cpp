@@ -928,6 +928,58 @@ int main(int argc, char** argv) {
             return {true, os.str(), ""};
         }
     });
+    shell.register_tool({
+        "compose",
+        "Khora composes a passage steered toward a topic  (usage: compose <topic> [n])",
+        [&column, &lex](const carapace::Intent& i) -> carapace::ToolResult {
+            if (i.args.empty()) return {false, "", "usage: compose <topic> [n]"};
+            const std::string topic = i.args[0];
+            std::size_t n = 24;
+            if (i.args.size() >= 2) { try { n = static_cast<std::size_t>(std::stoul(i.args[1])); } catch (...) {} }
+            if (n < 1) n = 1;
+            if (n > 80) n = 80;
+
+            const khora::lattice::Glyph topicG = lex.glyph_for(topic);
+            maelstrom::Resonator decoder(256);
+            decoder.build(lex.semantic_field());
+
+            std::vector<khora::lattice::Glyph> ctx;
+            ctx.push_back(topicG);                       // begin at the topic
+            std::ostringstream os;
+            os << topic << ":";
+            std::string last;
+            for (std::size_t s = 0; s < n; ++s) {
+                // Grammatical ALTERNATIVES (next-words of the nearest contexts).
+                const auto cands = column.predict_candidates(ctx, 6);
+                if (cands.empty()) break;
+                // Steer among them toward the topic — grammar from the cortex,
+                // direction from meaning. Higher-ranked contexts are more
+                // plausible; the topic term only tips the balance.
+                double best = -1e9; std::string word; khora::lattice::Glyph wg;
+                int rank = 0;
+                for (const auto& cg_pred : cands) {
+                    const auto d = decoder.query(cg_pred, 1);
+                    ++rank;
+                    if (d.empty()) continue;
+                    const std::string w = d.front().label;
+                    const khora::lattice::Glyph wgl = lex.glyph_for(w);
+                    const double grammar = 1.0 - 0.12 * (rank - 1);
+                    const double score   = grammar + 0.8 * wgl.similarity(topicG);
+                    if (w != last && score > best) { best = score; word = w; wg = wgl; }
+                }
+                if (word.empty()) {  // everything repeated — take the top continuation
+                    const auto d = decoder.query(cands.front(), 1);
+                    if (d.empty()) break;
+                    word = d.front().label; wg = lex.glyph_for(word);
+                }
+                os << ' ' << word;
+                last = word;
+                ctx.push_back(wg);
+                if (ctx.size() > 8) ctx.erase(ctx.begin());
+            }
+            return {true, os.str(), ""};
+        }
+    });
 
     shell.register_tool({
         "study",
