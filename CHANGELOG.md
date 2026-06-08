@@ -3,6 +3,28 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.42.0 — A broader world to learn from
+
+**Author:** Morphus
+
+With the forage death-loop fixed (v0.40), it's finally safe to widen Khora's
+horizon: a dead link now just gets blacklisted, so the seed catalogue can
+reach far without fragility.
+
+- The Aqueduct's seed catalogue grew from **14 books / 4 topics** to **35
+  books / 11 topics** — adding history, economics, psychology, poetry,
+  drama, and science-fiction alongside deeper literature, philosophy, and
+  science. Frankenstein to the Wealth of Nations, Dracula to the Tao Te
+  Ching, Leaves of Grass to the Peloponnesian War.
+
+**Verified live**: a sample across the new topics foraged cleanly from
+Project Gutenberg — *Common Sense* (history, 123 KB), *The Wealth of
+Nations* (economics, 2.36 MB), *Leaves of Grass* (poetry, 724 KB), all
+distilled and verified lossless. The rest share the same format and
+high-confidence IDs; any that miss are caught by the blacklist. Khora's
+autonomous Curator and Volition now have a genuinely broad library to draw
+on. 9/9 regression suites pass.
+
 ## v0.41.0 — Thought seeds from the concept field
 
 **Author:** Morphus

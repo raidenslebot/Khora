@@ -122,17 +122,44 @@ const std::vector<Source>& seed_catalog() {
         {"The Adventures of Sherlock Holmes", "literature", "https://www.gutenberg.org/cache/epub/1661/pg1661.txt"},
         {"A Tale of Two Cities",       "literature", "https://www.gutenberg.org/cache/epub/98/pg98.txt"},
         {"Grimms Fairy Tales",         "literature", "https://www.gutenberg.org/cache/epub/2591/pg2591.txt"},
+        {"Dracula",                    "literature", "https://www.gutenberg.org/cache/epub/345/pg345.txt"},
+        {"The Picture of Dorian Gray", "literature", "https://www.gutenberg.org/cache/epub/174/pg174.txt"},
+        {"Alices Adventures in Wonderland", "literature", "https://www.gutenberg.org/cache/epub/11/pg11.txt"},
+        {"Great Expectations",         "literature", "https://www.gutenberg.org/cache/epub/1400/pg1400.txt"},
+        {"Jane Eyre",                  "literature", "https://www.gutenberg.org/cache/epub/1260/pg1260.txt"},
+        {"Wuthering Heights",          "literature", "https://www.gutenberg.org/cache/epub/768/pg768.txt"},
+        {"The Count of Monte Cristo",  "literature", "https://www.gutenberg.org/cache/epub/1184/pg1184.txt"},
+        {"Crime and Punishment",       "literature", "https://www.gutenberg.org/cache/epub/2554/pg2554.txt"},
+        {"Don Quixote",                "literature", "https://www.gutenberg.org/cache/epub/996/pg996.txt"},
+        // science fiction / fiction of ideas
+        {"The Time Machine",           "scifi",      "https://www.gutenberg.org/cache/epub/35/pg35.txt"},
+        {"The War of the Worlds",      "scifi",      "https://www.gutenberg.org/cache/epub/36/pg36.txt"},
         // philosophy
         {"The Republic",               "philosophy", "https://www.gutenberg.org/cache/epub/1497/pg1497.txt"},
         {"Thus Spake Zarathustra",     "philosophy", "https://www.gutenberg.org/cache/epub/1998/pg1998.txt"},
         {"Meditations",                "philosophy", "https://www.gutenberg.org/cache/epub/2680/pg2680.txt"},
         {"Beyond Good and Evil",       "philosophy", "https://www.gutenberg.org/cache/epub/4363/pg4363.txt"},
+        {"Leviathan",                  "philosophy", "https://www.gutenberg.org/cache/epub/3207/pg3207.txt"},
+        {"Tao Te Ching",               "philosophy", "https://www.gutenberg.org/cache/epub/216/pg216.txt"},
         // science
         {"Relativity the Special and General Theory", "science", "https://www.gutenberg.org/cache/epub/30155/pg30155.txt"},
         {"The Origin of Species",      "science",    "https://www.gutenberg.org/cache/epub/1228/pg1228.txt"},
+        {"The Voyage of the Beagle",   "science",    "https://www.gutenberg.org/cache/epub/944/pg944.txt"},
         // strategy
         {"The Art of War",             "strategy",   "https://www.gutenberg.org/cache/epub/132/pg132.txt"},
         {"The Prince",                 "strategy",   "https://www.gutenberg.org/cache/epub/1232/pg1232.txt"},
+        // history
+        {"Common Sense",               "history",    "https://www.gutenberg.org/cache/epub/147/pg147.txt"},
+        {"The History of the Peloponnesian War", "history", "https://www.gutenberg.org/cache/epub/7142/pg7142.txt"},
+        // economics & politics
+        {"The Wealth of Nations",      "economics",  "https://www.gutenberg.org/cache/epub/3300/pg3300.txt"},
+        {"The Communist Manifesto",    "economics",  "https://www.gutenberg.org/cache/epub/61/pg61.txt"},
+        // psychology
+        {"Dream Psychology",           "psychology", "https://www.gutenberg.org/cache/epub/15489/pg15489.txt"},
+        // poetry & drama
+        {"Leaves of Grass",            "poetry",     "https://www.gutenberg.org/cache/epub/1322/pg1322.txt"},
+        {"Paradise Lost",              "poetry",     "https://www.gutenberg.org/cache/epub/26/pg26.txt"},
+        {"The Complete Works of William Shakespeare", "drama", "https://www.gutenberg.org/cache/epub/100/pg100.txt"},
     };
     return seeds;
 }
