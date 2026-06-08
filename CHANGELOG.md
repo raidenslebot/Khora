@@ -3,6 +3,31 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.56.0 — Consulting the liquid knowledge (one fluid state)
+
+**Author:** Morphus
+
+The Directive asks for liquid knowledge and actual knowledge to act as "a
+single fluid state," and for Khora to "answer complex philosophical
+questions." Generation (v0.51–55) answers in Khora's own associative voice;
+this answers from what its sources *actually say* — and the two together are
+the fluid state.
+
+- New tool **`consult <query>`** scans every Tome in the Reservoir for the
+  passages densest in the query's terms and returns them verbatim, attributed
+  to their source. A query (actual-knowledge side) reaching directly into the
+  raw pool (liquid side) — no generation, no drift, no fabrication.
+
+**Verified live**: `consult what is justice` returned, from the Reservoir,
+Plato's own words — *"an answer is demanded to the question—What is justice,
+stripped of appearances?"* and *"Socrates asks, What is this due and proper
+thing which justice does, and to whom?"* (The Republic) — plus a wry line
+from *Pride and Prejudice* on doing "justice to those beautiful eyes."
+`consult the wealth of nations` surfaced Adam Smith on trade between nations.
+Real material, real attribution. This is the honest, grounded answer the
+associative `ask` could only gesture at — and it makes the 20 GB liquid pool
+a first-class part of how Khora answers. 9/9 regression suites pass.
+
 ## v0.55.0 — Questions that differ get answers that differ
 
 **Author:** Morphus

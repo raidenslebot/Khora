@@ -29,6 +29,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -996,6 +997,63 @@ int main(int argc, char** argv) {
             if (a.empty())
                 return {true, "Khora has not learned enough to answer that yet", ""};
             return {true, "Q: " + q + "\nKhora: " + a, ""};
+        }
+    });
+    shell.register_tool({
+        "consult",
+        "search Khora's liquid knowledge for what its sources actually say  (usage: consult <query>)",
+        [&pool](const carapace::Intent& in) -> carapace::ToolResult {
+            if (in.args.empty()) return {false, "", "usage: consult <query>"};
+            std::string query;
+            for (const auto& a : in.args) { if (!query.empty()) query += ' '; query += a; }
+            std::vector<std::string> terms;  // content-ish query terms, lowercase
+            for (auto& t : khora::lexicon::tokenize(query)) if (t.size() >= 3) terms.push_back(t);
+            if (terms.empty()) return {true, "no usable query terms in that", ""};
+
+            auto squash = [](const std::string& s) {        // collapse whitespace, trim
+                std::string out; bool sp = false;
+                for (char c : s) {
+                    if (std::isspace(static_cast<unsigned char>(c))) { if (!out.empty()) sp = true; }
+                    else { if (sp) { out += ' '; sp = false; } out += c; }
+                }
+                return out;
+            };
+            struct Hit { int score; std::string source, passage; };
+            std::vector<Hit> hits;
+            for (const auto& tome : pool.catalog()) {
+                const auto text = pool.read(tome.title);
+                if (!text) continue;
+                std::size_t start = 0;
+                for (std::size_t i = 0; i <= text->size(); ++i) {
+                    const char c = (i < text->size()) ? (*text)[i] : '.';
+                    if (c == '.' || c == '!' || c == '?' || i == text->size()) {
+                        const std::string sent = squash(text->substr(start, i - start + 1));
+                        start = i + 1;
+                        if (sent.size() < 24 || sent.size() > 360) continue;
+                        std::string low = sent;
+                        for (auto& ch : low) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+                        int sc = 0;
+                        for (const auto& term : terms) {
+                            for (std::size_t p = low.find(term); p != std::string::npos; p = low.find(term, p + 1)) {
+                                const bool lb = (p == 0) || !std::isalpha(static_cast<unsigned char>(low[p - 1]));
+                                const bool rb = (p + term.size() >= low.size()) || !std::isalpha(static_cast<unsigned char>(low[p + term.size()]));
+                                if (lb && rb) { ++sc; break; }
+                            }
+                        }
+                        if (sc >= 2) hits.push_back({ sc, tome.title, sent });
+                    }
+                }
+            }
+            if (hits.empty())
+                return {true, "Khora's liquid knowledge holds nothing matching that", ""};
+            const std::size_t k = std::min<std::size_t>(4, hits.size());
+            std::partial_sort(hits.begin(), hits.begin() + k, hits.end(),
+                              [](const Hit& a, const Hit& b) { return a.score > b.score; });
+            std::ostringstream os;
+            os << "from Khora's liquid knowledge on \"" << query << "\":\n";
+            for (std::size_t i = 0; i < k; ++i)
+                os << "  [" << hits[i].source << "] " << hits[i].passage << "\n";
+            return {true, os.str(), ""};
         }
     });
 
