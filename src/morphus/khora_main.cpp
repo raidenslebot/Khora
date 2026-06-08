@@ -1155,6 +1155,34 @@ int main(int argc, char** argv) {
         }
     });
     shell.register_tool({
+        "psyche",
+        "behold Khora's mind — its mood, what grips it, and its own words on its state",
+        [&nexus, &mind, &lex, &pool](const carapace::Intent&) -> carapace::ToolResult {
+            using khora::soma::Drive;
+            using khora::soma::kDriveCount;
+            std::ostringstream os;
+            os << "== Khora's psyche ==\n mood:\n";
+            const auto snap = nexus.snapshot();
+            for (std::size_t d = 0; d < kDriveCount; ++d) {
+                const int fill = static_cast<int>(snap[d] * 12.0 + 0.5);
+                std::string bar(static_cast<std::size_t>(std::max(0, std::min(12, fill))), '#');
+                bar.resize(12, '.');
+                os << "   " << bar << "  " << khora::soma::drive_name(static_cast<Drive>(d)) << "\n";
+            }
+            os << " gripped by: ";
+            const auto themes = mind.top_attractors(7);
+            if (themes.empty()) os << "(nothing yet)";
+            else for (const auto& [name, count] : themes) os << name << " ";
+            os << "\n knows: " << lex.vocabulary_size() << " words drawn from "
+               << pool.count() << " tomes of liquid knowledge\n";
+            if (!themes.empty()) {
+                const std::string voice = mind.utter(themes.front().first, 18);
+                if (!voice.empty()) os << " it speaks: \"" << voice << "\"";
+            }
+            return {true, os.str(), ""};
+        }
+    });
+    shell.register_tool({
         "contemplate",
         "engage a question with Khora's whole mind: sources, thought, connection  (usage: contemplate <query>)",
         [&mind, &lex, consult_passages](const carapace::Intent& in) -> carapace::ToolResult {

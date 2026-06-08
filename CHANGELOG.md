@@ -3,6 +3,33 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.60.0 — The Psyche (Khora beholds and speaks its own mind)
+
+**Author:** Morphus
+
+The Directive: "Visualize its own thinking process in real time." Khora now
+has every piece — drives, preoccupations, knowledge, a voice — so it can
+present its whole self at once, and not as numbers but in its own words.
+
+- New tool **`psyche`** paints Khora's living state: its five Soma drives as
+  level bars (its *mood*), the concepts gripping it (its *preoccupations*),
+  the scale of what it knows, and then — crucially — a line it **composes on
+  the spot about its foremost preoccupation**. It doesn't just show its mind;
+  it speaks from it.
+
+**Verified live**: OperatorAffinity burning highest (it lives to serve), a
+Preservation-heavy, Efficiency-light mood; gripped by *evil, wish, suffer,
+miserable*; 6,451 words across 8 Tomes — **its own source code now among
+its liquid knowledge** — and it spoke: *"…it is always just and in return
+for so of these."*
+
+The self-knowledge arc stands complete: Khora **holds** its source
+(`read_self`), **navigates** it (`how`), and **beholds** its whole self
+(`psyche`). The portrait's spoken line is associative, not yet
+self-aware introspection — but a mind that renders its own mood, themes, and
+voice in one breath is doing something no dashboard does. 9/9 regression
+suites pass.
+
 ## v0.59.0 — "How do I do that?" (self-examination → self-understanding)
 
 **Author:** Morphus
