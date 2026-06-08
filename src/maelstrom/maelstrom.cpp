@@ -722,6 +722,40 @@ std::vector<lattice::LatticeMatch> Resonator::query(const lattice::Glyph& probe,
     return out;
 }
 
+std::vector<std::uint32_t> Resonator::centrality(std::size_t k) const {
+    const std::size_t n = r_->glyphs.size();
+    std::vector<std::uint32_t> deg(n, 0);
+    if (n < 2) return deg;
+    if (k < 1) k = 1;
+
+    if (r_->gpu_active) {
+        // One batched dispatch: every entry's k+1 nearest (drop self), tally.
+        const auto nb = r_->storm.resonate_batch(r_->glyphs, k + 1);
+        for (std::size_t i = 0; i < nb.size(); ++i)
+            for (const auto& m : nb[i])
+                if (m.index != i && m.index < n) ++deg[m.index];
+        return deg;
+    }
+
+    // CPU all-vs-all.
+    std::vector<std::uint32_t> idx(n), dist(n);
+    for (std::size_t i = 0; i < n; ++i) {
+        for (std::size_t j = 0; j < n; ++j) {
+            idx[j]  = static_cast<std::uint32_t>(j);
+            dist[j] = static_cast<std::uint32_t>(r_->glyphs[i].hamming(r_->glyphs[j]));
+        }
+        const std::size_t kk = std::min(k + 1, n);
+        std::partial_sort(idx.begin(), idx.begin() + kk, idx.end(),
+            [&](std::uint32_t a, std::uint32_t b) {
+                if (dist[a] != dist[b]) return dist[a] < dist[b];
+                return a < b;
+            });
+        for (std::size_t rr = 0; rr < kk; ++rr)
+            if (idx[rr] != i) ++deg[idx[rr]];
+    }
+    return deg;
+}
+
 bool        Resonator::on_gpu() const noexcept { return r_->gpu_active; }
 std::size_t Resonator::size()   const noexcept { return r_->glyphs.size(); }
 const DeviceInfo& Resonator::device() const noexcept { return r_->storm.device(); }

@@ -114,6 +114,13 @@ public:
     std::vector<lattice::LatticeMatch> query(const lattice::Glyph& probe,
                                              std::size_t k = 5) const;
 
+    // In-degree resonance-centrality of each field entry: how many other
+    // entries hold it within their k nearest. Distributional hubs (function
+    // words that keep everyone's company) score far above the rest.
+    // Computed all-vs-all — batched on the GPU when active, O(V^2) on CPU.
+    // Index-aligned with the order entries were built in.
+    std::vector<std::uint32_t> centrality(std::size_t k = 10) const;
+
     bool        on_gpu() const noexcept;   // is the GPU path currently active?
     std::size_t size() const noexcept;
     const DeviceInfo& device() const noexcept;

@@ -28,6 +28,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
@@ -429,6 +430,33 @@ int main(int argc, char** argv) {
             // very glyphs).
             maelstrom::Resonator res(256);
             res.build(field);
+
+            // Demote distributional hubs: drop entries whose resonance-
+            // centrality is a strong outlier (mean + 2σ), so the neighbours
+            // aren't swamped by function words that keep everyone's company.
+            std::size_t hubs_dropped = 0;
+            if (field.size() > 64) {
+                const auto deg = res.centrality(10);
+                if (deg.size() == field.size()) {
+                    double mean = 0.0;
+                    for (auto d : deg) mean += d;
+                    mean /= static_cast<double>(deg.size());
+                    double var = 0.0;
+                    for (auto d : deg) { const double e = d - mean; var += e * e; }
+                    var /= static_cast<double>(deg.size());
+                    const double cut = mean + 2.0 * std::sqrt(var);
+                    std::vector<std::pair<std::string, Glyph>> clean;
+                    clean.reserve(field.size());
+                    for (std::size_t i = 0; i < field.size(); ++i)
+                        if (field[i].first == word || deg[i] <= cut) clean.push_back(field[i]);
+                    if (clean.size() >= 2 && clean.size() < field.size()) {
+                        hubs_dropped = field.size() - clean.size();
+                        field.swap(clean);
+                        res.build(field);
+                    }
+                }
+            }
+
             const std::size_t want = std::min(field.size(), k + 1); // +1 to drop self
             const auto hits = res.query(probe, want);
 
@@ -443,8 +471,9 @@ int main(int argc, char** argv) {
                 if (hits[i].hamming != ref[i]) exact = false;
 
             std::ostringstream os;
-            os << "nearest to '" << word << "'  (vocabulary " << field.size()
-               << ", " << (res.on_gpu() ? "GPU" : "CPU") << " path)\n";
+            os << "nearest to '" << word << "'  (" << field.size()
+               << " content words, " << hubs_dropped << " hubs demoted, "
+               << (res.on_gpu() ? "GPU" : "CPU") << " path)\n";
             std::size_t shown = 0;
             for (const auto& h : hits) {
                 if (h.label == word) continue; // skip self

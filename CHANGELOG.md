@@ -3,6 +3,33 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.35.0 — Resonance-centrality (all-vs-all on the GPU)
+
+**Author:** Morphus
+
+The first analytical use of batched resonance, and the seed of
+graph-structured memory: measuring how central each concept is in the
+associative graph.
+
+- **`Resonator::centrality(k)`** — for every entry in the field, how many
+  *other* entries hold it within their k nearest. One batched dispatch does
+  the whole all-vs-all (O(V²) of work, GPU-parallel); CPU fallback when no
+  card. Distributional hubs — the function words that keep everyone's
+  company — score far above the rest, which is exactly how to find them.
+- **`nearest` now demotes hubs**: entries whose centrality is a strong
+  outlier (mean + 2σ) are dropped before the search, so neighbours can't be
+  swamped by ubiquitous connectors.
+
+**Verified live** (real 3,471-word vocabulary from *Pride and Prejudice* +
+*The Republic*): centrality ran all-vs-all on the GPU batched path and
+flagged 77 hub words (~2.2%, the +2σ tail) for demotion; every `nearest`
+query stayed **audit: EXACT** over the cleaned field. The visible change to
+top results is modest — the v0.33 context-glyph fix already removed most of
+the pollution — but the centrality primitive is the real win: a
+GPU-accelerated map of the knowledge field's hub structure, the foundation
+for the graph-structured associative memory that will finally retire the
+hub problem. 9/9 regression suites pass.
+
 ## v0.34.0 — Maelstrom: batched multi-probe resonance
 
 **Author:** Morphus
