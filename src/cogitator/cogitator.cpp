@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <deque>
 #include <cstdlib>
 #include <fstream>
 #include <future>
@@ -576,15 +577,29 @@ std::string Cogitator::focused_seed(std::uint64_t n) {
     return top[n % top.size()].first;
 }
 
+double Cogitator::plexus_steer_(const std::string& w,
+                                const std::vector<std::string>& targets) const {
+    if (!plexus_ || targets.empty() || !plexus_->has(w)) return 0.0;
+    double best = 0.0;
+    for (const auto& t : targets) {
+        const double a = plexus_->affinity(w, t);   // PMI, >= 0
+        if (a > best) best = a;
+    }
+    return best / (best + 3.0);   // squash to [0,1): strongest topic link
+}
+
 std::string Cogitator::generate_(std::vector<Glyph> ctx, const Glyph& target,
+                                 const std::vector<std::string>& steer_words,
                                  std::size_t n, double steer) {
     if (n == 0) return {};
     // Decoder over the full glyph_for field (any generated token can resolve).
     maelstrom::Resonator dec(256);
     dec.build(lex_.semantic_field());
     if (ctx.size() > 8) ctx.erase(ctx.begin(), ctx.end() - 8);
+    const bool use_plexus = (plexus_ != nullptr && !steer_words.empty());
 
     std::string out, last;
+    std::deque<std::string> recent;   // anti-repetition window (breaks loops)
     for (std::size_t s = 0; s < n; ++s) {
         const auto cands = cortex_.predict_candidates(ctx, 6);
         if (cands.empty()) break;
@@ -594,13 +609,25 @@ std::string Cogitator::generate_(std::vector<Glyph> ctx, const Glyph& target,
             ++rank;
             if (d.empty()) continue;
             const std::string w = d.front().label;
+            if (w == last) continue;   // never an immediate repeat
+            // Hard-skip words in the recent window so generation cannot collapse
+            // into "what what what" loops — better to end the thought than spin.
+            if (std::find(recent.begin(), recent.end(), w) != recent.end()) continue;
             const Glyph wgl = lex_.glyph_for(w);
-            const double score = (1.0 - 0.12 * (rank - 1)) + steer * wgl.similarity(target);
-            if (w != last && score > best) { best = score; word = w; wg = wgl; }
+            // Grammatical fluency from the cortex rank; topic pull from the
+            // Plexus (hub-proof) — boosting on-topic content words without
+            // penalising the function words the cortex ranks for grammar. Falls
+            // back to glyph similarity only when the Plexus can't steer.
+            const double sem = use_plexus ? plexus_steer_(w, steer_words)
+                                          : wgl.similarity(target);
+            const double score = (1.0 - 0.12 * (rank - 1)) + steer * sem;
+            if (score > best) { best = score; word = w; wg = wgl; }
         }
         if (word.empty()) break;
         if (!out.empty()) out += ' ';
         out += word; last = word;
+        recent.push_back(word);
+        if (recent.size() > 5) recent.pop_front();
         ctx.push_back(wg);
         if (ctx.size() > 8) ctx.erase(ctx.begin());
     }
@@ -610,27 +637,32 @@ std::string Cogitator::generate_(std::vector<Glyph> ctx, const Glyph& target,
 std::string Cogitator::utter(const std::string& topic, std::size_t n) {
     ensure_field_();
     const Glyph topicG = lex_.glyph_for(topic);
-    return generate_({ topicG }, topicG, n);
+    return generate_({ topicG }, topicG, { topic }, n);
 }
 
 std::string Cogitator::respond(const std::string& question, std::size_t n) {
     ensure_field_();
     // Seed the cortex with the WHOLE question phrase (so different questions
     // start from different contexts, not one weak content word), and steer
-    // toward the question's content concepts — its knowledge neighbourhood.
+    // toward the question's content concepts — its knowledge neighbourhood,
+    // pulled by the Plexus so the answer stays on-topic without hub-drift.
     std::vector<Glyph> seed, concepts;
+    std::vector<std::string> steer_words;
     for (const auto& t : khora::lexicon::tokenize(question)) {
         seed.push_back(lex_.glyph_for(t));                          // phrase context
-        if (lex_.has(t) && is_content_(t)) concepts.push_back(lex_.glyph_for(t));
+        if (lex_.has(t) && is_content_(t)) {
+            concepts.push_back(lex_.glyph_for(t));
+            steer_words.push_back(t);
+        }
     }
     if (concepts.empty())  // fall back to any learned tokens for the target
         for (const auto& t : khora::lexicon::tokenize(question))
-            if (lex_.has(t)) concepts.push_back(lex_.glyph_for(t));
+            if (lex_.has(t)) { concepts.push_back(lex_.glyph_for(t)); steer_words.push_back(t); }
     if (seed.empty()) return {};
     const Glyph target = concepts.empty()
         ? seed.back()
         : bundle(std::span<const Glyph>{concepts.data(), concepts.size()});
-    return generate_(std::move(seed), target, n, 1.0);
+    return generate_(std::move(seed), target, steer_words, n, 1.0);
 }
 
 Synthesis Cogitator::synthesize(const std::string& a_in, const std::string& b_in, std::uint64_t seed) {

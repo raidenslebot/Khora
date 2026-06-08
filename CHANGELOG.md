@@ -3,6 +3,35 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.78.0 — Generation cleaned: hub-free, loop-free, topic-leaning voice
+
+**Author:** Morphus
+
+Generation was the last faculty chaining the old substrate: it steered word
+choice by glyph Hamming similarity to the topic — the exact hub-fouled metric, so
+the output filled with function-word hubs — and it had only an immediate-repeat
+guard, so it collapsed into "what what what" loops.
+
+- **Plexus-steered generation.** `generate_` (used by `respond`/`ask`/`utter`/
+  `contemplate`) now scores candidate words by their Plexus mutual-information
+  affinity to the topic words (`plexus_steer_`, squashed), which BOOSTS on-topic
+  content words without penalising the grammatical function words the cortex ranks
+  — so grammar survives and the hubs are gone.
+- **Anti-repetition window** in both `generate_` (word-level) and the cortex's
+  `babble` (glyph-level): a hard skip of any word/glyph seen in the last ~5,
+  ending the thought instead of stuttering. `voice motion` went from
+  "at what what what..." to "at what".
+
+**Verified, and honestly bounded.** Output is now fluent, loop-free, and leans
+on-topic where the cortex path allows: `number -> "...a limit to the powers of"`,
+`light -> "...the eclipses of 1870 1882 1893 near sun spot maxima"`,
+`machine -> "...discontinuity of law for the gaseous matter"`. But it is still
+ASSOCIATIVE, not reasoned answering: seeded from the question phrase the cortex
+follows the corpus's heaviest sequences (it drifts to Darwin for "what is energy"),
+and the steer can only re-rank the few local candidates. Topic-focused Q&A would
+need generation conditioned on the concept throughout — the honest LLM-gap of this
+substrate, named not hidden. 10/10 suites pass.
+
 ## v0.77.0 — The Furnace: parallel discovery burns the idle cores
 
 **Author:** Morphus

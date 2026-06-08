@@ -283,8 +283,15 @@ private:
     // the GPU lexicon field, steering each step toward `target`. Shared by
     // utter() and respond().
     std::string generate_(std::vector<khora::lattice::Glyph> ctx,
-                          const khora::lattice::Glyph& target, std::size_t n,
-                          double steer = 0.8);
+                          const khora::lattice::Glyph& target,
+                          const std::vector<std::string>& steer_words,
+                          std::size_t n, double steer = 0.8);
+    // Topic pull for generation: how strongly a candidate word associates with
+    // the steer words, by Plexus mutual information (squashed to [0,1)). Boosts
+    // on-topic CONTENT words without penalising grammatical function words (whose
+    // affinity is ~0, so they keep their natural cortex rank). 0 if no Plexus.
+    double plexus_steer_(const std::string& w,
+                         const std::vector<std::string>& targets) const;
     // Is this token a content word (in the salient set), or — when the set
     // is empty (tiny lexicon) — treat everything as content.
     bool is_content_(const std::string& tok) const {

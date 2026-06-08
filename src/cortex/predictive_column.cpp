@@ -99,6 +99,14 @@ std::vector<Glyph> PredictiveColumn::babble(const std::vector<Glyph>& seed, std:
         if (m.empty()) break;
         const auto val = ctx_vals_.recall(m[0].label);
         if (!val) break;
+        // Anti-loop: if the cortex would emit a glyph it just produced, the
+        // chain has collapsed into a repeat ("what what what") — stop the
+        // sequence rather than spin out a stutter.
+        bool looped = false;
+        std::size_t back = 0;
+        for (auto it = out.rbegin(); it != out.rend() && back < 5; ++it, ++back)
+            if (it->hamming(*val) == 0) { looped = true; break; }
+        if (looped) break;
         out.push_back(*val);
 
         ctx.push_back(*val);
