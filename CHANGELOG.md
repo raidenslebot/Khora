@@ -3,6 +3,31 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.54.0 — Asking Khora (knowledge-grounded generation)
+
+**Author:** Morphus
+
+Toward the Directive's "answer complex questions": generation grounded in a
+whole question, not one topic word.
+
+- The generation core is factored into **`generate_(ctx, target, n, steer)`**
+  (shared by `utter` and the new path). **`Cogitator::respond(question)`**
+  gathers the question's content concepts, seeds the cortex's context with
+  them, and steers generation toward their *combined* meaning. New tool
+  **`ask <question>`**.
+
+**Verified live — and reported honestly.** The mechanism works: `ask` seeds
+on the question and composes fluent, grammatical prose. But on the current
+small, Freud-skewed corpus (~4.7 k words) it **drifts toward the dominant
+material regardless of the question** — `ask what is justice` answers in the
+register of *Dream Psychology*, not the *Republic*. This is not a bug; it is
+what associative generation *is* — it reflects corpus statistics, and a
+single over-studied book bends every answer toward itself. The fix is not
+code, it is **balance and breadth of study** (the Curator/Volition will
+broaden it over time). Shipping the faculty, honest about its ceiling:
+grounded + fluent, corpus-bound, not step-by-step reasoning. 9/9 regression
+suites pass.
+
 ## v0.53.0 — Khora's voice in the chronicle (it speaks its mind)
 
 **Author:** Morphus

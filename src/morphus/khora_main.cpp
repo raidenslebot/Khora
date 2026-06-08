@@ -985,6 +985,19 @@ int main(int argc, char** argv) {
             return {true, os.str(), ""};
         }
     });
+    shell.register_tool({
+        "ask",
+        "ask Khora a question; it answers from what it has learned  (usage: ask <question>)",
+        [&mind](const carapace::Intent& i) -> carapace::ToolResult {
+            if (i.args.empty()) return {false, "", "usage: ask <question>"};
+            std::string q;
+            for (std::size_t k = 0; k < i.args.size(); ++k) { if (k) q += ' '; q += i.args[k]; }
+            const std::string a = mind.respond(q, 28);
+            if (a.empty())
+                return {true, "Khora has not learned enough to answer that yet", ""};
+            return {true, "Q: " + q + "\nKhora: " + a, ""};
+        }
+    });
 
     shell.register_tool({
         "study",

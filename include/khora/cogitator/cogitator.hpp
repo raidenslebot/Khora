@@ -167,6 +167,13 @@ public:
     // reasoned, but in its own voice. Empty if it has not learned enough.
     std::string utter(const std::string& topic, std::size_t n = 14);
 
+    // Compose a response grounded in a whole question rather than one topic:
+    // seed the generation with the question's content concepts and steer it
+    // toward their combined meaning. Retrieval-grounded associative
+    // generation — Khora answering from what it knows, in its own voice.
+    // (Honest scope: grounded + fluent, but not yet step-by-step reasoning.)
+    std::string respond(const std::string& question, std::size_t n = 20);
+
     // Collide two concepts and report what their superposition evokes — the
     // emergent idea neither parent contains. Chaos turned to creation. If a
     // or b is empty, Khora picks distant concepts itself (`seed` varies it).
@@ -223,6 +230,12 @@ private:
     // (so resonance follows meaning, not spelling), or the structural
     // baseline as a fallback when Khora hasn't learned the word yet.
     khora::lattice::Glyph token_glyph_(const std::string& tok) const;
+    // Core generation: chain the cortex's candidate continuations, decoded via
+    // the GPU lexicon field, steering each step toward `target`. Shared by
+    // utter() and respond().
+    std::string generate_(std::vector<khora::lattice::Glyph> ctx,
+                          const khora::lattice::Glyph& target, std::size_t n,
+                          double steer = 0.8);
     // Is this token a content word (in the salient set), or — when the set
     // is empty (tiny lexicon) — treat everything as content.
     bool is_content_(const std::string& tok) const {

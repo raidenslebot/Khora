@@ -161,17 +161,14 @@ std::string Cogitator::focused_seed(std::uint64_t n) {
     return top[n % top.size()].first;
 }
 
-std::string Cogitator::utter(const std::string& topic, std::size_t n) {
-    ensure_field_();
+std::string Cogitator::generate_(std::vector<Glyph> ctx, const Glyph& target,
+                                 std::size_t n, double steer) {
     if (n == 0) return {};
-    const Glyph topicG = lex_.glyph_for(topic);
-
     // Decoder over the full glyph_for field (any generated token can resolve).
     maelstrom::Resonator dec(256);
     dec.build(lex_.semantic_field());
+    if (ctx.size() > 8) ctx.erase(ctx.begin(), ctx.end() - 8);
 
-    std::vector<Glyph> ctx;
-    ctx.push_back(topicG);
     std::string out, last;
     for (std::size_t s = 0; s < n; ++s) {
         const auto cands = cortex_.predict_candidates(ctx, 6);
@@ -183,7 +180,7 @@ std::string Cogitator::utter(const std::string& topic, std::size_t n) {
             if (d.empty()) continue;
             const std::string w = d.front().label;
             const Glyph wgl = lex_.glyph_for(w);
-            const double score = (1.0 - 0.12 * (rank - 1)) + 0.8 * wgl.similarity(topicG);
+            const double score = (1.0 - 0.12 * (rank - 1)) + steer * wgl.similarity(target);
             if (w != last && score > best) { best = score; word = w; wg = wgl; }
         }
         if (word.empty()) break;
@@ -193,6 +190,33 @@ std::string Cogitator::utter(const std::string& topic, std::size_t n) {
         if (ctx.size() > 8) ctx.erase(ctx.begin());
     }
     return out;
+}
+
+std::string Cogitator::utter(const std::string& topic, std::size_t n) {
+    ensure_field_();
+    const Glyph topicG = lex_.glyph_for(topic);
+    return generate_({ topicG }, topicG, n);
+}
+
+std::string Cogitator::respond(const std::string& question, std::size_t n) {
+    ensure_field_();
+    // Gather the question's content concepts — the knowledge neighbourhood it
+    // points at. Seed the generation with them and steer toward their blend.
+    std::vector<Glyph> concepts, seed;
+    for (const auto& t : khora::lexicon::tokenize(question)) {
+        if (lex_.has(t) && is_content_(t)) {
+            concepts.push_back(lex_.glyph_for(t));
+            seed.push_back(lex_.glyph_for(t));
+        }
+    }
+    if (concepts.empty()) {  // fall back to any learned tokens
+        for (const auto& t : khora::lexicon::tokenize(question))
+            if (lex_.has(t)) { concepts.push_back(lex_.glyph_for(t)); seed.push_back(lex_.glyph_for(t)); }
+    }
+    if (concepts.empty()) return {};
+    const Glyph target = bundle(std::span<const Glyph>{concepts.data(), concepts.size()});
+    if (seed.empty()) seed.push_back(target);
+    return generate_(std::move(seed), target, n, 1.3);  // hold the question harder
 }
 
 Synthesis Cogitator::synthesize(const std::string& a_in, const std::string& b_in, std::uint64_t seed) {
