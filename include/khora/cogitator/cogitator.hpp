@@ -36,6 +36,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -166,6 +167,11 @@ public:
     // preoccupations, the attractors a mind develops as it ruminates. Ranked
     // by how often deliberation/rumination has landed there.
     std::vector<std::pair<std::string, std::uint32_t>> top_attractors(std::size_t n = 10) const;
+
+    // Persist / restore Khora's preoccupations so its inner life continues
+    // across restarts — the same developing mind each run, not a fresh one.
+    void save_attractors(const std::filesystem::path& path) const;
+    void load_attractors(const std::filesystem::path& path);
 
     // Stats
     std::size_t thoughts_completed() const noexcept { return thoughts_; }

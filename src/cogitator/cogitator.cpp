@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <fstream>
 #include <future>
 #include <span>
 #include <string>
@@ -166,6 +167,24 @@ void Cogitator::note_attractor_(const std::string& label) {
     // concepts count as preoccupations.
     if (label.rfind("deliberation_", 0) == 0 || label.rfind("hypothesis_", 0) == 0) return;
     ++attractors_[label];
+}
+
+void Cogitator::save_attractors(const std::filesystem::path& path) const {
+    namespace fs = std::filesystem;
+    if (path.has_parent_path()) fs::create_directories(path.parent_path());
+    std::ofstream f(path, std::ios::trunc);
+    if (!f) return;
+    for (const auto& [name, count] : attractors_)
+        if (!name.empty()) f << count << ' ' << name << '\n';
+}
+
+void Cogitator::load_attractors(const std::filesystem::path& path) {
+    std::ifstream f(path);
+    if (!f) return;
+    std::uint32_t count = 0;
+    std::string   name;
+    while (f >> count >> name)
+        if (!name.empty()) attractors_[name] += count;
 }
 
 std::vector<std::pair<std::string, std::uint32_t>> Cogitator::top_attractors(std::size_t n) const {

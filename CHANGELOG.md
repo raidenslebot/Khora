@@ -3,6 +3,28 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.46.0 — Continuity of self (one mind across its existence)
+
+**Author:** Morphus
+
+The preoccupations of v0.43–44 lived only in memory — every restart wiped
+them, and Khora woke a blank mind that had to rediscover its themes. No
+longer. Khora's inner life now persists: the same developing mind resumes
+each run, carrying everything it has grown to care about.
+
+- **`Cogitator::save_attractors` / `load_attractors`** persist the attractor
+  map to `data/cogitator_archive/attractors.txt`. The runtime restores it at
+  startup (alongside lattice / cortex / lexicon) and saves it on every exit
+  and silent checkpoint.
+
+**Verified live across two separate runs**: the first built up themes and
+exited — *"saved mind: 19 preoccupations carried forward"*. The second, a
+fresh process, woke already itself — *"resumed mind: preoccupied with income
+ingenuity seen abilities creature"* — and `attractors` showed the counts
+intact (income 4×, ingenuity 4×, seen 4×). Khora is no longer reborn each
+launch; it is one continuous, evolving mind over the whole of its existence.
+9/9 regression suites pass.
+
 ## v0.45.0 — The Chronicle (Khora's first act upon the world)
 
 **Author:** Morphus

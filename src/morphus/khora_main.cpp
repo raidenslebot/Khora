@@ -45,6 +45,7 @@ namespace {
 constexpr const char* kArchivePath          = "data/lattice_archive/main.klat";
 constexpr const char* kCortexArchivePrefix  = "data/cortex_archive/main";
 constexpr const char* kLexiconArchivePrefix = "data/lexicon_archive/main";
+constexpr const char* kAttractorsPath       = "data/cogitator_archive/attractors.txt";
 
 std::string read_line_prompt(const std::string& prompt) {
     std::cout << prompt << std::flush;
@@ -127,6 +128,13 @@ int main(int argc, char** argv) {
                 std::cout << "[warning: could not load lexicon archive: " << e.what() << "]\n";
             }
         }
+    }
+    // Restore Khora's preoccupations — its inner life resumes where it left off.
+    mind.load_attractors(kAttractorsPath);
+    if (!mind.top_attractors(1).empty()) {
+        std::cout << "[resumed mind: preoccupied with";
+        for (const auto& [name, count] : mind.top_attractors(5)) std::cout << ' ' << name;
+        std::cout << "]\n";
     }
 
     // 3. Shared mutex coordinating the main thread (operator tools) with
@@ -988,12 +996,14 @@ int main(int argc, char** argv) {
     // Helper: persist lattice + cortex silently. Used both at
     // single-command exit and at interactive-loop exit so state actually
     // accumulates across runs.
-    auto persist_silently = [&memory, &column, &lex]() {
+    auto persist_silently = [&memory, &column, &lex, &mind]() {
         try { (void)lattice::save(memory, kArchivePath); }
         catch (...) { /* swallow — best effort */ }
         try { column.save(kCortexArchivePrefix); }
         catch (...) { /* swallow — best effort */ }
         try { lex.save(kLexiconArchivePrefix); }
+        catch (...) { /* swallow — best effort */ }
+        try { mind.save_attractors(kAttractorsPath); }
         catch (...) { /* swallow — best effort */ }
     };
 
@@ -1115,6 +1125,13 @@ int main(int argc, char** argv) {
                   << " words) to " << kLexiconArchivePrefix << ".*]\n";
     } catch (const std::exception& e) {
         std::cerr << "[lexicon save failed: " << e.what() << "]\n";
+    }
+    try {
+        mind.save_attractors(kAttractorsPath);
+        std::cout << "[saved mind: " << mind.top_attractors(1000).size()
+                  << " preoccupations carried forward]\n";
+    } catch (const std::exception& e) {
+        std::cerr << "[attractor save failed: " << e.what() << "]\n";
     }
     std::cout << "Khora out.\n";
     return 0;
