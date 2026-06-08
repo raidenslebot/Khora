@@ -3,6 +3,24 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.40.0 — Curator robustness (no forage death-loops)
+
+**Author:** Morphus
+
+Continuous agency exposed a latent bug: when a forage failed (a dead
+Gutenberg link), the topic stayed uncovered, so the Curator chose the exact
+same forage on the next beat — forever. Under `volition_auto` that's an
+infinite retry.
+
+- The Curator now remembers **failed forage targets** and skips them in
+  `decide()`, so one dead source can't trap autonomous learning. A title is
+  blacklisted the moment its forage fails.
+
+Verified: with the dead "Calculus Made Easy" link removed (v0.38) and this
+guard in place, `volition 6` runs cleanly — Khora rotates through reasoning,
+reflection, and dreaming with no repeated failures (`theory → relativity`,
+`miss → bingley`, `elizabeth → replied`). 9/9 regression suites pass.
+
 ## v0.39.0 — Continuous agency (Khora never stops)
 
 **Author:** Morphus

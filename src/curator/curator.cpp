@@ -115,7 +115,7 @@ Decision Curator::decide() const {
         for (const auto& s : seed_catalog()) {
             const bool topic_covered =
                 std::find(have_topics.begin(), have_topics.end(), s.topic) != have_topics.end();
-            if (!topic_covered && !pool_.has(s.title)) {
+            if (!topic_covered && !pool_.has(s.title) && !failed_forages_.count(s.title)) {
                 Decision d;
                 d.kind  = Decision::Forage;
                 d.topic = s.topic;
@@ -197,6 +197,7 @@ std::string Curator::act(std::size_t study_tokens) {
                    << (r->verified_lossless ? "yes" : "no");
             } else if (r) {
                 os << "  forage failed for \"" << r->title << "\": " << r->error;
+                if (!d.title.empty()) failed_forages_.insert(d.title);  // don't retry a dead source
             } else {
                 // No source in that topic; fall back to any source.
                 auto any = aqueduct_.forage("");

@@ -23,6 +23,7 @@
 
 #include <cstddef>
 #include <string>
+#include <unordered_set>
 
 namespace khora::curator {
 
@@ -89,6 +90,9 @@ private:
     double      mastery_target_ = 0.6;
     std::size_t studies_ = 0;
     std::size_t forages_ = 0;
+    // Forage targets that failed (e.g. dead link); skipped so the Curator
+    // doesn't loop on an unreachable source forever.
+    std::unordered_set<std::string> failed_forages_;
 };
 
 } // namespace khora::curator
