@@ -3,6 +3,26 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.47.0 — Directed inquiry (Khora investigates on command)
+
+**Author:** Morphus
+
+The Volition gives Khora *autonomous* agency — what it does for itself. This
+is its complement: what it does *for the operator*. A single directive sends
+Khora to investigate a subject end-to-end.
+
+- New tool **`pursue <topic>`**: Khora forages fresh material on the topic
+  from the public domain, absorbs it into living knowledge (Lexicon +
+  Cortex + concept space), then ruminates on the topic and reports the train
+  of thought it arrives at. Acquire → absorb → think, in one act.
+
+**Verified live**: `pursue psychology` — Khora acquired *Dream Psychology*
+(Freud), studied it (vocabulary **9,643 → 11,786**, +232 k cooccurrences),
+and thought: *psychology → filled → ascertained → historically →
+interpreter → reversed* — the analytical, interpretive register of the very
+text it had just read, minutes after first encountering it. 9/9 regression
+suites pass.
+
 ## v0.46.0 — Continuity of self (one mind across its existence)
 
 **Author:** Morphus

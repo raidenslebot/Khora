@@ -800,6 +800,42 @@ int main(int argc, char** argv) {
             return {true, all.substr(start), ""};
         }
     });
+    shell.register_tool({
+        "pursue",
+        "direct Khora to investigate a topic: acquire, study, then think on it  (usage: pursue <topic>)",
+        [&aqueduct, &pool, &lex, &column, &memory, &mind](const carapace::Intent& i) -> carapace::ToolResult {
+            if (i.args.empty()) return {false, "", "usage: pursue <topic>"};
+            const std::string topic = i.args[0];
+            std::ostringstream os;
+            os << "Khora pursues '" << topic << "':\n";
+
+            // 1. Acquire fresh material on the topic, if the world offers any.
+            std::string title;
+            if (auto r = aqueduct.forage(topic)) {
+                if (r->ok) { os << "  acquired \"" << r->title << "\"\n"; title = r->title; }
+                else        os << "  (could not acquire: " << r->error << ")\n";
+            } else {
+                os << "  (nothing new to acquire on '" << topic << "')\n";
+            }
+
+            // 2. Absorb it into living knowledge.
+            if (!title.empty()) {
+                const auto o = khora::curator::study_tome(pool, lex, column, title, 60000, &memory);
+                if (o.ok) os << "  studied: vocabulary " << o.vocab_before << " -> " << o.vocab_after
+                             << " (+" << o.cooccurrences << " cooccurrences)\n";
+                else      os << "  (study failed: " << o.error << ")\n";
+            }
+
+            // 3. Think about it — a train of thought through what it now knows.
+            const auto rum = mind.ruminate(topic, 6);
+            os << "  thinks: ";
+            for (std::size_t k = 0; k < rum.train.size(); ++k) {
+                if (k) os << " -> ";
+                os << rum.train[k];
+            }
+            return {true, os.str(), ""};
+        }
+    });
 
     shell.register_tool({
         "study",
