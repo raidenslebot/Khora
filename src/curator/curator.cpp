@@ -12,6 +12,17 @@ using khora::reservoir::Aqueduct;
 using khora::reservoir::Source;
 using khora::reservoir::seed_catalog;
 
+namespace {
+// Productive domains the operator wants Khora to prioritise — capability-building
+// knowledge (quantity, force, system, machine) over more literature/philosophy.
+// The autonomous Curator forages and deepens these FIRST.
+bool is_productive_topic(const std::string& t) {
+    return t == "mathematics" || t == "physics"  || t == "chemistry" ||
+           t == "engineering"  || t == "logic"   || t == "science"   ||
+           t == "strategy"     || t == "economics";
+}
+} // namespace
+
 StudyOutcome study_tome(Reservoir& pool, khora::lexicon::Lexicon& lex,
                         khora::cortex::PredictiveColumn& cortex,
                         const std::string& title, std::size_t max_tokens,
@@ -116,35 +127,44 @@ Decision Curator::decide() const {
         }
     }
 
-    // 2. FORAGE — broaden first: a topic with no material at all.
+    // 2. FORAGE — broaden first: a topic with no material at all. Productive
+    //    domains are sought before literature/philosophy (operator directive).
     {
         std::vector<std::string> have_topics;
         for (const auto& t : cat) have_topics.push_back(t.topic);
-        for (const auto& s : seed_catalog()) {
-            const bool topic_covered =
-                std::find(have_topics.begin(), have_topics.end(), s.topic) != have_topics.end();
-            if (!topic_covered && !pool_.has(s.title) && !failed_forages_.count(s.title)) {
-                Decision d;
-                d.kind  = Decision::Forage;
-                d.topic = s.topic;
-                d.title = s.title;
-                d.rationale = "no material on \"" + s.topic +
-                              "\" -> forage \"" + s.title + "\" (seek the new)";
-                return d;
+        for (int pass = 0; pass < 2; ++pass) {
+            for (const auto& s : seed_catalog()) {
+                if (pass == 0 && !is_productive_topic(s.topic)) continue;  // productive first
+                const bool topic_covered =
+                    std::find(have_topics.begin(), have_topics.end(), s.topic) != have_topics.end();
+                if (!topic_covered && !pool_.has(s.title) && !failed_forages_.count(s.title)) {
+                    Decision d;
+                    d.kind  = Decision::Forage;
+                    d.topic = s.topic;
+                    d.title = s.title;
+                    d.rationale = "no material on \"" + s.topic +
+                                  "\" -> forage \"" + s.title + "\" (seek the new)";
+                    return d;
+                }
             }
         }
     }
 
-    // 3. DEEPEN breadth — acquire another source in an already-covered topic.
-    for (const auto& s : seed_catalog()) {
-        if (!pool_.has(s.title)) {
-            Decision d;
-            d.kind  = Decision::Deepen;
-            d.topic = s.topic;
-            d.title = s.title;
-            d.rationale = "all held material absorbed once -> deepen with \"" +
-                          s.title + "\" (" + s.topic + ")";
-            return d;
+    // 3. DEEPEN breadth — acquire another source in an already-covered topic,
+    //    productive domains first (operator directive: build capability, not a
+    //    library of literature).
+    for (int pass = 0; pass < 2; ++pass) {
+        for (const auto& s : seed_catalog()) {
+            if (pass == 0 && !is_productive_topic(s.topic)) continue;  // productive first
+            if (!pool_.has(s.title) && !failed_forages_.count(s.title)) {
+                Decision d;
+                d.kind  = Decision::Deepen;
+                d.topic = s.topic;
+                d.title = s.title;
+                d.rationale = "all held material absorbed once -> deepen with \"" +
+                              s.title + "\" (" + s.topic + ")";
+                return d;
+            }
         }
     }
 

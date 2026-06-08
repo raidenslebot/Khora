@@ -3,6 +3,33 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.74.0 — Productive bias made permanent + integrated into cognition
+
+**Author:** Morphus
+
+v0.73 rebalanced the corpus; this makes the bias permanent and proves it reaches
+all the way into thought.
+
+- **Autonomous Curator now prioritises productive domains.** Forage and deepen
+  both run a productive-first pass (mathematics, physics, chemistry, engineering,
+  logic, science, strategy, economics) before literature/philosophy. So every
+  self-directed learning step Khora takes from here reaches for capability-building
+  knowledge first. (Also: deepen now skips known-failed forages.)
+- **Studied the productive tomes into the lexicon/cortex** — vocabulary
+  7,974 -> 16,025 words (optics, chemistry, mechanics, problem-solving).
+
+**Verified live** — Khora now forms PRODUCTIVE abstractions, with coherence as
+strong as the philosophy ever had, and ponders them:
+```
+  {motion+uniform+...}  c50    {energy+conservation+...} c41
+  {light+propagation+...} c41  {force+centrifugal+...}   c36
+  {number+divisible+...}  c29
+  ponder energy -> kinetic     ponder light -> vacuo
+```
+The tower is now balanced — physics and mathematics cohering beside (and diluting)
+the ethics clusters. The thinking engine has productive structure to think with,
+and its autonomous drive now feeds itself more of the same.
+
 ## v0.73.0 — Rebalancing the well toward productive knowledge
 
 **Author:** Morphus (steering correction from the operator)
