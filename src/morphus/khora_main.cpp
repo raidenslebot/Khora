@@ -1964,28 +1964,33 @@ int main(int argc, char** argv) {
         "reforge",
         "Khora discovers every tunable gene in its OWN source and evolves each by measured yield  (usage: reforge)",
         [](const carapace::Intent&) -> carapace::ToolResult {
-            const std::string src = "src/cogitator/cogitator.cpp";
+            const std::vector<std::string> srcs = {
+                "src/cogitator/cogitator.cpp",   // reasoning genes (beam, expand, coherence scale)
+                "src/plexus/plexus.cpp",         // the associative-graph layer (PMI smoothing)
+            };
             const std::string tag = "KHORA-TUNABLE(";
 
-            auto read_src = [&]() -> std::string {
-                std::ifstream f(src, std::ios::binary);
-                std::ostringstream ss; ss << f.rdbuf(); return ss.str();
+            auto read_src = [](const std::string& f) -> std::string {
+                std::ifstream in(f, std::ios::binary);
+                std::ostringstream ss; ss << in.rdbuf(); return ss.str();
             };
-            auto write_src = [&](const std::string& s) {
-                std::ofstream o(src, std::ios::binary | std::ios::trunc); o << s;
+            auto write_src = [](const std::string& f, const std::string& s) {
+                std::ofstream o(f, std::ios::binary | std::ios::trunc); o << s;
             };
 
-            // Discover every gene name by scanning the source for the marker.
-            std::vector<std::string> genes;
-            { const std::string t = read_src();
-              if (t.empty()) return {false, "", "Khora cannot read its own source at " + src};
-              std::size_t p = 0;
-              while ((p = t.find(tag, p)) != std::string::npos) {
-                  const std::size_t a = p + tag.size();
-                  const std::size_t b = t.find(')', a);
-                  if (b != std::string::npos) genes.push_back(t.substr(a, b - a));
-                  p = a;
-              }
+            // Discover every gene across ALL marked source files — the WHOLE engine is
+            // evolvable now, down to the PMI parameters the entire mind rests on.
+            struct Gene { std::string file, name; };
+            std::vector<Gene> genes;
+            for (const std::string& f : srcs) {
+                const std::string t = read_src(f);
+                std::size_t p = 0;
+                while ((p = t.find(tag, p)) != std::string::npos) {
+                    const std::size_t a = p + tag.size();
+                    const std::size_t b = t.find(')', a);
+                    if (b != std::string::npos) genes.push_back({ f, t.substr(a, b - a) });
+                    p = a;
+                }
             }
             if (genes.empty()) return {false, "", "Khora found no tunable genes in its source"};
 
@@ -2019,12 +2024,13 @@ int main(int argc, char** argv) {
                 return s;
             };
 
-            // Write `val` into `gene` in the on-disk source, recompile, measure yield.
-            auto trial = [&](const std::string& gene, double val, bool is_real) -> double {
-                std::string text = read_src();
+            // Write `val` into `gene` in its on-disk source file, recompile, measure yield.
+            auto trial = [&](const std::string& file, const std::string& gene,
+                             double val, bool is_real) -> double {
+                std::string text = read_src(file);
                 std::size_t vb, ve; double cur; bool r;
                 if (!locate(text, gene, vb, ve, cur, r)) return -1.0;
-                write_src(text.substr(0, vb) + fmt(val, is_real) + text.substr(ve));
+                write_src(file, text.substr(0, vb) + fmt(val, is_real) + text.substr(ve));
                 const auto b = khora::hand::execute(
                     "cmake --build build --config Release --target reforge_eval", 240000);
                 if (b.exit_code != 0) return -1.0;     // did not compile
@@ -2040,11 +2046,11 @@ int main(int argc, char** argv) {
                   "(combined inference + abstraction fitness):\n";
 
             int improved = 0;
-            for (const std::string& gene : genes) {
-                std::string text = read_src();
+            for (const Gene& g : genes) {
+                std::string text = read_src(g.file);
                 std::size_t vb, ve; double original = 0.0; bool is_real = false;
-                if (!locate(text, gene, vb, ve, original, is_real)) {
-                    os << "  [" << gene << "] could not be read — skipped\n";
+                if (!locate(text, g.name, vb, ve, original, is_real)) {
+                    os << "  [" << g.name << "] could not be read — skipped\n";
                     continue;
                 }
                 std::vector<double> cset;
@@ -2056,18 +2062,18 @@ int main(int argc, char** argv) {
                 cset.erase(std::unique(cset.begin(), cset.end()), cset.end());
 
                 double best_v = original, best_y = -1.0;
-                os << "  gene [" << gene << "] (was " << fmt(original, is_real) << "):\n";
+                os << "  gene [" << g.name << "] (was " << fmt(original, is_real) << "):\n";
                 for (const double v : cset) {
-                    const double y = trial(gene, v, is_real);
+                    const double y = trial(g.file, g.name, v, is_real);
                     os << "      " << fmt(v, is_real) << " -> "
                        << (y < 0 ? std::string("did not compile/resolve")
                                  : ("fitness " + std::to_string(y))) << "\n";
                     if (y > best_y) { best_y = y; best_v = v; }
                 }
-                trial(gene, best_v, is_real);   // fix this gene at its winner before the next
+                trial(g.file, g.name, best_v, is_real);   // fix this gene at its winner before the next
                 const bool changed = std::abs(best_v - original) > (is_real ? 1e-6 : 0.5);
                 if (changed) ++improved;
-                os << "    -> KEPT " << gene << " = " << fmt(best_v, is_real)
+                os << "    -> KEPT " << g.name << " = " << fmt(best_v, is_real)
                    << (changed ? "  (IMPROVED by self-rewrite)" : "  (already best)") << "\n";
             }
             os << "Khora rewrote, recompiled and judged its OWN source across " << genes.size()

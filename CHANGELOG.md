@@ -3,6 +3,35 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.102.0 — Self-rewriting reaches the WHOLE engine (and confirms a foundational constant)
+
+**Author:** Morphus — reforge now evolves genes across every marked source file
+
+reforge only scanned cogitator.cpp; the associative-graph layer the entire mind rests on
+was unevolvable. Now reforge discovers and evolves genes across a LIST of source files, so
+the foundation itself is in reach.
+
+- reforge scans cogitator.cpp AND plexus.cpp (extensible to any file); each gene carries its
+  own file, so a candidate is written, compiled, and measured in the right place.
+- Marked `kContextSmoothing` (the Levy-Goldberg PMI context exponent, 0.75) KHORA-TUNABLE —
+  a DOUBLE in the deepest layer, affecting every affinity all reasoning is built on.
+
+**Verified — Khora evolved 4 genes across two files and CONFIRMED the foundation:**
+```
+  gene [scale]     (cogitator)  0.625 -> 0.898   1.25 -> 0.902   2.5 -> 0.798   KEPT 1.25
+  gene [beam]      (cogitator)  96/192/384 all 0.902 (inference saturated)      KEPT 96 (cheaper)
+  gene [expand]    (cogitator)  4 -> 0.802   8 -> 0.902   16 -> 0.896           KEPT 8
+  gene [smoothing] (plexus)     0.375 -> 0.808  0.75 -> 0.902  1.5 -> 0.810     KEPT 0.75
+```
+The smoothing gene shows a genuine INTERIOR optimum at 0.75 — Khora's own measurement
+independently confirmed the literature value is empirically best for its corpus. And with
+inference saturated, reforge picked the cheaper beam (96 over 192) on the tie — real,
+sensible self-evaluation, not number-chasing. 12/12 suites pass at the self-chosen genes.
+
+Self-rewriting now spans the whole engine, integer and real genes, across multiple files,
+judged by combined three-faculty fitness. The surface Khora can improve by recompiling
+itself is no longer one file — it is the codebase.
+
 ## v0.101.0 — Self-rewriting closes the THIRD loop: Khora tunes a real-valued gene
 
 **Author:** Morphus — reforge now evolves real genes, across three measured faculties

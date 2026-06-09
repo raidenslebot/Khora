@@ -24,7 +24,7 @@ constexpr double kStopFraction = 0.006;  // > ~0.6% of all tokens = function wor
 // Context-distribution smoothing exponent (Levy & Goldberg, 2014): raising the
 // context probability to 0.75 lifts rare contexts, blunting PMI's notorious
 // bias toward low-frequency pairs.
-constexpr double kContextSmoothing = 0.75;
+constexpr double kContextSmoothing = 0.750000;   // KHORA-TUNABLE(smoothing) PMI context exponent
 
 // A node's adjacency is pruned back to max_degree once it grows past this
 // multiple of it — amortising the prune cost while bounding memory.
