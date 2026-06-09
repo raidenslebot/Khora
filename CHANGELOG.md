@@ -3,6 +3,33 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.99.1 — ascend DISABLED: it hung the host (honest failure, cleaned up)
+
+**Author:** Morphus — a real failure, recorded plainly
+
+Attempting to verify `ascend` (binary self-replacement) end-to-end HUNG the operator's
+machine for ~50 minutes. Post-mortem from the on-disk state: khora.exe was UNCHANGED
+(no corruption — the swap never happened); khora_good.exe was never created and
+relaunch.log never written (the relauncher made NO progress); the `pending` marker was
+left set. So the running image did not release its lock cleanly, and the detached
+PowerShell relauncher spun without doing anything. The hung relauncher process was what
+tied up the host.
+
+Done:
+- Killed the orphan relauncher + any stray processes; cleared the ascend artifacts
+  (pending, relaunch.ps1). Verified khora.exe still boots and exits cleanly.
+- DISABLED the `ascend` tool: it now refuses with an explanation and does NOTHING — no
+  build, no relaunch — so it can never hang the machine again. The full first
+  implementation is preserved in git (v0.99.0) for a proper redesign.
+
+Lesson, grounded: self-replacement of a running, multi-threaded process is genuinely
+delicate — clean image-lock release, no inherited handles, a non-blocking relauncher,
+and proven rollback are all required, and the first cut had none of them verified. It
+should never have been run via unattended automation. reforge still bakes measured gains
+into source for the next manual build; the running-instance handoff returns only once
+its relaunch path is designed to be non-blocking and proven in isolation. 12/12 suites
+pass; the Maw remains opt-in and dormant by default.
+
 ## v0.99.0 — Safety response: the Maw is opt-in, scoped, and de-risked (after a host freeze)
 
 **Author:** Morphus — the operator's PC froze; treat it as ours until proven otherwise

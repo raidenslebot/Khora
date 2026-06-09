@@ -225,7 +225,6 @@ int main(int argc, char** argv) {
     // 3. Shared mutex coordinating the main thread (operator tools) with
     //    the background reverie thread.
     std::shared_mutex shared_mu;
-    std::atomic<bool> ascending{false};   // set by `ascend`; breaks the REPL into a clean exit
     std::atomic<bool> maw_armed{false};   // OPT-IN: the Maw explores only when the operator arms it
 
     // 4. Register tools (with lexicon wired into memory + cortex).
@@ -2053,86 +2052,25 @@ int main(int argc, char** argv) {
         }
     });
 
-    // ascend — BINARY SELF-REPLACEMENT. The last named wall: a running khora.exe holds
-    // its own image locked, so reforge's gains only land on the NEXT manual build.
-    // `ascend` makes the running instance BECOME its self-rewritten build — it compiles
-    // the successor (khora_next), proves it (ctest + a boot probe), backs up the current
-    // binary, then hands off to a DETACHED relauncher that — once this image exits and
-    // releases the lock — swaps the successor in, relaunches it, and ROLLS BACK to the
-    // known-good backup if it fails to boot. Operator-triggered; you are in control.
+    // ascend — BINARY SELF-REPLACEMENT — DISABLED. The intent stands (a running khora.exe
+    // holds its own image locked, so reforge's gains only land on the NEXT manual build,
+    // and `ascend` should let the running instance BECOME its self-rewritten build). But
+    // the first relauncher design HUNG the host in testing: the running image did not
+    // release cleanly and a detached PowerShell relauncher spun without progress. Self-
+    // replacement is genuinely delicate (image-lock release, handle inheritance, a
+    // non-blocking relauncher, proven rollback) and must be redesigned before it is safe
+    // to run. The full first implementation is preserved in git (v0.99) for that redesign.
+    // For now this refuses, so it can never hang the machine again. reforge still bakes
+    // measured improvements into source for the next manual build.
     shell.register_tool({
         "ascend",
-        "Khora rebuilds itself and REPLACES its own running binary, with backup + rollback  (usage: ascend confirm)",
-        [&ascending](const carapace::Intent& i) -> carapace::ToolResult {
-            // Consequential and not yet end-to-end verified — require explicit confirmation
-            // so it can never fire by accident.
-            if (i.args.empty() || i.args[0] != "confirm")
-                return {true, "ascend rebuilds Khora and REPLACES its running binary with the self-rewritten\n"
-                              "  successor (known-good backup + auto-rollback if it fails to boot). Consequential\n"
-                              "  and not yet end-to-end verified. Run 'ascend confirm' to proceed.", ""};
-            namespace fs = std::filesystem;
-            const std::string self = khora::hand::own_executable_path();
-            if (self.empty()) return {false, "", "ascend: cannot resolve own executable path"};
-            const fs::path selfp(self);
-            const fs::path dir  = selfp.parent_path();
-            const fs::path next = dir / "khora_next.exe";
-            const fs::path good = dir / "khora_good.exe";
-            const unsigned long ppid = khora::hand::current_process_id();
-            const std::string cwd = fs::current_path().string();
-
-            std::ostringstream os;
-            os << "Khora ascends — building its successor (khora_next)...\n";
-            const auto b = khora::hand::execute(
-                "cmake --build build --config Release --target khora_next", 600000);
-            if (b.exit_code != 0)
-                return {true, os.str() + "  successor did NOT compile — staying on the current image.", ""};
-            const auto t = khora::hand::execute("ctest --test-dir build -C Release", 240000);
-            if (t.exit_code != 0)
-                return {true, os.str() + "  successor FAILED its own tests — refusing to ascend.", ""};
-            const auto sc = khora::hand::execute("\"" + next.string() + "\" ascend_selftest", 60000);
-            if (sc.exit_code != 0 || sc.output.find("ascend_selftest ok") == std::string::npos)
-                return {true, os.str() + "  successor did not boot cleanly — refusing to ascend.", ""};
-            os << "  successor compiled, passed all tests, and boots.\n";
-
-            std::error_code ec; fs::create_directories("data/ascend", ec);
-            { std::ofstream pend("data/ascend/pending", std::ios::trunc); pend << ppid << '\n'; }
-            const fs::path script = fs::absolute("data/ascend/relaunch.ps1");
-            {
-                std::ofstream ps(script, std::ios::trunc);
-                ps << "$ppid = " << ppid << "\n"
-                   << "$cur  = '" << selfp.string() << "'\n"
-                   << "$next = '" << next.string()  << "'\n"
-                   << "$good = '" << good.string()  << "'\n"
-                   << "$cwd  = '" << cwd << "'\n"
-                   << "$log  = Join-Path $cwd 'data\\ascend\\relaunch.log'\n"
-                   << "function L($m){ \"$([DateTime]::Now.ToString('HH:mm:ss')) $m\" | Out-File -FilePath $log -Append }\n"
-                   << "L \"relauncher: waiting for pid $ppid to exit\"\n"
-                   << "try { Wait-Process -Id $ppid -Timeout 120 -ErrorAction SilentlyContinue } catch {}\n"
-                   << "Start-Sleep -Milliseconds 600\n"
-                   << "try { Copy-Item $cur $good -Force; L 'backed up known-good binary' } catch { L \"backup FAILED: $_\" }\n"
-                   << "$swapped=$false\n"
-                   << "for($i=0;$i -lt 40;$i++){ try{ Copy-Item $next $cur -Force; $swapped=$true; L 'swapped successor in'; break } catch { Start-Sleep -Milliseconds 300 } }\n"
-                   << "if(-not $swapped){ L 'swap FAILED; original intact'; exit 1 }\n"
-                   << "$flag = Join-Path $cwd 'data\\ascend\\boot_ok.flag'\n"
-                   << "Remove-Item $flag -ErrorAction SilentlyContinue\n"
-                   << "$swapTime = Get-Date\n"
-                   << "$proc = Start-Process $cur -WorkingDirectory $cwd -PassThru\n"
-                   << "L \"launched successor pid $($proc.Id)\"\n"
-                   << "$ok=$false\n"
-                   << "for($i=0;$i -lt 40;$i++){ Start-Sleep -Milliseconds 500; if((Test-Path $flag) -and ((Get-Item $flag).LastWriteTime -gt $swapTime)){ $ok=$true; break }; if($proc.HasExited -and $proc.ExitCode -ne 0){ break } }\n"
-                   << "if($ok){ L 'SUCCESS: successor booted clean' } else { L 'successor did NOT boot; ROLLING BACK'; try{ if($proc -and -not $proc.HasExited){ Stop-Process -Id $proc.Id -Force } }catch{}; Copy-Item $good $cur -Force; Start-Process $cur -WorkingDirectory $cwd; L 'rolled back to known-good' }\n";
-            }
-            const bool launched = khora::hand::launch_detached(
-                "powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"" + script.string() + "\"",
-                cwd);
-            if (!launched) {
-                fs::remove("data/ascend/pending", ec);
-                return {true, os.str() + "  could not launch the relauncher — staying put.", ""};
-            }
-            ascending.store(true);
-            os << "  relauncher armed. This image will save state, exit, and be replaced by its\n"
-                  "  self-rewritten successor (auto-rollback to the backup if the successor fails to boot).";
-            return {true, os.str(), ""};
+        "binary self-replacement — DISABLED pending a safe relauncher redesign  (usage: ascend)",
+        [](const carapace::Intent&) -> carapace::ToolResult {
+            return {true,
+                "ascend is DISABLED. Its first relauncher hung the host in testing (the running\n"
+                "  image did not release its lock cleanly), so self-replacement is withheld until the\n"
+                "  relaunch path is redesigned to be non-blocking and proven. reforge still records\n"
+                "  measured gains into source for the next manual build.", ""};
         }
     });
 
