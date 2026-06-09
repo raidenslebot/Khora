@@ -80,31 +80,53 @@ std::size_t Ligature::extract(const std::vector<std::string>& t) {
             if (!(w == "such" && i + 2 < t.size() && t[i + 1] == "as")) continue;
         }
 
-        // IS-A:  X is/are/was/were  a/an/the  ... Y(head noun). The determiner is
-        // REQUIRED — it marks a noun phrase ("is a Y"), excluding passive/predicate
-        // forms ("is reflected", "is sufficient") that are not taxonomy.
+        // IS-A:  X is/are/was/were  a/an/the  [kind/sort/type/form of]  ... Y(head)
+        // The determiner is REQUIRED — it marks a noun phrase ("is a Y"), excluding
+        // passive/predicate forms ("is reflected", "is sufficient") that aren't taxonomy.
         if ((w == "is" || w == "are" || w == "was" || w == "were") &&
             i + 1 < t.size() && is_det(t[i + 1])) {
-            const std::string Y = head_after(t, i + 1);
+            std::size_t ys = i + 2;
+            // "a KIND of Y" / "a sort/type/form/species/class/branch of Y" -> skip the meta-noun.
+            if (ys + 1 < t.size() &&
+                (t[ys] == "kind" || t[ys] == "sort" || t[ys] == "type" || t[ys] == "form" ||
+                 t[ys] == "species" || t[ys] == "class" || t[ys] == "branch") &&
+                t[ys + 1] == "of") {
+                ys += 2;
+            }
+            const std::string Y = head_after(t, ys);
             if (is_content(X) && !Y.empty()) { add(Relation::IsA, X, Y); ++added; }
         }
-        // CAUSES:  X causes/produces/creates/generates  [det] ... Y
+        // CAUSES:  X <causal verb>  [det] ... Y
         else if (w == "causes" || w == "cause" || w == "produces" || w == "produce" ||
                  w == "creates" || w == "create" || w == "generates" || w == "generate" ||
-                 w == "yields"  || w == "induce"  || w == "induces") {
+                 w == "yields"  || w == "yield"  || w == "induce"  || w == "induces" ||
+                 w == "makes"   || w == "make"   || w == "brings"  || w == "bring"   ||
+                 w == "drives"  || w == "drive"  || w == "forces"  || w == "enables" ||
+                 w == "enable"  || w == "excites" || w == "excite") {
             const std::string Y = head_after(t, i + 1);
             if (is_content(X) && !Y.empty()) { add(Relation::Causes, X, Y); ++added; }
         }
-        // CAUSES:  X leads/led/lead  to  [det] ... Y
-        else if ((w == "leads" || w == "led" || w == "lead") &&
-                 i + 2 < t.size() && t[i + 1] == "to") {
-            const std::string Y = head_after(t, i + 2);
+        // CAUSES:  X leads/led/lead/results/give  to/in  ... Y   ("leads to", "results in")
+        else if ((w == "leads" || w == "led" || w == "lead" || w == "results" ||
+                  w == "result" || w == "gives" || w == "give") &&
+                 i + 2 < t.size() && (t[i + 1] == "to" || t[i + 1] == "in" || t[i + 1] == "rise")) {
+            std::size_t ys = i + 2;
+            if (ys < t.size() && (t[ys] == "to" || t[ys] == "in")) ++ys;   // "rise to"
+            const std::string Y = head_after(t, ys);
             if (is_content(X) && !Y.empty()) { add(Relation::Causes, X, Y); ++added; }
         }
-        // HAS-PART:  X has/have/contains/contain/comprises  [det] ... Y
+        // HAS-PART:  X has/have/contains/...  [det] ... Y
         else if (w == "has" || w == "have" || w == "contains" || w == "contain" ||
-                 w == "comprises" || w == "comprise" || w == "includes") {
+                 w == "comprises" || w == "comprise" || w == "includes" ||
+                 w == "possesses" || w == "possess" || w == "carries" || w == "carry") {
             const std::string Y = head_after(t, i + 1);
+            if (is_content(X) && !Y.empty()) { add(Relation::HasPart, X, Y); ++added; }
+        }
+        // HAS-PART (material/composition):  X consists/composed/made/formed  of  ... Y
+        else if ((w == "consists" || w == "consist" || w == "composed" || w == "made" ||
+                  w == "formed" || w == "built" || w == "comprised") &&
+                 i + 2 < t.size() && t[i + 1] == "of") {
+            const std::string Y = head_after(t, i + 2);
             if (is_content(X) && !Y.empty()) { add(Relation::HasPart, X, Y); ++added; }
         }
 
@@ -190,6 +212,15 @@ std::vector<Inference> Ligature::deduce(const std::string& subject, int max_dept
 
     const auto& isaF = fwd_[static_cast<std::size_t>(Relation::IsA)];
 
+    // Generic / pronominal "is-a" parents carry no inheritable structure — "man
+    // is-a thing" should not let man inherit whatever "thing" happens to have.
+    static const std::unordered_set<std::string> generic = {
+        "thing","things","one","ones","way","ways","part","parts","sort","kind",
+        "type","him","her","them","those","these","something","someone","somebody",
+        "anyone","anything","everyone","nothing","person","matter","point","case",
+        "form","name","word","term","number","piece","set","group","sort"
+    };
+
     // (1) Gather the is-a ANCESTORS of the subject (BFS over well-attested is-a
     //     edges), remembering the path and the weakest link's support.
     struct Anc { std::string node; std::vector<std::string> path; std::uint32_t support; };
@@ -202,7 +233,7 @@ std::vector<Inference> Ligature::deduce(const std::string& subject, int max_dept
             auto it = isaF.find(a.node);
             if (it == isaF.end()) continue;
             for (const auto& [parent, c] : it->second) {
-                if (c < 2) continue;
+                if (c < 2 || generic.count(parent)) continue;
                 if (!seen.insert(parent).second) continue;
                 Anc na;
                 na.node = parent;
@@ -235,9 +266,9 @@ std::vector<Inference> Ligature::deduce(const std::string& subject, int max_dept
 
     // (3) Causal chaining: subject causes Y, Y causes Z  =>  subject causes Z.
     for (const auto& [y, c1] : objects(Relation::Causes, subject, 8)) {
-        if (c1 < 2) continue;
+        if (c1 < 2 || generic.count(y)) continue;
         for (const auto& [z, c2] : objects(Relation::Causes, y, 6)) {
-            if (c2 < 2 || z == subject || known_direct(Relation::Causes, z)) continue;
+            if (c2 < 2 || z == subject || generic.count(z) || known_direct(Relation::Causes, z)) continue;
             Inference inf;
             inf.relation = Relation::Causes;
             inf.object   = z;

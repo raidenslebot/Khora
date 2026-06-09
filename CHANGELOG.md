@@ -3,6 +3,36 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.89.0 — Richer extraction + cleaner deduction (the data-density lever)
+
+**Author:** Morphus — loop iteration four (relation density)
+
+v0.88's honest finding: deduction was starved by sparse source relations. So this
+targets density and quality directly.
+
+- **Richer extraction patterns:** more causal verbs (makes, brings, drives, forces,
+  enables, excites...), "results in" / "gives rise to", composition ("X consists/
+  composed/made of Y" -> has), and "X is a KIND/sort/type/form of Y" -> is-a (skip
+  the meta-noun). Relations 16,297 -> 18,471.
+- **Cleaner deduction:** generic/pronominal is-a parents and causal intermediates
+  ("thing", "him", "way", "one", "matter"...) are excluded — "man is-a thing"
+  should not let man inherit whatever "thing" happens to have. `deduce man` went
+  from noisy ("man has made via thing") to clean: **"man has range (via animal)"**.
+
+**The honest, systematic finding this loop converged on:** the deduction ENGINE is
+sound; its yield is bounded by RELATION DENSITY, which is bounded by (a) the corpus
+and (b) pattern-extraction's reach (no real parsing). BUT — extraction is now LIVE
+in study_tome, so the relation base GROWS every time the autonomous Curiosity Daemon
+acquires and studies a tome. Deduction is not statically capped; it COMPOUNDS with
+acquisition: more books -> more relations -> more derivable facts. The relational
+mind sharpens itself as it reads. 10/10 suites pass.
+
+LOOP, re-ranked: the deepest remaining constraint is now the COMPREHENSION gap (the
+cortex learns distributional statistics, not understanding) and the absence of
+GROUNDING (text only). Those, plus meta-cognition and self-rewriting, are the
+frontier — each a genuinely harder, more foundational build than the relational
+layer that this turn's 22 releases stand on.
+
 ## v0.88.0 — Deduction: new facts reasoned from structure (+ honest data bound)
 
 **Author:** Morphus — loop iteration three (the re-ranked #1: inference)
