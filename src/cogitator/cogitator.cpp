@@ -182,7 +182,7 @@ namespace {
 // scale squashes mean pairwise affinity into [0,1) via aff/(aff+scale): a mean
 // affinity equal to the scale maps to 0.5. Tuned to the real corpus so coherent
 // clusters land in the self-escalating bar's working range.
-constexpr double kPmiCoherenceScale = 2.5;
+constexpr double kPmiCoherenceScale = 1.250000;   // KHORA-TUNABLE(scale) abstraction coherence
 } // namespace
 
 std::string Cogitator::form_abstraction_plexus_(const std::string& seed, std::size_t k,
@@ -1220,7 +1220,7 @@ std::vector<std::string> Cogitator::infer_path(const std::string& start,
     // heuristic is what makes this REASONING toward an answer rather than the
     // aimless wandering of ruminate.
     struct Path { std::vector<std::string> nodes; double score; };
-    constexpr std::size_t kBeam   = 96;   // KHORA-TUNABLE(beam) paths kept per level
+    constexpr std::size_t kBeam   = 192;   // KHORA-TUNABLE(beam) paths kept per level
     constexpr std::size_t kExpand = 8;   // KHORA-TUNABLE(expand) associates per frontier node
     const double          kGoalPull = infer_goal_pull_;   // tuned by measured yield
 
@@ -1340,13 +1340,16 @@ double Cogitator::benchmark_abstraction(std::size_t n, std::uint64_t seed) const
         // POSITIVE group: A and its real PMI kin — a genuine abstraction; should cohere.
         std::vector<std::string> pos{ A };
         for (const auto& kv : kin) pos.push_back(kv.first);
-        // NEGATIVE group: A and random concepts — incoherent; should NOT cohere.
-        std::vector<std::string> neg{ A };
-        for (std::size_t r = 0; r < kin.size(); ++r)
+        // NEGATIVE group: a DILUTED one — A, one real kin, and the rest random. It has
+        // some structure but is impure, so a well-calibrated faculty must REJECT it. This
+        // is what gives the scale a genuine interior optimum: too low a scale wrongly
+        // accepts the diluted group, too high a scale wrongly rejects the pure one.
+        std::vector<std::string> neg{ A, kin[0].first };
+        for (std::size_t r = 1; r < kin.size(); ++r)
             neg.push_back(concepts_[(s * 2654435761ull + r * 40503ull + 12345ull) % N]);
 
-        if (group_coherence(pos) >= kBar)  ++correct;   // a real kin-group SHOULD read coherent
-        if (group_coherence(neg) <  kBar)  ++correct;   // a random group SHOULD read incoherent
+        if (group_coherence(pos) >= kBar)  ++correct;   // a pure kin-group SHOULD read coherent
+        if (group_coherence(neg) <  kBar)  ++correct;   // a diluted group SHOULD read incoherent
         total += 2;
     }
     return total ? static_cast<double>(correct) / static_cast<double>(total) : -1.0;

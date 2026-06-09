@@ -46,7 +46,16 @@ int main(int argc, char** argv) {
 
     mind.wandering_seed(0);   // forces the concept field to materialise from the lexicon
 
-    const double y = mind.benchmark_inference(n, 7);
-    std::cout << "YIELD " << y << "\n";
-    return (y >= 0.0) ? 0 : 2;
+    // Combined mind-fitness: the mean of the faculties that have headroom (inference +
+    // abstraction). A gene that moves only one faculty is still selected correctly — the
+    // others stay flat — so one evaluator serves genes across the whole mind.
+    const double yi = mind.benchmark_inference(n, 7);
+    const double ya = mind.benchmark_abstraction(n, 7);
+    double combined = yi;
+    int parts = 1;
+    if (ya >= 0.0) { combined += ya; ++parts; }
+    combined /= parts;
+
+    std::cout << "YIELD " << combined << "\n";
+    return (yi >= 0.0) ? 0 : 2;
 }

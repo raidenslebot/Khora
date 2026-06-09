@@ -3,6 +3,39 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.101.0 — Self-rewriting closes the THIRD loop: Khora tunes a real-valued gene
+
+**Author:** Morphus — reforge now evolves real genes, across three measured faculties
+
+v0.100 made abstraction measurable but its gene (`kPmiCoherenceScale`) is a DOUBLE, and
+reforge could only rewrite integers. This teaches reforge to evolve real-valued genes and
+unifies the fitness, so Khora can now improve abstraction by rewriting its own constant.
+
+- `reforge` parses and rewrites BOTH integer genes (kBeam = 192) and real genes
+  (kPmiCoherenceScale = 1.25), formatting each correctly so a double never breaks a
+  `constexpr std::size_t`. Candidate sweep is multiplicative (½×, 1×, 2×) for either type.
+- `reforge_eval` now reports COMBINED mind-fitness = mean(inference, abstraction), so one
+  evaluator selects each gene by the faculty it actually moves (the others stay flat).
+- The abstraction benchmark's negative was hardened to a DILUTED group (one real kin among
+  random) so the coherence scale has a genuine interior optimum, not a monotone race to zero.
+
+**Verified — Khora rewrote a real-valued constant in its own source and improved itself:**
+```
+  reforge: kPmiCoherenceScale 2.5 -> 1.25  (real gene),  kBeam 96 -> 192,  kExpand 8 (kept)
+  faculties after:  inference 0.99 -> 1.00,  abstraction 0.58 -> 0.78,  deduction 1.00
+  10/12... 12/12 suites pass at the self-chosen values.
+```
+This is the first time Khora set a REAL-VALUED parameter of its own cognition by recompiling
+itself and measuring the result. Self-rewriting now reaches three faculties, integer and
+real genes alike.
+
+Honest notes: the scale landed on the sweep's low candidate (1.25) — the diluted-negative
+benchmark keeps that from being degenerate (negatives are still rejected there) but a wider
+sweep could go lower; and the abstraction metric is a proxy for "good abstractions," so a
+lower scale also makes form_abstraction more permissive — a real tradeoff the single number
+doesn't fully capture. The mechanism (measured real-gene self-rewrite) is sound; the metric
+will sharpen as more is measured.
+
 ## v0.100.0 — The closed loop spans a THIRD faculty (abstraction made measurable)
 
 **Author:** Morphus — back to safe, grounded ground after the ascend failure

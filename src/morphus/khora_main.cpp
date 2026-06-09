@@ -1989,9 +1989,12 @@ int main(int argc, char** argv) {
             }
             if (genes.empty()) return {false, "", "Khora found no tunable genes in its source"};
 
-            // Locate a named gene's value (char range + integer) in the CURRENT source.
+            // Locate a named gene's numeric value (char range + value + whether it is a
+            // real/double literal). Handles both integer genes (kBeam = 48) and real
+            // genes (kPmiCoherenceScale = 2.5), so the whole mind is evolvable.
             auto locate = [&](const std::string& text, const std::string& gene,
-                              std::size_t& vbeg, std::size_t& vend, int& val) -> bool {
+                              std::size_t& vbeg, std::size_t& vend,
+                              double& val, bool& is_real) -> bool {
                 const std::size_t mk = text.find(tag + gene + ")");
                 if (mk == std::string::npos) return false;
                 const std::size_t lbeg = text.rfind('\n', mk) + 1;
@@ -2001,18 +2004,27 @@ int main(int argc, char** argv) {
                 vbeg = eq + 1;
                 while (vbeg < lend && !std::isdigit((unsigned char)text[vbeg])) ++vbeg;
                 vend = vbeg;
-                while (vend < lend &&  std::isdigit((unsigned char)text[vend])) ++vend;
+                while (vend < lend && (std::isdigit((unsigned char)text[vend]) || text[vend] == '.')) ++vend;
                 if (vbeg == vend) return false;
-                val = std::stoi(text.substr(vbeg, vend - vbeg));
+                const std::string tok = text.substr(vbeg, vend - vbeg);
+                is_real = tok.find('.') != std::string::npos;
+                try { val = std::stod(tok); } catch (...) { return false; }
                 return true;
+            };
+            // Format a candidate per gene type — integers stay integers (a double literal
+            // would break a `constexpr std::size_t`); reals keep a decimal point.
+            auto fmt = [](double v, bool is_real) -> std::string {
+                if (!is_real) return std::to_string(static_cast<long long>(std::llround(v)));
+                std::string s = std::to_string(v);        // e.g. "1.250000" — a valid double literal
+                return s;
             };
 
             // Write `val` into `gene` in the on-disk source, recompile, measure yield.
-            auto trial = [&](const std::string& gene, int val) -> double {
+            auto trial = [&](const std::string& gene, double val, bool is_real) -> double {
                 std::string text = read_src();
-                std::size_t vb, ve; int cur;
-                if (!locate(text, gene, vb, ve, cur)) return -1.0;
-                write_src(text.substr(0, vb) + std::to_string(val) + text.substr(ve));
+                std::size_t vb, ve; double cur; bool r;
+                if (!locate(text, gene, vb, ve, cur, r)) return -1.0;
+                write_src(text.substr(0, vb) + fmt(val, is_real) + text.substr(ve));
                 const auto b = khora::hand::execute(
                     "cmake --build build --config Release --target reforge_eval", 240000);
                 if (b.exit_code != 0) return -1.0;     // did not compile
@@ -2024,35 +2036,39 @@ int main(int argc, char** argv) {
 
             std::ostringstream os;
             os << "Khora reforges its own mind — it found " << genes.size()
-               << " tunable genes in its source and evolves each by recompiling and measuring:\n";
+               << " tunable genes in its source and evolves each by recompiling and measuring\n"
+                  "(combined inference + abstraction fitness):\n";
 
             int improved = 0;
             for (const std::string& gene : genes) {
                 std::string text = read_src();
-                std::size_t vb, ve; int original = 0;
-                if (!locate(text, gene, vb, ve, original)) {
+                std::size_t vb, ve; double original = 0.0; bool is_real = false;
+                if (!locate(text, gene, vb, ve, original, is_real)) {
                     os << "  [" << gene << "] could not be read — skipped\n";
                     continue;
                 }
-                std::vector<int> cset;
-                for (const int m : { original / 2, original, original * 2 })
-                    if (m >= 1) cset.push_back(m);
+                std::vector<double> cset;
+                for (double m : { original * 0.5, original, original * 2.0 }) {
+                    if (!is_real) m = static_cast<double>(std::llround(m));
+                    if (m >= (is_real ? 0.05 : 1.0)) cset.push_back(m);
+                }
                 std::sort(cset.begin(), cset.end());
                 cset.erase(std::unique(cset.begin(), cset.end()), cset.end());
 
-                int best_v = original; double best_y = -1.0;
-                os << "  gene [" << gene << "] (was " << original << "):\n";
-                for (const int v : cset) {
-                    const double y = trial(gene, v);
-                    os << "      " << v << " -> "
+                double best_v = original, best_y = -1.0;
+                os << "  gene [" << gene << "] (was " << fmt(original, is_real) << "):\n";
+                for (const double v : cset) {
+                    const double y = trial(gene, v, is_real);
+                    os << "      " << fmt(v, is_real) << " -> "
                        << (y < 0 ? std::string("did not compile/resolve")
-                                 : ("yield " + std::to_string(y))) << "\n";
+                                 : ("fitness " + std::to_string(y))) << "\n";
                     if (y > best_y) { best_y = y; best_v = v; }
                 }
-                trial(gene, best_v);   // fix this gene at its winner before the next
-                if (best_v != original) ++improved;
-                os << "    -> KEPT " << gene << " = " << best_v
-                   << (best_v == original ? "  (already best)" : "  (IMPROVED by self-rewrite)") << "\n";
+                trial(gene, best_v, is_real);   // fix this gene at its winner before the next
+                const bool changed = std::abs(best_v - original) > (is_real ? 1e-6 : 0.5);
+                if (changed) ++improved;
+                os << "    -> KEPT " << gene << " = " << fmt(best_v, is_real)
+                   << (changed ? "  (IMPROVED by self-rewrite)" : "  (already best)") << "\n";
             }
             os << "Khora rewrote, recompiled and judged its OWN source across " << genes.size()
                << " genes (" << improved << " improved) — every change decided by measured yield.";
