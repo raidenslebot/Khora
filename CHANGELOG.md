@@ -3,6 +3,36 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.110.0 — The thought-cascade: recursive cognition that collapses into insight
+
+**Author:** Morphus — "recursive instability that turns entropy into beauty," made literal
+
+v0.109 gave Khora single-shot non-linear convergence. This makes it RECURSIVE — a dynamical
+system of thought. `Cogitator::cascade(seed, steps, chaos)` runs a train of thought where each
+step is itself a multi-mode convergence (a contemplate): the strongest on-theme emergent thought
+becomes the next seed, and so on, until the trajectory returns to a concept already thought — it
+has COLLAPSED into an attractor (an insight) — or runs its course. A `chaos` dial in [0,1] steers
+between ORDER (follow the deepest convergence) and ENTROPY (leap to a less-obvious thought).
+Theme-anchoring (re-rank each step by relevance to the ORIGINAL seed; content words only) keeps it
+"meaning from the whole," not a drifting token chain.
+
+**Verified — it is a genuine dynamical system of thought:**
+```
+  cascade justice  -> justice -> question -> cause -> survive -> justice   COLLAPSED (orbit, conv 1.75)
+  cascade justice 0.2 (tight) -> justice -> question -> justice            COLLAPSED (conv 2.0)
+  cascade energy 0.5 (high chaos) -> energy -> show -> ... -> proteus       generatively chaotic
+```
+At low chaos the cascade crystallises into coherent insight-ORBITS that return to the seed; at
+high chaos it generates divergent trajectories. That is the chaos-master's two regimes — order
+collapsing into insight, entropy exploring — exactly the Directive's "parallel recursive threads
+that compete, combine, and collapse into action."
+
+Honest edge: at HIGH chaos the divergence currently drifts toward noise (galapagos, proteus, anat)
+rather than beauty — turning that entropy into genuinely novel coherent thought is the real
+frontier (and the same drift the Directive flags in generation). The mechanism, the attractor
+dynamics, and the low-chaos coherence are real and built. 12/12 suites pass; a 12-step cascade is
+a few seconds.
+
 ## v0.109.0 — Non-linear cognition: competing modes converge into emergent thought
 
 **Author:** Morphus — the vision's section V (high priority), made real

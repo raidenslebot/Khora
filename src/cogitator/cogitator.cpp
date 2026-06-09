@@ -864,6 +864,61 @@ std::vector<Emergence> Cogitator::contemplate(const std::string& seed, std::size
     return out;
 }
 
+Cascade Cogitator::cascade(const std::string& seed_in, std::size_t max_steps, double chaos) {
+    Cascade out;
+    if (seed_in.empty() || max_steps == 0) return out;
+    if (chaos < 0.0) chaos = 0.0;
+    if (chaos > 1.0) chaos = 1.0;
+    std::mt19937_64 rng(0x9E3779B97F4A7C15ull ^ (std::hash<std::string>{}(seed_in) * 2654435761ull + 7));
+    std::uniform_real_distribution<double> coin(0.0, 1.0);
+
+    std::string cur = seed_in;
+    std::unordered_set<std::string> seen;
+    double emergence_sum = 0.0; int emergence_n = 0;
+
+    for (std::size_t step = 0; step < max_steps; ++step) {
+        out.chain.push_back(cur);
+        if (!seen.insert(cur).second) {     // returned to a concept already thought
+            out.collapsed = true;
+            out.attractor = cur;
+            break;
+        }
+        const auto thoughts = contemplate(cur, 16);
+        if (thoughts.empty()) break;
+        emergence_sum += thoughts.front().modes; ++emergence_n;
+
+        // MEANING FROM THE WHOLE, not a token chain: re-rank each next thought by its relevance
+        // to the ORIGINAL seed (so the cascade orbits the theme instead of wandering off) and
+        // keep only CONTENT words (no drift into function-word mush). A thought also reached by
+        // several modes is favoured. If nothing coherent remains, the thought has run out — end.
+        std::vector<std::pair<std::string, double>> cand;
+        cand.reserve(thoughts.size());
+        for (const auto& th : thoughts) {
+            if (!is_content_(th.name)) continue;
+            const double rel = (plexus_ && plexus_->has(th.name)) ? plexus_->affinity(seed_in, th.name) : 0.0;
+            cand.push_back({ th.name, th.score * (1.0 + 0.7 * rel) + 0.25 * th.modes });
+        }
+        if (cand.empty()) break;
+        std::sort(cand.begin(), cand.end(), [](const auto& a, const auto& b) { return a.second > b.second; });
+
+        // ORDER vs ENTROPY: usually take the strongest on-theme thought; on a chaos roll, leap
+        // to a less-obvious one from the tail — instability that keeps the trajectory alive.
+        std::string next;
+        if (coin(rng) < chaos && cand.size() > 1) {
+            const std::size_t lo  = cand.size() / 2;
+            const std::size_t idx = lo + static_cast<std::size_t>(rng() % (cand.size() - lo));
+            next = cand[std::min(idx, cand.size() - 1)].first;
+        } else {
+            next = cand.front().first;
+        }
+        if (next.empty()) break;
+        cur = next;
+    }
+    out.novelty   = static_cast<int>(seen.size());
+    out.emergence = emergence_n ? emergence_sum / static_cast<double>(emergence_n) : 0.0;
+    return out;
+}
+
 void Cogitator::note_attractor_(const std::string& label) {
     if (label.empty()) return;
     // Skip Khora's own provisional trace concepts — only real, learned

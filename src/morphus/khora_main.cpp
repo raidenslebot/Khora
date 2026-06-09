@@ -1879,6 +1879,33 @@ int main(int argc, char** argv) {
             return {true, os.str(), ""};
         }
     });
+    // cascade — RECURSIVE non-linear cognition. A train of thought where each step is itself a
+    // multi-mode convergence: Khora contemplates, follows the emergent thought, contemplates
+    // that, and so on — steered by a chaos dial between order and entropy — until the trajectory
+    // COLLAPSES back onto a concept it already thought (an attractor crystallised: an insight) or
+    // runs its course. Recursive instability resolving into action — the chaos-master, literal.
+    shell.register_tool({
+        "cascade",
+        "Khora thinks in a recursive CASCADE — thought breeding thought until it collapses to insight  (usage: cascade <concept> [chaos 0..1])",
+        [&mind](const carapace::Intent& i) -> carapace::ToolResult {
+            if (i.args.empty()) return {false, "", "usage: cascade <concept> [chaos 0..1]"};
+            const auto tk = khora::lexicon::tokenize(i.args.front());
+            const std::string seed = tk.empty() ? i.args.front() : tk.front();
+            double chaos = 0.2;
+            if (i.args.size() >= 2) { try { chaos = std::stod(i.args[1]); } catch (...) {} }
+            const auto c = mind.cascade(seed, 12, chaos);
+            if (c.chain.empty()) return {true, "Khora's thought found no purchase on '" + seed + "'", ""};
+            std::ostringstream os;
+            os << "Khora's cascade of thought (chaos " << chaos << "):\n  ";
+            for (std::size_t k = 0; k < c.chain.size(); ++k) { if (k) os << " -> "; os << c.chain[k]; }
+            os << "\n  " << (c.collapsed
+                    ? ("COLLAPSED into an attractor: '" + c.attractor + "' — an insight crystallised")
+                    : "ran its course without settling — generatively chaotic")
+               << "  (" << c.novelty << " concepts traversed, mean convergence "
+               << c.emergence << ")";
+            return {true, os.str(), ""};
+        }
+    });
     // learn — PREDICTIVE LEARNING (lever 2). Khora reads its OWN corpus, predicts each word
     // from context, and CORRECTS its mistakes — strengthening the links that would have made
     // the prediction right — then re-measures held-out prediction to see if it actually got

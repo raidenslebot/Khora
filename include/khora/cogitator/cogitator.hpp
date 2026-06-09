@@ -156,6 +156,19 @@ struct Emergence {
     int         modes = 0;   // distinct cognitive modes that reached it
 };
 
+// A CASCADE of thought — recursive non-linear cognition. Each step is itself a multi-mode
+// convergence (a contemplate); the strongest emergent thought (steered by a chaos dial
+// between order and entropy) becomes the seed of the next. The trajectory either COLLAPSES
+// into a stable attractor (it returns to a concept it has already thought — an insight has
+// crystallised) or stays generatively chaotic. Recursive instability resolving into action.
+struct Cascade {
+    std::vector<std::string> chain;       // the train of thought, in order
+    bool                     collapsed = false;  // reached a stable attractor (a loop)
+    std::string              attractor;   // the concept it collapsed onto (if it did)
+    int                      novelty = 0; // distinct concepts visited before collapse
+    double                   emergence = 0.0;  // mean cross-mode convergence along the chain
+};
+
 // Recursive abstraction — the combinatorial engine of exponential cognition.
 // Khora chunks a cluster of kindred concepts into ONE higher-order concept,
 // then abstracts over THOSE, and over those — a rising tower. Where flat
@@ -380,6 +393,14 @@ public:
     // COLLAPSE into the thoughts that emerged from the WHOLE. Meaning from the field of
     // competing threads, not a single linear walk. Uses the machine's cores; reads only.
     std::vector<Emergence> contemplate(const std::string& seed, std::size_t threads = 16);
+
+    // RECURSIVE non-linear cognition — a CASCADE of thought. From a seed, contemplate; let the
+    // strongest emergent thought become the next seed; repeat. `chaos` in [0,1] dials between
+    // order (always follow the deepest convergent thought) and entropy (leap to a less-obvious
+    // one) — the chaos-master turning instability into trajectory. The cascade halts when it
+    // returns to a concept already thought (it has COLLAPSED into an attractor — an insight) or
+    // after `max_steps`. Pure cognition; bounded.
+    Cascade cascade(const std::string& seed, std::size_t max_steps = 10, double chaos = 0.2);
 
     // A clean concept to think about, drawn from the centrality-pruned
     // content field (not the function-word-heavy raw vocabulary). Lets the
