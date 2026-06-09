@@ -12,6 +12,8 @@
 #include <span>
 #include <string>
 #include <thread>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace khora::cogitator {
@@ -1353,6 +1355,52 @@ double Cogitator::benchmark_abstraction(std::size_t n, std::uint64_t seed) const
         total += 2;
     }
     return total ? static_cast<double>(correct) / static_cast<double>(total) : -1.0;
+}
+
+double Cogitator::benchmark_prediction(const std::vector<std::string>& heldout,
+                                       std::size_t topk) const {
+    if (!plexus_ || heldout.empty() || topk == 0) return -1.0;
+    constexpr int W = 4;   // content-word context window on each side
+    double      rr_sum = 0.0;
+    std::size_t trials = 0;
+
+    for (std::size_t i = 0; i < heldout.size(); ++i) {
+        const std::string& target = heldout[i];
+        if (!is_content_(target) || !plexus_->has(target)) continue;   // predict known content words
+
+        // Each content neighbour casts PMI-weighted votes for what the masked word is.
+        std::unordered_map<std::string, double> score;
+        std::unordered_set<std::string>         context;
+        for (int d = -W; d <= W; ++d) {
+            if (d == 0) continue;
+            const long j = static_cast<long>(i) + d;
+            if (j < 0 || j >= static_cast<long>(heldout.size())) continue;
+            const std::string& ctx = heldout[static_cast<std::size_t>(j)];
+            if (!is_content_(ctx) || !plexus_->has(ctx)) continue;
+            context.insert(ctx);
+            for (const auto& [assoc, aff] : plexus_->associates(ctx, 24))
+                score[assoc] += aff;
+        }
+        if (score.empty()) continue;
+
+        // Rank candidates by aggregated vote, excluding the visible context words.
+        std::vector<std::pair<std::string, double>> ranked;
+        ranked.reserve(score.size());
+        for (auto& kv : score)
+            if (!context.count(kv.first)) ranked.push_back({ kv.first, kv.second });
+        if (ranked.empty()) continue;
+
+        // Mean reciprocal rank over the top window — partial credit by how NEAR the true
+        // word ranks, so the signal is smooth and climbable even while capability is poor.
+        const std::size_t cap = std::min<std::size_t>(50, ranked.size());
+        std::partial_sort(ranked.begin(), ranked.begin() + cap, ranked.end(),
+                          [](const auto& a, const auto& b) { return a.second > b.second; });
+        (void)topk;
+        ++trials;
+        for (std::size_t r = 0; r < cap; ++r)
+            if (ranked[r].first == target) { rr_sum += 1.0 / static_cast<double>(r + 1); break; }
+    }
+    return trials ? rr_sum / static_cast<double>(trials) : -1.0;
 }
 
 Insight Cogitator::explain(const std::string& subject) const {

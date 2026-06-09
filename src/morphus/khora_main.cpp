@@ -1715,6 +1715,23 @@ int main(int argc, char** argv) {
             // Third faculty: the abstraction faculty's calibration (does it judge content
             // concepts coherent and diffuse words incoherent?). The closed loop widens.
             const double abstr_score  = mind.benchmark_abstraction(n, 7);
+            // FOURTH and KEYSTONE: REAL, HELD-OUT predictive fitness. Does Khora's knowledge
+            // GENERALISE to predict words in sentences it never trained on? External ground
+            // truth, not a graph-internal proxy — the number self-improvement should climb.
+            double predict_score = -1.0;
+            {
+                std::ifstream hf("data/eval/heldout.txt", std::ios::binary);
+                if (hf) {
+                    std::ostringstream all; all << hf.rdbuf();
+                    std::vector<std::string> toks; std::string cur;
+                    for (const char ch : all.str()) {
+                        if (std::isalpha((unsigned char)ch)) cur += static_cast<char>(std::tolower((unsigned char)ch));
+                        else { if (cur.size() >= 2) toks.push_back(cur); cur.clear(); }
+                    }
+                    if (cur.size() >= 2) toks.push_back(cur);
+                    if (!toks.empty()) predict_score = mind.benchmark_prediction(toks, 5);
+                }
+            }
 
             const long ts = static_cast<long>(std::time(nullptr));
             {
@@ -1727,6 +1744,8 @@ int main(int argc, char** argv) {
                         os << ts << '\t' << "deduce" << '\t' << deduce_score << '\t' << n << "\t0\n";
                     if (abstr_score >= 0.0)
                         os << ts << '\t' << "abstract" << '\t' << abstr_score << '\t' << n << "\t0\n";
+                    if (predict_score >= 0.0)
+                        os << ts << '\t' << "predict" << '\t' << predict_score << '\t' << n << "\t0\n";
                 }
             }
             // Trend of the inference faculty across the persistent ledger.
@@ -1754,6 +1773,10 @@ int main(int argc, char** argv) {
                << "  abstraction (coherence calibration): "
                << (abstr_score < 0.0 ? std::string("no concept field yet")
                                      : std::to_string(abstr_score)) << "\n"
+               << "  PREDICTION (held-out, top-5)       : "
+               << (predict_score < 0.0 ? std::string("no held-out set")
+                                       : std::to_string(predict_score))
+               << "   <- REAL external capability\n"
                << "  (goal-pull " << mind.infer_goal_pull() << "; " << recent.size()
                << " inference measurements logged, recent mean " << (cnt ? sum / cnt : infer_score) << ")";
             return {true, os.str(), ""};

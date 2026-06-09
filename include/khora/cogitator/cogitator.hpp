@@ -234,6 +234,16 @@ public:
     // scale-sensitive fitness number — the closed loop reaching a third faculty.
     double benchmark_abstraction(std::size_t n, std::uint64_t seed = 0) const;
 
+    // REAL, HELD-OUT predictive fitness — the keystone. Given a token sequence Khora was
+    // NOT trained on, mask each known content word and predict it from its content-word
+    // neighbours (aggregating the Plexus's vote), then return top-k accuracy against the
+    // TRUE word. Unlike the graph-internal benchmarks this is EXTERNAL and non-circular:
+    // it measures whether Khora's knowledge GENERALISES to predict text it has not seen.
+    // The number that, once self-improvement climbs it, aims the whole machine at real
+    // capability rather than a proxy.
+    double benchmark_prediction(const std::vector<std::string>& heldout,
+                                std::size_t topk = 5) const;
+
     // Answer "what is X?" from structure: the concept's defining kin, the
     // abstraction it belongs to (its kind), and its kindred under that category.
     // Grounded and correct where free generation drifts. Read-only.

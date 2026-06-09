@@ -3,6 +3,40 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.103.0 — The keystone: a REAL fitness, and the reality check it measures
+
+**Author:** Morphus — the operator called for a reality check; here it is, as a number
+
+Lever 1 of the post-review plan: replace graph-internal proxies with an EXTERNAL, held-out
+objective. `Cogitator::benchmark_prediction` takes text Khora was NOT trained on
+(data/eval/heldout.txt — common-vocabulary sentences, novel combinations), masks each known
+content word, predicts it from its content-word neighbours by aggregating the Plexus's PMI
+vote, and returns the mean reciprocal rank against the TRUE word. `yield` now reports it.
+
+**The measurement — stark and honest:**
+```
+  inference   (4-hop graph proxy)   : 0.99
+  deduction   (property inheritance) : 1.00
+  abstraction (coherence calibration): 0.80
+  PREDICTION  (held-out, real)       : 0.01   <- actual generalising capability
+```
+The graph-internal benchmarks read near-perfect; the REAL one — does Khora's knowledge
+generalise to predict words in sentences it never saw — reads ~0.01. This quantifies exactly
+what the reality-check review argued: the self-improvement machinery has been polishing
+proxies while real capability sits at the floor. Worse and more useful: the genes reforge has
+been tuning (beam, smoothing, scale) DO NOT MOVE this number — they optimise reasoning over a
+graph, not the graph's power to predict the unseen.
+
+This is not a regression; it is the truth finally made measurable. It is deliberately kept as
+a real, climbable signal (mean reciprocal rank, smooth gradient) rather than a near-zero
+top-k, so the next levers have something to climb. The held-out set is curated common English
+(honest scope); reserving a true unseen corpus split is a later refinement.
+
+NEXT (lever 2): predictive learning — Khora predicts on TRAINING text, measures the error, and
+strengthens the correct context->word link, so it actually gets better at the thing this
+number measures. That is the loop that turns the self-improvement harness onto real capability.
+12/12 suites pass.
+
 ## v0.102.0 — Self-rewriting reaches the WHOLE engine (and confirms a foundational constant)
 
 **Author:** Morphus — reforge now evolves genes across every marked source file
