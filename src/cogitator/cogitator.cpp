@@ -1220,7 +1220,7 @@ std::vector<std::string> Cogitator::infer_path(const std::string& start,
     // heuristic is what makes this REASONING toward an answer rather than the
     // aimless wandering of ruminate.
     struct Path { std::vector<std::string> nodes; double score; };
-    constexpr std::size_t kBeam   = 24;   // paths kept per level
+    constexpr std::size_t kBeam   = 48;   // KHORA-TUNABLE(beam) paths kept per level
     constexpr std::size_t kExpand = 16;   // associates explored per frontier node
     const double          kGoalPull = infer_goal_pull_;   // tuned by measured yield
 

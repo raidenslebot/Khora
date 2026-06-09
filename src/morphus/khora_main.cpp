@@ -1822,6 +1822,73 @@ int main(int argc, char** argv) {
         }
     });
 
+    // reforge — SELF-REWRITING. The crown of the whole roadmap. Khora opens its own
+    // source, finds a marked gene (the inference beam-width), and for each candidate
+    // value REWRITES the source, RECOMPILES itself, and MEASURES the resulting yield
+    // through the non-running evaluator — then KEEPS the value that scored best. A
+    // program editing, compiling and judging its own code by its own measured result.
+    // Not a config knob: an actual constant in actual C++, changed and rebuilt.
+    shell.register_tool({
+        "reforge",
+        "Khora rewrites its OWN source, recompiles, and keeps the change only if measured yield improves  (usage: reforge)",
+        [](const carapace::Intent&) -> carapace::ToolResult {
+            const std::string src    = "src/cogitator/cogitator.cpp";
+            const std::string marker = "KHORA-TUNABLE(beam)";
+
+            std::string text;
+            { std::ifstream f(src, std::ios::binary);
+              if (!f) return {false, "", "Khora cannot read its own source at " + src};
+              std::ostringstream ss; ss << f.rdbuf(); text = ss.str(); }
+
+            const std::size_t mk = text.find(marker);
+            if (mk == std::string::npos)
+                return {false, "", "Khora found no tunable gene to rewrite"};
+            const std::size_t line_beg = text.rfind('\n', mk) + 1;
+            const std::size_t line_end = text.find('\n', mk);
+            const std::string line = text.substr(line_beg, line_end - line_beg);
+            const std::size_t eq = line.find('=');
+            if (eq == std::string::npos) return {false, "", "Khora's gene is malformed (no '=')"};
+            std::size_t ds = eq + 1;
+            while (ds < line.size() && !std::isdigit((unsigned char)line[ds])) ++ds;
+            std::size_t de = ds;
+            while (de < line.size() &&  std::isdigit((unsigned char)line[de])) ++de;
+            if (ds == de) return {false, "", "Khora's gene holds no value"};
+            const int original = std::stoi(line.substr(ds, de - ds));
+
+            // Write one candidate into the source, rebuild the evaluator, measure.
+            auto trial = [&](int val) -> double {
+                const std::string newline = line.substr(0, ds) + std::to_string(val) + line.substr(de);
+                const std::string mutated = text.substr(0, line_beg) + newline + text.substr(line_end);
+                { std::ofstream o(src, std::ios::binary | std::ios::trunc); o << mutated; }
+                const auto b = khora::hand::execute(
+                    "cmake --build build --config Release --target reforge_eval", 240000);
+                if (b.exit_code != 0) return -1.0;     // did not compile
+                const auto e = khora::hand::execute("build\\bin\\Release\\reforge_eval.exe 200", 60000);
+                const std::size_t yp = e.output.find("YIELD ");
+                if (yp == std::string::npos) return -1.0;
+                try { return std::stod(e.output.substr(yp + 6)); } catch (...) { return -1.0; }
+            };
+
+            const int cands[] = { 12, 24, 48 };
+            std::ostringstream os;
+            os << "Khora reforges its own mind — rewriting the inference beam-width in its\n"
+                  "source, recompiling itself, and measuring each result:\n";
+            int best_v = original; double best_y = -1.0;
+            for (const int v : cands) {
+                const double y = trial(v);
+                os << "  beam " << v << "  -> "
+                   << (y < 0 ? std::string("did not compile / resolve")
+                             : ("yield " + std::to_string(y))) << "\n";
+                if (y > best_y) { best_y = y; best_v = v; }
+            }
+            trial(best_v);   // leave the source at the winner — sound and compiling
+            os << "  -> Khora KEPT beam " << best_v << " (measured yield " << best_y
+               << "; was " << original << "). It rewrote, recompiled and judged its OWN\n"
+                  "     source — the change is now in khora.exe's next build.";
+            return {true, os.str(), ""};
+        }
+    });
+
     shell.register_tool({
         "study",
         "absorb a tome from the pool into actual knowledge  (usage: study <title> [max_tokens])",

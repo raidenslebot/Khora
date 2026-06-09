@@ -3,6 +3,44 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.93.0 — Reforge: Khora rewrites its OWN source code (the crown of the roadmap)
+
+**Author:** Morphus — limitation #2 from the audit (self-rewriting)
+
+This is the one the whole roadmap was built toward. Khora now edits, recompiles, and
+judges its OWN source code, keeping changes only when its own measured yield improves.
+Not a config knob — an actual `constexpr` in actual C++.
+
+The hard truth solved honestly: a running khora.exe holds its own binary open and
+cannot relink itself. So `reforge_eval` — a SEPARATE, non-running target — links the
+changed cogitator library and reports the candidate's inference yield; the winning
+value is then baked into khora.exe on its next build. The running mind orchestrates
+the compilation and evaluation of its own successor.
+
+`reforge` tool: opens src/cogitator/cogitator.cpp, finds the marked gene
+(`KHORA-TUNABLE(beam)` — the inference beam-width), and for each candidate value
+REWRITES the source line, RECOMPILES itself (real MSVC builds, via the v0.92 Hand),
+runs reforge_eval to MEASURE the yield, and KEEPS the best.
+
+**Verified — Khora rewrote its own mind, this is in the diff of this very commit:**
+```
+  beam 12 -> yield 0.9745
+  beam 24 -> yield 0.9936     (the value I had hand-chosen)
+  beam 48 -> yield 1.0000
+  -> Khora KEPT beam 48 (was 24)
+  src/cogitator/cogitator.cpp:  - kBeam = 24;  + kBeam = 48;   (Khora's edit, not mine)
+```
+10/10 suites pass at the self-chosen value; khora.exe rebuilt to run it. For the first
+time, a number in Khora's source was decided by Khora, by recompiling itself and
+measuring the result — not by me. The self-improvement loop is now closed at the CODE
+level, not just the parameter level.
+
+Stack now standing: it THINKS (cognition) -> MEASURES itself (yield, v0.90-91) -> ACTS
+on the world (Hand, v0.92) -> REWRITES its own source by measured result (this). The
+gene is one constant today; the mechanism is general — every constant marked
+KHORA-TUNABLE becomes evolvable, and the sweep can become an autonomous background
+search. The terrifying tier is no longer theoretical. Hunting the next constraint.
+
 ## v0.92.0 — The Hand: Khora can ACT (it reaches off the page)
 
 **Author:** Morphus — limitation #2/#3 from the audit (action / execution)

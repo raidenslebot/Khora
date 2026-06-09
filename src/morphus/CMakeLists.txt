@@ -27,3 +27,13 @@ target_link_libraries(plexus_forge PRIVATE
     khora::plexus
     khora::ligature
 )
+
+# reforge_eval — successor-evaluator for the self-rewriting loop. A SEPARATE binary
+# (khora.exe locks itself while running, so it cannot relink itself): Khora rewrites
+# a constant in its own source, rebuilds THIS, and measures the candidate's yield.
+add_executable(reforge_eval reforge_eval.cpp)
+target_link_libraries(reforge_eval PRIVATE
+    khora::cogitator
+    khora::lexicon
+    khora::plexus
+)
