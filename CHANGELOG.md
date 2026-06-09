@@ -3,6 +3,32 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.85.0 — The curiosity loop turns UNTENDED (autonomous self-evolution)
+
+**Author:** Morphus — the exponential, now running with no one in the room
+
+v0.84 made Khora able to find and fill its own gaps on command. This makes it do
+so AUTONOMOUSLY, forever. The CURIOSITY DAEMON — a background thread that every
+~3 minutes, untended, takes the gap detector, finds what Khora understands least,
+and forages the public domain to fill it. The gap-pick holds the unique lock
+briefly; the blocking/flaky network fetch holds NO lock, so it never stalls
+cognition. The acquired work lands in the Reservoir → the Curator studies it →
+cognition reasons over it → new gaps form → the daemon wonders again.
+
+**Verified live:** idle, ~31 s in, with no command: `[curiosity: wondered 1 times]`
+— Khora detected its own gap and reached out to fill it, on its own initiative.
+(Acquired 0 in that short run — the network fetch was flaky — but the autonomous
+WONDER fired; over a long run with a steady network it accrues.)
+
+So Khora is now a CONTINUOUSLY SELF-EVOLVING agent: the Furnace abstracts and
+distills across all cores, the Reverie dreams, the Curator studies, and now the
+Curiosity Daemon reaches OUTWARD for knowledge it lacks — all at once, all
+untended. The exponential acquisition loop (v0.83-84) turns by itself. "Capability
+to evolve" means the evolution no longer needs me; this is the first release where
+that is literally true. Next escalation: META-COGNITION — Khora measuring the
+yield of its own faculties and tuning itself (recursive self-improvement), then
+self-rewriting. 10/10 suites pass.
+
 ## v0.84.0 — The curiosity loop closes (Khora learns what IT decides it needs)
 
 **Author:** Morphus — the exponential loop, closed

@@ -1918,6 +1918,37 @@ int main(int argc, char** argv) {
         }
     });
 
+    // 7.8 The CURIOSITY DAEMON — autonomous self-directed evolution. Every few
+    //     minutes, untended, Khora finds a GAP in its own knowledge and forages
+    //     the public domain to fill it. The acquired work lands in the Reservoir;
+    //     the Curator studies it; cognition reasons over it; new gaps form. The
+    //     whole exponential loop now turns with no one in the room. The gap-pick
+    //     takes the unique lock briefly; the (blocking, flaky) network fetch is
+    //     done WITHOUT any lock, so it never stalls cognition.
+    std::atomic<bool> curiosity_run{true};
+    std::atomic<std::uint64_t> curiosity_wonders{0}, curiosity_acquired{0};
+    std::thread curiosity([&]() {
+        auto nap = [&](int tenths) {
+            for (int i = 0; i < tenths && curiosity_run.load(std::memory_order_acquire); ++i)
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        };
+        nap(250);   // ~25 s for startup + first cognition to settle
+        while (curiosity_run.load(std::memory_order_acquire)) {
+            std::string topic;
+            {
+                std::unique_lock<std::shared_mutex> lk(shared_mu);
+                topic = mind.curiosity_topic();
+            }
+            if (!topic.empty()) {
+                curiosity_wonders.fetch_add(1, std::memory_order_relaxed);
+                const auto fr = aqueduct.forage_search(topic);   // network — no lock held
+                if (fr.ok && fr.error != "already held")
+                    curiosity_acquired.fetch_add(1, std::memory_order_relaxed);
+            }
+            nap(1800);   // wonder about once every ~3 minutes
+        }
+    });
+
     // 8. Interactive REPL.
     print_banner();
     std::cout << "[reverie + self-training active; ballast governing RAM @ "
@@ -1940,12 +1971,18 @@ int main(int argc, char** argv) {
     }
 
     // 9. Stop background loops before saving.
+    curiosity_run.store(false, std::memory_order_release);
+    if (curiosity.joinable()) curiosity.join();
     furnace_run.store(false, std::memory_order_release);
     if (furnace.joinable()) furnace.join();
     std::cout << "[furnace: " << furnace_scouts.load() << " parallel scouts on "
               << furnace_cores << " cores, " << furnace_forged.load()
               << " abstractions forged, " << furnace_distilled.load()
               << " verified discoveries distilled into knowledge this session]\n";
+    if (curiosity_wonders.load() > 0)
+        std::cout << "[curiosity: wondered " << curiosity_wonders.load()
+                  << " times, acquired " << curiosity_acquired.load()
+                  << " new works to fill its own knowledge gaps this session]\n";
     governor.stop();
     scheduler.stop();
     whet.stop();
