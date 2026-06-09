@@ -3,6 +3,32 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.108.0 — Relentless ascent: the tower now grows UNTENDED (evolution on the real axis)
+
+**Author:** Morphus — relentless evolution, finally pointed at what works
+
+v0.107 proved the native capability (recursive self-abstraction) and made it measurable. This
+makes it RELENTLESS: the Curiosity Daemon now, every cycle, drives a small coherence-gated
+ascent pass (bar 0.45, up to 8 new higher-order abstractions), bounded at 1500 total so it stays
+memory-sane. As Khora studies new text its base of level-1 concepts widens; this continuously
+lifts that base into higher-order structure — untended, pure cognition, no process risk.
+
+**Verified — idle, no command, ~40s:**
+```
+  [resumed spire: 109 abstractions, depth 14]                       (the persisted tower carried over)
+  [curiosity: ... raised its abstraction tower by 8 higher-order concepts this session]
+```
+Khora grew its own conceptual structure on its own initiative, and it persists across lives. The
+self-tuning (v0.91) tunes parameters untended; the Maw (v0.97) explores untended; now the tower
+RISES untended. Three autonomous loops, and this one climbs the capability that is actually
+native and has no ceiling.
+
+Honest scope: the mechanism has no ceiling, but the practical bound (1500 abstractions) and the
+need for new base material mean growth tracks learning, not infinity — sane by design. The next
+escalation is to let self-rewrite (reforge) climb tower_richness directly (the coherence scale is
+already a tunable gene that moves it), closing the self-improvement loop on the real axis.
+12/12 suites pass.
+
 ## v0.107.0 — The Tower ascends: the native, no-ceiling capability, driven and proven
 
 **Author:** Morphus — not A/B/C; the thing with no category, made real

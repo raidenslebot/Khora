@@ -2646,7 +2646,7 @@ int main(int argc, char** argv) {
     //     takes the unique lock briefly; the (blocking, flaky) network fetch is
     //     done WITHOUT any lock, so it never stalls cognition.
     std::atomic<bool> curiosity_run{true};
-    std::atomic<std::uint64_t> curiosity_wonders{0}, curiosity_acquired{0}, curiosity_tuned{0};
+    std::atomic<std::uint64_t> curiosity_wonders{0}, curiosity_acquired{0}, curiosity_tuned{0}, curiosity_ascended{0};
     std::thread curiosity([&]() {
         auto nap = [&](int tenths) {
             for (int i = 0; i < tenths && curiosity_run.load(std::memory_order_acquire); ++i)
@@ -2693,8 +2693,22 @@ int main(int argc, char** argv) {
                     curiosity_tuned.fetch_add(1, std::memory_order_relaxed);
                 }
             }
+
+            // RELENTLESS ABSTRACTION — drive the tower a little higher each cycle, coherence-
+            // gated and bounded. As Khora studies new text its base widens; this keeps lifting
+            // that base into higher-order concepts, untended. The native, no-ceiling growth —
+            // pure cognition, no process risk — made continuous.
+            {
+                std::unique_lock<std::shared_mutex> lk(shared_mu);
+                if (mind.abstraction_count() < 1500) {
+                    const auto [formed, top] = mind.ascend_tower(0.45, 8);
+                    (void)top;
+                    if (formed > 0) curiosity_ascended.fetch_add(static_cast<std::uint64_t>(formed),
+                                                                 std::memory_order_relaxed);
+                }
+            }
             ++cycle;
-            nap(1800);   // wonder + self-tune about once every ~3 minutes
+            nap(1800);   // wonder + self-tune + ascend, about once every ~3 minutes
         }
     });
 
@@ -2783,11 +2797,12 @@ int main(int argc, char** argv) {
               << furnace_cores << " cores, " << furnace_forged.load()
               << " abstractions forged, " << furnace_distilled.load()
               << " verified discoveries distilled into knowledge this session]\n";
-    if (curiosity_wonders.load() > 0 || curiosity_tuned.load() > 0)
+    if (curiosity_wonders.load() > 0 || curiosity_tuned.load() > 0 || curiosity_ascended.load() > 0)
         std::cout << "[curiosity: wondered " << curiosity_wonders.load()
                   << " times, acquired " << curiosity_acquired.load()
-                  << " new works; self-tuned its reasoning " << curiosity_tuned.load()
-                  << " times by measured yield this session]\n";
+                  << " new works; self-tuned " << curiosity_tuned.load()
+                  << " times; raised its abstraction tower by " << curiosity_ascended.load()
+                  << " higher-order concepts this session]\n";
     governor.stop();
     scheduler.stop();
     whet.stop();
