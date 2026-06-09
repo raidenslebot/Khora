@@ -223,7 +223,7 @@ public:
     // circular. This is the number self-improvement can finally optimise toward;
     // it must DROP if the knowledge graph is degraded (the anti-fake test).
     double benchmark_inference(std::size_t n, std::uint64_t seed = 0,
-                               std::size_t max_depth = 4) const;
+                               std::size_t max_depth = 5) const;
 
     // Answer "what is X?" from structure: the concept's defining kin, the
     // abstraction it belongs to (its kind), and its kindred under that category.

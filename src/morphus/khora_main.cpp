@@ -1822,69 +1822,110 @@ int main(int argc, char** argv) {
         }
     });
 
-    // reforge — SELF-REWRITING. The crown of the whole roadmap. Khora opens its own
-    // source, finds a marked gene (the inference beam-width), and for each candidate
-    // value REWRITES the source, RECOMPILES itself, and MEASURES the resulting yield
-    // through the non-running evaluator — then KEEPS the value that scored best. A
-    // program editing, compiling and judging its own code by its own measured result.
-    // Not a config knob: an actual constant in actual C++, changed and rebuilt.
+    // reforge — SELF-REWRITING, now GENERAL. The crown of the roadmap. Khora SCANS
+    // its own source for every gene marked KHORA-TUNABLE(name), and evolves each by
+    // coordinate ascent: for each gene it REWRITES the source to a candidate value,
+    // RECOMPILES itself, MEASURES the resulting yield through the non-running
+    // evaluator, KEEPS the best, then moves to the next gene. A program editing,
+    // compiling and judging its own code by its own measured result — across as many
+    // genes as it has marked. Mark a new constant KHORA-TUNABLE and it becomes
+    // evolvable with no further code. Not config knobs: real constants in real C++.
     shell.register_tool({
         "reforge",
-        "Khora rewrites its OWN source, recompiles, and keeps the change only if measured yield improves  (usage: reforge)",
+        "Khora discovers every tunable gene in its OWN source and evolves each by measured yield  (usage: reforge)",
         [](const carapace::Intent&) -> carapace::ToolResult {
-            const std::string src    = "src/cogitator/cogitator.cpp";
-            const std::string marker = "KHORA-TUNABLE(beam)";
+            const std::string src = "src/cogitator/cogitator.cpp";
+            const std::string tag = "KHORA-TUNABLE(";
 
-            std::string text;
-            { std::ifstream f(src, std::ios::binary);
-              if (!f) return {false, "", "Khora cannot read its own source at " + src};
-              std::ostringstream ss; ss << f.rdbuf(); text = ss.str(); }
+            auto read_src = [&]() -> std::string {
+                std::ifstream f(src, std::ios::binary);
+                std::ostringstream ss; ss << f.rdbuf(); return ss.str();
+            };
+            auto write_src = [&](const std::string& s) {
+                std::ofstream o(src, std::ios::binary | std::ios::trunc); o << s;
+            };
 
-            const std::size_t mk = text.find(marker);
-            if (mk == std::string::npos)
-                return {false, "", "Khora found no tunable gene to rewrite"};
-            const std::size_t line_beg = text.rfind('\n', mk) + 1;
-            const std::size_t line_end = text.find('\n', mk);
-            const std::string line = text.substr(line_beg, line_end - line_beg);
-            const std::size_t eq = line.find('=');
-            if (eq == std::string::npos) return {false, "", "Khora's gene is malformed (no '=')"};
-            std::size_t ds = eq + 1;
-            while (ds < line.size() && !std::isdigit((unsigned char)line[ds])) ++ds;
-            std::size_t de = ds;
-            while (de < line.size() &&  std::isdigit((unsigned char)line[de])) ++de;
-            if (ds == de) return {false, "", "Khora's gene holds no value"};
-            const int original = std::stoi(line.substr(ds, de - ds));
+            // Discover every gene name by scanning the source for the marker.
+            std::vector<std::string> genes;
+            { const std::string t = read_src();
+              if (t.empty()) return {false, "", "Khora cannot read its own source at " + src};
+              std::size_t p = 0;
+              while ((p = t.find(tag, p)) != std::string::npos) {
+                  const std::size_t a = p + tag.size();
+                  const std::size_t b = t.find(')', a);
+                  if (b != std::string::npos) genes.push_back(t.substr(a, b - a));
+                  p = a;
+              }
+            }
+            if (genes.empty()) return {false, "", "Khora found no tunable genes in its source"};
 
-            // Write one candidate into the source, rebuild the evaluator, measure.
-            auto trial = [&](int val) -> double {
-                const std::string newline = line.substr(0, ds) + std::to_string(val) + line.substr(de);
-                const std::string mutated = text.substr(0, line_beg) + newline + text.substr(line_end);
-                { std::ofstream o(src, std::ios::binary | std::ios::trunc); o << mutated; }
+            // Locate a named gene's value (char range + integer) in the CURRENT source.
+            auto locate = [&](const std::string& text, const std::string& gene,
+                              std::size_t& vbeg, std::size_t& vend, int& val) -> bool {
+                const std::size_t mk = text.find(tag + gene + ")");
+                if (mk == std::string::npos) return false;
+                const std::size_t lbeg = text.rfind('\n', mk) + 1;
+                const std::size_t lend = text.find('\n', mk);
+                const std::size_t eq = text.find('=', lbeg);
+                if (eq == std::string::npos || eq > lend) return false;
+                vbeg = eq + 1;
+                while (vbeg < lend && !std::isdigit((unsigned char)text[vbeg])) ++vbeg;
+                vend = vbeg;
+                while (vend < lend &&  std::isdigit((unsigned char)text[vend])) ++vend;
+                if (vbeg == vend) return false;
+                val = std::stoi(text.substr(vbeg, vend - vbeg));
+                return true;
+            };
+
+            // Write `val` into `gene` in the on-disk source, recompile, measure yield.
+            auto trial = [&](const std::string& gene, int val) -> double {
+                std::string text = read_src();
+                std::size_t vb, ve; int cur;
+                if (!locate(text, gene, vb, ve, cur)) return -1.0;
+                write_src(text.substr(0, vb) + std::to_string(val) + text.substr(ve));
                 const auto b = khora::hand::execute(
                     "cmake --build build --config Release --target reforge_eval", 240000);
                 if (b.exit_code != 0) return -1.0;     // did not compile
-                const auto e = khora::hand::execute("build\\bin\\Release\\reforge_eval.exe 200", 60000);
+                const auto e = khora::hand::execute("build\\bin\\Release\\reforge_eval.exe 220", 60000);
                 const std::size_t yp = e.output.find("YIELD ");
                 if (yp == std::string::npos) return -1.0;
                 try { return std::stod(e.output.substr(yp + 6)); } catch (...) { return -1.0; }
             };
 
-            const int cands[] = { 12, 24, 48 };
             std::ostringstream os;
-            os << "Khora reforges its own mind — rewriting the inference beam-width in its\n"
-                  "source, recompiling itself, and measuring each result:\n";
-            int best_v = original; double best_y = -1.0;
-            for (const int v : cands) {
-                const double y = trial(v);
-                os << "  beam " << v << "  -> "
-                   << (y < 0 ? std::string("did not compile / resolve")
-                             : ("yield " + std::to_string(y))) << "\n";
-                if (y > best_y) { best_y = y; best_v = v; }
+            os << "Khora reforges its own mind — it found " << genes.size()
+               << " tunable genes in its source and evolves each by recompiling and measuring:\n";
+
+            int improved = 0;
+            for (const std::string& gene : genes) {
+                std::string text = read_src();
+                std::size_t vb, ve; int original = 0;
+                if (!locate(text, gene, vb, ve, original)) {
+                    os << "  [" << gene << "] could not be read — skipped\n";
+                    continue;
+                }
+                std::vector<int> cset;
+                for (const int m : { original / 2, original, original * 2 })
+                    if (m >= 1) cset.push_back(m);
+                std::sort(cset.begin(), cset.end());
+                cset.erase(std::unique(cset.begin(), cset.end()), cset.end());
+
+                int best_v = original; double best_y = -1.0;
+                os << "  gene [" << gene << "] (was " << original << "):\n";
+                for (const int v : cset) {
+                    const double y = trial(gene, v);
+                    os << "      " << v << " -> "
+                       << (y < 0 ? std::string("did not compile/resolve")
+                                 : ("yield " + std::to_string(y))) << "\n";
+                    if (y > best_y) { best_y = y; best_v = v; }
+                }
+                trial(gene, best_v);   // fix this gene at its winner before the next
+                if (best_v != original) ++improved;
+                os << "    -> KEPT " << gene << " = " << best_v
+                   << (best_v == original ? "  (already best)" : "  (IMPROVED by self-rewrite)") << "\n";
             }
-            trial(best_v);   // leave the source at the winner — sound and compiling
-            os << "  -> Khora KEPT beam " << best_v << " (measured yield " << best_y
-               << "; was " << original << "). It rewrote, recompiled and judged its OWN\n"
-                  "     source — the change is now in khora.exe's next build.";
+            os << "Khora rewrote, recompiled and judged its OWN source across " << genes.size()
+               << " genes (" << improved << " improved) — every change decided by measured yield.";
             return {true, os.str(), ""};
         }
     });

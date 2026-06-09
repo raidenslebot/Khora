@@ -1220,8 +1220,8 @@ std::vector<std::string> Cogitator::infer_path(const std::string& start,
     // heuristic is what makes this REASONING toward an answer rather than the
     // aimless wandering of ruminate.
     struct Path { std::vector<std::string> nodes; double score; };
-    constexpr std::size_t kBeam   = 48;   // KHORA-TUNABLE(beam) paths kept per level
-    constexpr std::size_t kExpand = 16;   // associates explored per frontier node
+    constexpr std::size_t kBeam   = 96;   // KHORA-TUNABLE(beam) paths kept per level
+    constexpr std::size_t kExpand = 8;   // KHORA-TUNABLE(expand) associates per frontier node
     const double          kGoalPull = infer_goal_pull_;   // tuned by measured yield
 
     std::vector<Path> beam{ { { start }, 0.0 } };
@@ -1290,9 +1290,22 @@ double Cogitator::benchmark_inference(std::size_t n, std::uint64_t seed,
             break;
         }
         if (D.empty()) continue;
+        // Extend to a genuine 4-HOP goal E. Four real inferences away with a tight
+        // depth is hard enough that beam-width and expansion BOTH bite — the metric
+        // stays unsaturated, so self-tuning and self-rewriting have room to climb.
+        std::string E;
+        for (const auto& kv : plexus_->associates(D, 8)) {
+            if (kv.first == A || kv.first == B || kv.first == C || kv.first == D) continue;
+            if (plexus_->affinity(A, kv.first) > 0.0) continue;
+            if (plexus_->affinity(B, kv.first) > 0.0) continue;
+            if (plexus_->affinity(C, kv.first) > 0.0) continue;
+            E = kv.first;
+            break;
+        }
+        if (E.empty()) continue;
         ++total;
-        const auto path = infer_path(A, D, max_depth);
-        if (!path.empty() && path.back() == D) ++reached;
+        const auto path = infer_path(A, E, max_depth);
+        if (!path.empty() && path.back() == E) ++reached;
     }
     return total ? static_cast<double>(reached) / static_cast<double>(total) : -1.0;
 }

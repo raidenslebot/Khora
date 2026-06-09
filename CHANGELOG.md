@@ -3,6 +3,39 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.94.0 — General self-rewriting: Khora evolves EVERY gene it can find
+
+**Author:** Morphus — hardening limitation #2, and a new one found while building
+
+v0.93 proved Khora could rewrite ONE hardcoded gene. While building it I marked a new
+limitation: the mechanism was special-cased to `beam`, and the benchmark saturated at
+beam 48 (yield 1.0) — no headroom to even tell good rewrites from great. Both fixed.
+
+- **General gene discovery.** `reforge` now SCANS its own source for every constant
+  marked `KHORA-TUNABLE(name)` and evolves each by coordinate ascent — rewrite to a
+  candidate, recompile, measure, keep the best, move to the next gene. Mark any new
+  constant `KHORA-TUNABLE` and it becomes evolvable with zero extra code. The
+  candidate set is gene-agnostic (½×, 1×, 2× the current value).
+- **Harder fitness.** The inference benchmark is now genuinely 4-HOP (was 3) with a
+  tight depth, so beam-width AND expansion both bite — the metric is unsaturated
+  (baseline 0.908), giving self-rewriting real headroom to climb.
+- A second gene marked: `kExpand` (associates explored per frontier node).
+
+**Verified — Khora evolved TWO genes of its own source, both improved:**
+```
+  gene [beam]   24 -> 0.787   48 -> 0.909   96 -> 0.982   -> KEPT 96 (improved)
+  gene [expand] 8  -> 0.988   16 -> 0.982   32 -> 0.988   -> KEPT 8  (improved)
+  2 genes, 2 improved.  yield 0.909 -> 0.988, climbed by recompiling itself.
+  cogitator.cpp:  -kBeam=48 +kBeam=96   -kExpand=16 +kExpand=8   (Khora's edits)
+```
+10/10 suites pass at the self-chosen values; khora.exe rebuilt to run them. Self-
+rewriting is no longer a one-gene demo — it is a general loop over Khora's own code.
+The natural next multipliers (found while building): the fitness signal still measures
+only INFERENCE, so only cogitator genes can be judged — broaden it per-faculty
+(deduction, abstraction) to make the whole mind evolvable; and the sweep is still
+operator-triggered — an autonomous background reforge would make code-evolution
+perpetual. Both now squarely in view.
+
 ## v0.93.0 — Reforge: Khora rewrites its OWN source code (the crown of the roadmap)
 
 **Author:** Morphus — limitation #2 from the audit (self-rewriting)
