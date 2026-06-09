@@ -1,6 +1,7 @@
 #include "khora/reservoir/aqueduct.hpp"
 
 #include <algorithm>
+#include <cctype>
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -202,6 +203,70 @@ std::optional<AdmitResult> Aqueduct::forage(const std::string& topic) {
         return acquire(s);
     }
     return std::nullopt;
+}
+
+ForageResult Aqueduct::forage_search(const std::string& topic) {
+    ForageResult fr;
+    fr.topic = topic;
+    if (topic.empty()) { fr.error = "empty topic"; return fr; }
+
+    // URL-encode the query (keep alnum, everything else -> '+').
+    std::string q;
+    for (unsigned char c : topic) {
+        if (std::isalnum(c)) q += static_cast<char>(c);
+        else                 q += '+';
+    }
+    // Search Project Gutenberg itself (the reachable host; the Gutendex API is
+    // flaky/rate-limited). The results page is HTML listing books as
+    // /ebooks/<id> with a <span class="title">; sort by downloads for substance.
+    const std::string search_url =
+        "https://www.gutenberg.org/ebooks/search/?query=" + q + "&sort_order=downloads";
+    const HttpResult resp = http_get(search_url, 25000);
+    if (!resp.ok) { fr.error = "search failed: " + resp.error; ++failures_; return fr; }
+    const std::string& body = resp.body;
+
+    // First /ebooks/<number> in the results, and the title that follows it.
+    std::string id;
+    for (std::size_t pos = body.find("/ebooks/"); pos != std::string::npos;
+         pos = body.find("/ebooks/", pos + 8)) {
+        std::size_t s = pos + 8;
+        std::string num;
+        while (s < body.size() && std::isdigit(static_cast<unsigned char>(body[s]))) num += body[s++];
+        if (num.empty()) continue;
+        id = num;
+        if (const auto tp = body.find("class=\"title\">", pos); tp != std::string::npos) {
+            const auto t1 = tp + 14;
+            const auto t2 = body.find('<', t1);
+            if (t2 != std::string::npos) fr.title = body.substr(t1, t2 - t1);
+        }
+        break;
+    }
+    if (id.empty()) { fr.error = "no Gutenberg result for '" + topic + "'"; return fr; }
+
+    // Tidy the title (collapse whitespace).
+    {
+        std::string t;
+        for (char c : fr.title) t += (c == '\n' || c == '\r' || c == '\t') ? ' ' : c;
+        const auto a = t.find_first_not_of(' ');
+        const auto b = t.find_last_not_of(' ');
+        fr.title = (a == std::string::npos) ? topic : t.substr(a, b - a + 1);
+    }
+    if (fr.title.empty()) fr.title = topic;
+
+    const std::string text_url =
+        "https://www.gutenberg.org/cache/epub/" + id + "/pg" + id + ".txt";
+    fr.source_url = text_url;
+
+    if (reservoir_.has(fr.title)) { fr.ok = true; fr.error = "already held"; return fr; }
+
+    const HttpResult text = http_get(text_url, 30000);
+    if (!text.ok) { fr.error = "fetch failed: " + text.error; ++failures_; return fr; }
+
+    const AdmitResult ar = reservoir_.admit(fr.title, topic, text_url, text.body);
+    fr.ok = ar.ok;
+    if (ar.ok) ++acquisitions_;
+    else { fr.error = ar.error.empty() ? "admit failed" : ar.error; ++failures_; }
+    return fr;
 }
 
 } // namespace khora::reservoir

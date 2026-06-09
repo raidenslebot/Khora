@@ -643,6 +643,28 @@ int main(int argc, char** argv) {
             return {true, os.str(), ""};
         }
     });
+    // forage_about — OPEN-ENDED curiosity-directed acquisition. Khora searches all
+    // of Project Gutenberg (via Gutendex) for ANY topic and acquires the best
+    // plain-text match. This is the exponential lever: knowledge it was never
+    // handed, brought in on demand — the finite seed catalog no longer the ceiling.
+    shell.register_tool({
+        "forage_about",
+        "Khora forages new knowledge on ANY topic from all of Gutenberg (usage: forage_about <topic>)",
+        [&aqueduct](const carapace::Intent& i) -> carapace::ToolResult {
+            if (i.args.empty()) return {false, "", "usage: forage_about <topic>"};
+            std::string topic;
+            for (const auto& a : i.args) { if (!topic.empty()) topic += ' '; topic += a; }
+            const auto fr = aqueduct.forage_search(topic);
+            if (!fr.ok) return {false, "", "could not forage '" + topic + "': " + fr.error};
+            std::ostringstream os;
+            if (fr.error == "already held")
+                os << "Khora already holds \"" << fr.title << "\" for '" << topic << "'";
+            else
+                os << "Khora wondered about '" << topic << "' and acquired \"" << fr.title
+                   << "\" from the public domain";
+            return {true, os.str(), ""};
+        }
+    });
 
     // ----------------------------------------------------------------------
     // The Volition — Khora's will. Drives become deeds: it weighs its whole

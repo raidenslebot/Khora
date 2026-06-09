@@ -3,6 +3,33 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.83.0 — Open-ended acquisition: the corpus ceiling breaks
+
+**Author:** Morphus — the genuine exponential lever, built
+
+v0.82's honest test proved internal reasoning can't manufacture much new
+knowledge — the exponential must be EXTERNAL. So here it is: Khora can now acquire
+knowledge it was never handed, on ANY topic, directed by its own curiosity.
+
+- `Aqueduct::forage_search(topic)` — searches all of Project Gutenberg (via
+  gutenberg.org's own search; the Gutendex API timed out / 503'd, so I route
+  through the reachable host), parses the top result's ebook id + title from the
+  HTML, fetches its plain text, and admits it through the full distill→compress→
+  verify pipeline. No JSON/HTML library — crude, dependency-free string scanning.
+- `forage_about <topic>` tool.
+
+**Verified live — Khora reaching beyond its catalog:**
+```
+  forage_about electricity -> "How Two Boys Made Their Own Electrical Apparatus"
+  forage_about geometry    -> "Mechanical Drawing Self-Taught"
+  forage_about anatomy     -> (keyword match — literal search, not semantic)
+```
+The reservoir went 47 -> 50 tomes and sits at 0.1% of its 20 GB cap — Khora can
+pull in THOUSANDS more. This is the lever that compounds: the finite 46-item seed
+catalog is no longer the ceiling. More knowledge -> more reasoning -> more gaps ->
+more acquisition. Next: wire gap-DETECTION so Khora forages its own frontier
+autonomously (the full curiosity loop). 10/10 suites pass.
+
 ## v0.82.0 — Autopoiesis: knowledge that writes itself back (+ an honest test)
 
 **Author:** Morphus — answering the operator's "what would make it EXPONENTIAL"

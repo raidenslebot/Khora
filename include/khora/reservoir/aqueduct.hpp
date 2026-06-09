@@ -38,6 +38,15 @@ struct Source {
 // A curated set of clean public-domain sources, grouped by topic.
 const std::vector<Source>& seed_catalog();
 
+// The result of an open-ended topic search-and-acquire.
+struct ForageResult {
+    bool        ok = false;
+    std::string title;        // the work acquired (or matched)
+    std::string topic;
+    std::string source_url;
+    std::string error;        // ("already held" with ok=true means a no-op match)
+};
+
 class Aqueduct {
 public:
     explicit Aqueduct(Reservoir& reservoir) : reservoir_(reservoir) {}
@@ -49,6 +58,13 @@ public:
     // fetch it, and admit it. If topic is empty, consider all topics.
     // Returns nullopt if nothing left to forage in that topic.
     std::optional<AdmitResult> forage(const std::string& topic = "");
+
+    // OPEN-ENDED, CURIOSITY-DIRECTED acquisition — the exponential lever. Search
+    // the ENTIRE Project Gutenberg corpus (via the Gutendex API) for ANY topic
+    // Khora is curious about, fetch the best plain-text match, and admit it. This
+    // breaks the finite seed-catalog ceiling: Khora can acquire knowledge it was
+    // never handed, directed by its own knowledge gaps. Network-dependent.
+    ForageResult forage_search(const std::string& topic);
 
     std::size_t acquisitions() const noexcept { return acquisitions_; }
     std::size_t failures()     const noexcept { return failures_; }
