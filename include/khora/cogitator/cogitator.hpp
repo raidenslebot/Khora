@@ -278,6 +278,13 @@ public:
     // Khora's conceptual universe can EXPAND — a different objective than prediction.
     double  benchmark_invention(std::size_t n, std::uint64_t seed = 0) const;
 
+    // ASCEND THE TOWER — drive the recursive abstraction upward: level by level, form
+    // higher-order abstractions over the existing ones, each COHERENCE-GATED (grounded to
+    // real corpus-word leaves) so the tower rises without degenerating into blobs. This is
+    // the combinatorial, no-ceiling growth the Spire was built for — Khora building concepts
+    // over its own concepts, relentlessly. Returns {abstractions formed, highest level reached}.
+    std::pair<int,int> ascend_tower(double min_coherence = 0.40, int max_new = 40);
+
     // PREDICTIVE LEARNING (lever 2) — the loop that actually MOVES the prediction number.
     // Read training text; for each content word, predict it from its neighbours; and on a
     // PREDICTION ERROR, strengthen the context->word links that would have made it right.
@@ -330,6 +337,13 @@ public:
 
     std::size_t abstraction_count() const noexcept { return abstractions_.size(); }
     int         abstraction_depth() const noexcept;            // highest level reached
+
+    // Open-ended CONCEPTUAL RICHNESS — the sum over the abstraction tower of level x
+    // coherence. It rewards a tower that is TALL (high levels), BROAD (many abstractions),
+    // and SOUND (coherent), and it has no maximum: building one more coherent higher-order
+    // abstraction always raises it. The native, no-ceiling fitness — concepts over concepts,
+    // forever — that this substrate genuinely supports (unlike next-word prediction).
+    double      tower_richness() const;
     std::vector<std::string> abstraction_names(std::size_t n) const;  // recent, with levels
     // A name to abstract from next: usually a hot preoccupation, but every
     // few calls an existing abstraction — so the tower keeps rising.

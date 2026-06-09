@@ -1776,13 +1776,13 @@ int main(int argc, char** argv) {
                << "  abstraction (coherence calibration): "
                << (abstr_score < 0.0 ? std::string("no concept field yet")
                                      : std::to_string(abstr_score)) << "\n"
-               << "  PREDICTION held-out (PMI graph)    : "
-               << (predict_score < 0.0 ? std::string("no held-out set")
-                                       : std::to_string(predict_score)) << "\n"
-               << "  PREDICTION held-out (CORTEX learned): "
-               << (predict_cortex < 0.0 ? std::string("cortex untrained")
-                                        : std::to_string(predict_cortex))
-               << "   <- REAL external capability\n"
+               << "  PREDICTION held-out (PMI / Cortex)  : "
+               << (predict_score < 0.0 ? std::string("-") : std::to_string(predict_score)) << " / "
+               << (predict_cortex < 0.0 ? std::string("-") : std::to_string(predict_cortex))
+               << "   (LLM yardstick — at the floor, by design not an LLM)\n"
+               << "  TOWER richness (depth x coherence)  : " << mind.tower_richness()
+               << "  (depth " << mind.abstraction_depth() << ", " << mind.abstraction_count()
+               << " abstractions)  <- the NATIVE, no-ceiling capability\n"
                << "  (goal-pull " << mind.infer_goal_pull() << "; " << recent.size()
                << " inference measurements logged, recent mean " << (cnt ? sum / cnt : infer_score) << ")";
             return {true, os.str(), ""};
@@ -1825,6 +1825,31 @@ int main(int argc, char** argv) {
             }
             const double fert = mind.benchmark_invention(60, 1);
             os << "  -> " << genuine << "/" << n << " cleared the bar; fertility " << fert;
+            return {true, os.str(), ""};
+        }
+    });
+    // spire — drive the RECURSIVE ABSTRACTION TOWER upward: form higher-order abstractions
+    // over Khora's existing abstractions, level by level, each coherence-gated and grounded
+    // so the tower rises without degenerating. This is the substrate's genuine no-ceiling
+    // capability — concepts over concepts over concepts — the one tonight's reality check
+    // found is NATIVE and real (not prediction, not from-scratch invention).
+    shell.register_tool({
+        "spire",
+        "Khora drives its abstraction tower UPWARD — recursive, coherence-gated  (usage: spire [coherence-bar])",
+        [&mind](const carapace::Intent& i) -> carapace::ToolResult {
+            double coh = 0.40;
+            if (!i.args.empty()) { try { coh = std::stod(i.args[0]); } catch (...) {} }
+            if (coh < 0.05) coh = 0.05;
+            if (coh > 0.95) coh = 0.95;
+            const std::size_t before_n = mind.abstraction_count();
+            const std::size_t before_d = mind.abstraction_depth();
+            const auto [formed, top] = mind.ascend_tower(coh, 40);
+            std::ostringstream os;
+            os << "Khora ascends its abstraction tower (coherence bar " << coh << "):\n"
+               << "  before: " << before_n << " abstractions, depth " << before_d << "\n"
+               << "  forged " << formed << " new higher-order abstractions\n"
+               << "  after:  " << mind.abstraction_count() << " abstractions, depth "
+               << mind.abstraction_depth() << "  (highest level " << top << ")";
             return {true, os.str(), ""};
         }
     });

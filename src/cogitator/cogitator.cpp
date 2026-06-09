@@ -1444,6 +1444,34 @@ double Cogitator::benchmark_next_word(const std::vector<std::string>& heldout) c
     return trials ? rr_sum / static_cast<double>(trials) : -1.0;
 }
 
+std::pair<int,int> Cogitator::ascend_tower(double min_coherence, int max_new) {
+    int formed = 0;
+    auto top_level = [&]() { int t = 0; for (const auto& a : abstractions_) t = std::max(t, a.level); return t; };
+
+    // Climb level by level: abstract over level-1 abstractions into level 2, over those
+    // into level 3, and so on — each rung coherence-gated and grounded, so the tower only
+    // rises where the higher concept genuinely holds together.
+    for (int lvl = 1; formed < max_new; ++lvl) {
+        if (lvl > top_level() + 1) break;   // nothing left to build on
+        std::vector<std::string> seeds;
+        for (const auto& a : abstractions_) if (a.level == lvl) seeds.push_back(a.name);
+        if (seeds.size() < 2) continue;     // need at least two peers to abstract over
+        // Cap seeds per level so the tower rises rather than fanning out redundantly.
+        if (seeds.size() > 10) seeds.resize(10);
+        for (const auto& s : seeds) {
+            if (formed >= max_new) break;
+            if (!form_abstraction_over_abstractions_(s, 4, min_coherence).empty()) ++formed;
+        }
+    }
+    return { formed, top_level() };
+}
+
+double Cogitator::tower_richness() const {
+    double r = 0.0;
+    for (const auto& a : abstractions_) r += static_cast<double>(a.level) * a.coherence;
+    return r;
+}
+
 Genesis Cogitator::invent(std::uint64_t seed) const {
     Genesis g;
     if (concepts_.empty() || field_.size() == 0 || !plexus_) return g;
