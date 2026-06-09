@@ -1620,6 +1620,35 @@ int main(int argc, char** argv) {
             return {true, os.str(), ""};
         }
     });
+    // deduce — DEDUCTION over the structured layer. Khora derives facts it was
+    // never told: inheriting properties down the is-a taxonomy and chaining
+    // causes. New knowledge reasoned from old — what pure association cannot do.
+    shell.register_tool({
+        "deduce",
+        "Khora derives NEW facts about a concept by reasoning over its relations (usage: deduce <concept>)",
+        [&lig](const carapace::Intent& i) -> carapace::ToolResult {
+            if (i.args.empty()) return {false, "", "usage: deduce <concept>"};
+            auto toks = khora::lexicon::tokenize(i.args.front());
+            const std::string c = toks.empty() ? i.args.front() : toks.front();
+            const auto inf = lig.deduce(c, 3);
+            if (inf.empty())
+                return {true, "Khora can derive nothing new about '" + c +
+                        "' yet — too few structured relations to reason from", ""};
+            std::ostringstream os;
+            os << "Khora deduces about '" << c << "' (reasoned, not read):\n";
+            for (const auto& f : inf) {
+                os << "  " << c << ' ' << khora::ligature::relation_name(f.relation)
+                   << ' ' << f.object;
+                if (!f.via.empty()) {
+                    os << "   (via ";
+                    for (std::size_t k = 0; k < f.via.size(); ++k) { if (k) os << " -> "; os << f.via[k]; }
+                    os << ")";
+                }
+                os << '\n';
+            }
+            return {true, os.str(), ""};
+        }
+    });
 
     shell.register_tool({
         "study",

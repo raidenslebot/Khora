@@ -40,6 +40,17 @@ enum class Relation : std::uint8_t { IsA = 0, Causes = 1, HasPart = 2, _Count = 
 
 const char* relation_name(Relation r) noexcept;   // "is-a" / "causes" / "has"
 
+// A DERIVED fact — one Khora reasoned, not one it read. The chain that produced
+// it (`via`) makes it explainable; `support` (the weakest link's count) is its
+// confidence. This is deduction: knowledge that was implicit in the relations
+// made explicit, the thing association alone could never give.
+struct Inference {
+    Relation                 relation;   // the derived relation
+    std::string              object;     // the derived object
+    std::vector<std::string> via;        // the intermediate concepts of the derivation
+    std::uint32_t            support = 0;
+};
+
 class Ligature {
 public:
     Ligature() = default;
@@ -64,6 +75,14 @@ public:
 
     // is-a transitive reachability: is `x` (transitively) a kind of `y`?
     bool is_a(const std::string& x, const std::string& y, int max_depth = 5) const;
+
+    // DEDUCE — derive facts about `subject` that are NOT directly asserted:
+    //   (a) property inheritance: subject is-a A, A has/causes Z  =>  subject has/causes Z
+    //   (b) causal chaining:      subject causes Y, Y causes Z     =>  subject causes Z
+    // Returns the novel derivations, strongest support first, each with its chain.
+    // Real inference over the structured layer — new knowledge from old, the thing
+    // a pure association graph (the Plexus) provably could not produce.
+    std::vector<Inference> deduce(const std::string& subject, int max_depth = 3) const;
 
     // Inspectors.
     std::uint64_t triple_count() const noexcept { return triples_; }

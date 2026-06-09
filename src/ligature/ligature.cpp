@@ -184,6 +184,82 @@ bool Ligature::is_a(const std::string& x, const std::string& y, int max_depth) c
     return false;
 }
 
+std::vector<Inference> Ligature::deduce(const std::string& subject, int max_depth) const {
+    std::vector<Inference> out;
+    if (subject.empty()) return out;
+
+    const auto& isaF = fwd_[static_cast<std::size_t>(Relation::IsA)];
+
+    // (1) Gather the is-a ANCESTORS of the subject (BFS over well-attested is-a
+    //     edges), remembering the path and the weakest link's support.
+    struct Anc { std::string node; std::vector<std::string> path; std::uint32_t support; };
+    std::vector<Anc> ancestors;
+    std::unordered_set<std::string> seen{ subject };
+    std::vector<Anc> frontier{ { subject, {}, 0xFFFFFFFFu } };
+    for (int d = 0; d < max_depth && !frontier.empty(); ++d) {
+        std::vector<Anc> next;
+        for (const auto& a : frontier) {
+            auto it = isaF.find(a.node);
+            if (it == isaF.end()) continue;
+            for (const auto& [parent, c] : it->second) {
+                if (c < 2) continue;
+                if (!seen.insert(parent).second) continue;
+                Anc na;
+                na.node = parent;
+                na.path = a.path;
+                na.path.push_back(parent);
+                na.support = std::min(a.support, c);
+                ancestors.push_back(na);
+                next.push_back(std::move(na));
+            }
+        }
+        frontier.swap(next);
+    }
+
+    auto known_direct = [&](Relation r, const std::string& o) { return count(r, subject, o) > 0; };
+
+    // (2) Inherit HAS and CAUSES down the taxonomy: subject is-a A, A has/causes Z.
+    for (const Relation r : { Relation::HasPart, Relation::Causes }) {
+        for (const auto& anc : ancestors) {
+            for (const auto& [obj, c] : objects(r, anc.node, 8)) {
+                if (c < 2 || obj == subject || known_direct(r, obj)) continue;
+                Inference inf;
+                inf.relation = r;
+                inf.object   = obj;
+                inf.via      = anc.path;
+                inf.support  = std::min(anc.support, c);
+                out.push_back(std::move(inf));
+            }
+        }
+    }
+
+    // (3) Causal chaining: subject causes Y, Y causes Z  =>  subject causes Z.
+    for (const auto& [y, c1] : objects(Relation::Causes, subject, 8)) {
+        if (c1 < 2) continue;
+        for (const auto& [z, c2] : objects(Relation::Causes, y, 6)) {
+            if (c2 < 2 || z == subject || known_direct(Relation::Causes, z)) continue;
+            Inference inf;
+            inf.relation = Relation::Causes;
+            inf.object   = z;
+            inf.via      = { y };
+            inf.support  = std::min(c1, c2);
+            out.push_back(std::move(inf));
+        }
+    }
+
+    // Strongest first, dedup by (relation, object), cap.
+    std::sort(out.begin(), out.end(),
+              [](const Inference& a, const Inference& b) { return a.support > b.support; });
+    std::vector<Inference> uniq;
+    std::unordered_set<std::string> dk;
+    for (auto& i : out) {
+        const std::string k = std::to_string(static_cast<int>(i.relation)) + "|" + i.object;
+        if (dk.insert(k).second) uniq.push_back(std::move(i));
+    }
+    if (uniq.size() > 16) uniq.resize(16);
+    return uniq;
+}
+
 // ---- Persistence: a compact text file <prefix>.lig --------------------------
 //   one line per triple:  relIndex<TAB>subject<TAB>object<TAB>count
 

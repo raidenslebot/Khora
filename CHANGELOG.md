@@ -3,6 +3,32 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.88.0 — Deduction: new facts reasoned from structure (+ honest data bound)
+
+**Author:** Morphus — loop iteration three (the re-ranked #1: inference)
+
+With typed structure in place (v0.86-87), real DEDUCTION becomes possible — the
+thing the v0.82 test proved association alone could never give. `Ligature::deduce`
+derives facts NOT directly asserted:
+- property inheritance down the taxonomy: subject is-a A, A has/causes Z => subject has/causes Z
+- causal chaining: subject causes Y, Y causes Z => subject causes Z
+Each derivation carries its chain (explainable) and a support count (confidence,
+the weakest link). New `deduce` tool.
+
+**Verified — and honestly bounded:** `deduce man` -> "man has range (via animal)"
+— Khora correctly inherited a property down the is-a taxonomy: man is-a animal,
+animal has range, therefore man has range. A fact it was never told, reasoned
+correctly. The MECHANISM is sound. But the YIELD is sparse: the is-a taxonomy is
+rich, yet the corpus's has/causes relations on the ancestor concepts are thin, so
+there is little to inherit or chain. Same lesson as autopoiesis (v0.82) — the
+inference is real and correct; it is starved by sparse SOURCE relations.
+
+This re-ranks the loop again, and revealingly: the binding constraint is no longer
+the inference engine (built) but the RELATION DENSITY — Khora extracts too few
+has/causes facts per tome (only the cleanest patterns fire). The lever now is
+RICHER EXTRACTION (more relation types, more patterns, apposition/coordination)
+and, beneath it, the comprehension gap (statistics, not understanding). 10/10 pass.
+
 ## v0.87.0 — Ligature fully alive: live structured learning + structured answers
 
 **Author:** Morphus — loop iteration two on limitation #1
