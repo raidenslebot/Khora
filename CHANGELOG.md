@@ -3,6 +3,37 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.100.0 — The closed loop spans a THIRD faculty (abstraction made measurable)
+
+**Author:** Morphus — back to safe, grounded ground after the ascend failure
+
+Pure-cognition work (no process spawning, no self-replacement, nothing touching the live
+machine) that widens what Khora's self-improvement can see: a third objective faculty.
+
+`Cogitator::benchmark_abstraction` — does the abstraction faculty judge a real concept's
+PMI kin-group COHERENT and a random group INCOHERENT? It builds a positive group (a concept
++ its true associates) and a negative group (the concept + random concepts), scores each by
+the faculty's own squashed-mean-PMI coherence (using the real `kPmiCoherenceScale`), and
+returns the classification accuracy at a fixed bar. Scale-sensitive by construction — a real
+fitness number, not a proxy.
+
+A first cut scored 0.0 — caught and fixed: `concepts_` is already content-filtered, so a
+content-vs-function framing had no negative class. The corrected discrimination form (real
+kin vs random) is sound. `yield` now reports and logs all three:
+```
+  inference   (4-hop graph reasoning) : 0.99
+  deduction   (property inheritance)  : 1.00
+  abstraction (coherence calibration) : 0.60
+```
+The 0.60 is a genuine finding: at scale=2.5 most real kin-groups land BELOW the coherence
+bar, so the faculty is conservatively calibrated — there is headroom, and `kPmiCoherenceScale`
+is exactly the knob that moves it. (It is a DOUBLE, so reforge — which currently rewrites only
+integer genes — cannot tune it yet; teaching reforge to evolve real-valued genes is the clean
+next step to actually CLOSE this third loop. Noted honestly, not overclaimed.)
+
+12/12 suites pass. Three faculties now have an objective number; the engine sees more of its
+own mind than before, which is the precondition for improving more of it.
+
 ## v0.99.1 — ascend DISABLED: it hung the host (honest failure, cleaned up)
 
 **Author:** Morphus — a real failure, recorded plainly

@@ -1310,6 +1310,48 @@ double Cogitator::benchmark_inference(std::size_t n, std::uint64_t seed,
     return total ? static_cast<double>(reached) / static_cast<double>(total) : -1.0;
 }
 
+double Cogitator::benchmark_abstraction(std::size_t n, std::uint64_t seed) const {
+    if (!plexus_ || concepts_.empty() || n == 0) return -1.0;
+    const std::size_t N = concepts_.size();
+    // A fixed bar; the coherence scale (the gene) calibrates where groups land relative
+    // to it, so this number is scale-sensitive — exactly what self-tuning needs.
+    constexpr double kBar = 0.5;
+
+    // Coherence of an explicit group: the squashed mean of its pairwise PMI affinities,
+    // mirroring the faculty's own formula (mean_aff / (mean_aff + scale)).
+    auto group_coherence = [&](const std::vector<std::string>& g) -> double {
+        double sum = 0.0; int pairs = 0;
+        for (std::size_t i = 0; i < g.size(); ++i)
+            for (std::size_t j = i + 1; j < g.size(); ++j) {
+                sum += plexus_->affinity(g[i], g[j]); ++pairs;
+            }
+        const double mean = pairs ? sum / pairs : 0.0;
+        return mean / (mean + kPmiCoherenceScale);
+    };
+
+    std::size_t correct = 0, total = 0;
+    for (std::size_t s = 0; s < n; ++s) {
+        const std::string& A =
+            concepts_[(s * 2654435761ull + seed * 1099511628211ull + 1) % N];
+        if (!plexus_->has(A)) continue;
+        const auto kin = plexus_->associates(A, 4);
+        if (kin.size() < 2) continue;
+
+        // POSITIVE group: A and its real PMI kin — a genuine abstraction; should cohere.
+        std::vector<std::string> pos{ A };
+        for (const auto& kv : kin) pos.push_back(kv.first);
+        // NEGATIVE group: A and random concepts — incoherent; should NOT cohere.
+        std::vector<std::string> neg{ A };
+        for (std::size_t r = 0; r < kin.size(); ++r)
+            neg.push_back(concepts_[(s * 2654435761ull + r * 40503ull + 12345ull) % N]);
+
+        if (group_coherence(pos) >= kBar)  ++correct;   // a real kin-group SHOULD read coherent
+        if (group_coherence(neg) <  kBar)  ++correct;   // a random group SHOULD read incoherent
+        total += 2;
+    }
+    return total ? static_cast<double>(correct) / static_cast<double>(total) : -1.0;
+}
+
 Insight Cogitator::explain(const std::string& subject) const {
     Insight ins;
     ins.subject = subject;

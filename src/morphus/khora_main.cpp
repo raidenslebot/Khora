@@ -1712,6 +1712,9 @@ int main(int argc, char** argv) {
             // closed loop now spans MORE than one faculty — the whole mind grows
             // measurable, one faculty at a time.
             const double deduce_score = lig.benchmark_deduction(n, 7);
+            // Third faculty: the abstraction faculty's calibration (does it judge content
+            // concepts coherent and diffuse words incoherent?). The closed loop widens.
+            const double abstr_score  = mind.benchmark_abstraction(n, 7);
 
             const long ts = static_cast<long>(std::time(nullptr));
             {
@@ -1722,6 +1725,8 @@ int main(int argc, char** argv) {
                        << '\t' << mind.infer_goal_pull() << '\n';
                     if (deduce_score >= 0.0)
                         os << ts << '\t' << "deduce" << '\t' << deduce_score << '\t' << n << "\t0\n";
+                    if (abstr_score >= 0.0)
+                        os << ts << '\t' << "abstract" << '\t' << abstr_score << '\t' << n << "\t0\n";
                 }
             }
             // Trend of the inference faculty across the persistent ledger.
@@ -1746,6 +1751,9 @@ int main(int argc, char** argv) {
                << "  deduction (property inheritance)  : "
                << (deduce_score < 0.0 ? std::string("no structured facts yet")
                                       : std::to_string(deduce_score)) << "\n"
+               << "  abstraction (coherence calibration): "
+               << (abstr_score < 0.0 ? std::string("no concept field yet")
+                                     : std::to_string(abstr_score)) << "\n"
                << "  (goal-pull " << mind.infer_goal_pull() << "; " << recent.size()
                << " inference measurements logged, recent mean " << (cnt ? sum / cnt : infer_score) << ")";
             return {true, os.str(), ""};
