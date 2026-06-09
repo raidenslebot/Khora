@@ -6,6 +6,7 @@ target_link_libraries(khora PRIVATE
     khora::reverie
     khora::lexicon
     khora::plexus
+    khora::ligature
     khora::cogitator
     khora::whetstone
     khora::reservoir
@@ -23,4 +24,5 @@ target_link_libraries(plexus_forge PRIVATE
     khora::reservoir
     khora::lexicon
     khora::plexus
+    khora::ligature
 )

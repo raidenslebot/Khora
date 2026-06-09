@@ -3,6 +3,42 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.86.0 — The Ligature: structured relations (association becomes understanding)
+
+**Author:** Morphus — targeting limitation #1 by the operator's own method
+
+Ranked every limitation by impact on growth/evolution. #1, the binding one: the
+whole engine sat on an ASSOCIATIVE substrate (the Plexus) that captures THAT
+concepts relate, never HOW. More books just meant more correlation. The ceiling
+on reasoning, answering, and the value of all that autonomous acquisition was the
+same root: Khora extracted correlation, not structured meaning.
+
+**The Ligature** (`khora::ligature`) adds the missing layer: TYPED relations
+(`is-a`, `causes`, `has`) extracted from text by syntactic patterns — the
+classical, dependency-free way, no LLM. Each triple carries a count (asserted
+across many sentences = reliable; one-off = noise). Patterns refined to take the
+HEAD NOUN of a phrase ("man is a social animal" -> animal, not "social") and to
+REQUIRE a determiner for is-a (excludes passives like "is reflected"). Built across
+all cores in `plexus_forge` alongside the Plexus (additive merge); persists to
+`.lig`; loaded by the runtime.
+
+**Verified live — 16,297 typed relations from the corpus:**
+```
+  relate man   -> is-a animal(6), creature(4), social(3), soldier(2); has right, thought
+  relate light -> is-a mixture; has refrangibility        relate number -> is-a prime
+  isa man animal  -> "yes — derivable through Khora's is-a chains"   (transitive inference)
+```
+Khora now knows man IS A KIND OF animal, not merely associated with it — and
+DERIVES it through is-a chains. New tools `relate` and `isa`. This is the move from
+correlation to structure: real definitions, real taxonomy, the substrate for real
+inference. 10/10 suites pass.
+
+NEXT in the loop (re-ranked after this): the LEARNING gap — study still captures
+distributional statistics, not comprehension; and live study doesn't yet extract
+relations (only the forge does). Wire Ligature extraction into study_tome so
+acquired knowledge becomes structured automatically, then enrich explain/answer to
+reason over relations, then meta-cognition.
+
 ## v0.85.0 — The curiosity loop turns UNTENDED (autonomous self-evolution)
 
 **Author:** Morphus — the exponential, now running with no one in the room

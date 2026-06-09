@@ -15,6 +15,7 @@
 #include "khora/lattice/persistence.hpp"
 #include "khora/ballast/ballast.hpp"
 #include "khora/lexicon/lexicon.hpp"
+#include "khora/ligature/ligature.hpp"
 #include "khora/plexus/plexus.hpp"
 #include "khora/lodestone/lodestone.hpp"
 #include "khora/maelstrom/maelstrom.hpp"
@@ -51,6 +52,7 @@ constexpr const char* kArchivePath          = "data/lattice_archive/main.klat";
 constexpr const char* kCortexArchivePrefix  = "data/cortex_archive/main";
 constexpr const char* kLexiconArchivePrefix = "data/lexicon_archive/main";
 constexpr const char* kPlexusArchivePrefix  = "data/plexus_archive/main";
+constexpr const char* kLigatureArchivePrefix = "data/ligature_archive/main";
 constexpr const char* kAttractorsPath       = "data/cogitator_archive/attractors.txt";
 constexpr const char* kAbstractionsPath     = "data/cogitator_archive/abstractions.txt";
 
@@ -79,6 +81,7 @@ int main(int argc, char** argv) {
     soma::SomaNexus nexus;
     lexicon::Lexicon lex;
     plexus::Plexus    plex;   // associative graph memory — the hub-proof kin
+    ligature::Ligature lig;   // structured-relation layer — typed knowledge (is-a, causes)
     reverie::ReverieLoom dream(memory, column, nexus);
     cogitator::Cogitator mind(lex, memory, column, nexus);
     mind.set_plexus(&plex);   // the Spire forms abstractions on hub-proof PMI kin
@@ -149,6 +152,18 @@ int main(int argc, char** argv) {
                           << " nodes, " << plex.edge_count() << " associative edges]\n";
             } catch (const std::exception& e) {
                 std::cout << "[warning: could not load plexus archive: " << e.what() << "]\n";
+            }
+        }
+    }
+    {
+        fs::path lig_path = kLigatureArchivePrefix; lig_path += ".lig";
+        if (fs::exists(lig_path)) {
+            try {
+                lig.load(kLigatureArchivePrefix);
+                std::cout << "[loaded ligature: " << lig.triple_count()
+                          << " typed relations (is-a, causes, has)]\n";
+            } catch (const std::exception& e) {
+                std::cout << "[warning: could not load ligature archive: " << e.what() << "]\n";
             }
         }
     }
@@ -1546,6 +1561,59 @@ int main(int argc, char** argv) {
         }
     });
 
+    // relate / isa — STRUCTURED knowledge from the Ligature: not what a concept
+    // ASSOCIATES with (the Plexus), but what it IS, what it CAUSES, what it HAS.
+    shell.register_tool({
+        "relate",
+        "Khora's structured knowledge of a concept — what it is, causes, has  (usage: relate <concept>)",
+        [&lig](const carapace::Intent& i) -> carapace::ToolResult {
+            if (i.args.empty()) return {false, "", "usage: relate <concept>"};
+            auto toks = khora::lexicon::tokenize(i.args.front());
+            const std::string c = toks.empty() ? i.args.front() : toks.front();
+            const auto isa = lig.objects(khora::ligature::Relation::IsA, c, 6);
+            const auto cau = lig.objects(khora::ligature::Relation::Causes, c, 5);
+            const auto has = lig.objects(khora::ligature::Relation::HasPart, c, 5);
+            if (isa.empty() && cau.empty() && has.empty())
+                return {true, "Khora has learned no typed relations about '" + c + "' yet", ""};
+            std::ostringstream os;
+            os << "'" << c << "' —\n";
+            auto line = [&](const char* label, const std::vector<std::pair<std::string, std::uint32_t>>& v) {
+                if (v.empty()) return;
+                os << "  " << label;
+                for (const auto& [o, n] : v) os << ' ' << o << "(" << n << ")";
+                os << "\n";
+            };
+            line("is a:   ", isa);
+            line("causes: ", cau);
+            line("has:    ", has);
+            return {true, os.str(), ""};
+        }
+    });
+    shell.register_tool({
+        "isa",
+        "Khora checks or derives an is-a relation  (usage: isa <x> [<y>])",
+        [&lig](const carapace::Intent& i) -> carapace::ToolResult {
+            if (i.args.empty()) return {false, "", "usage: isa <x> [<y>]"};
+            auto norm = [](const std::string& s) {
+                auto t = khora::lexicon::tokenize(s); return t.empty() ? s : t.front();
+            };
+            const std::string x = norm(i.args.front());
+            if (i.args.size() >= 2) {
+                const std::string y = norm(i.args.back());
+                const bool yes = lig.is_a(x, y);
+                return {true, "Is '" + x + "' a kind of '" + y + "'?  " +
+                        (yes ? "yes — derivable through Khora's is-a chains"
+                             : "not derivable from what Khora has learned"), ""};
+            }
+            const auto isa = lig.objects(khora::ligature::Relation::IsA, x, 6);
+            if (isa.empty()) return {true, "Khora doesn't yet know what kind of thing '" + x + "' is", ""};
+            std::ostringstream os;
+            os << "'" << x << "' is a: ";
+            for (std::size_t k = 0; k < isa.size(); ++k) { if (k) os << ", "; os << isa[k].first << "(" << isa[k].second << ")"; }
+            return {true, os.str(), ""};
+        }
+    });
+
     shell.register_tool({
         "study",
         "absorb a tome from the pool into actual knowledge  (usage: study <title> [max_tokens])",
@@ -1778,7 +1846,7 @@ int main(int argc, char** argv) {
     // Helper: persist lattice + cortex silently. Used both at
     // single-command exit and at interactive-loop exit so state actually
     // accumulates across runs.
-    auto persist_silently = [&memory, &column, &lex, &mind, &plex]() {
+    auto persist_silently = [&memory, &column, &lex, &mind, &plex, &lig]() {
         try { (void)lattice::save(memory, kArchivePath); }
         catch (...) { /* swallow — best effort */ }
         try { column.save(kCortexArchivePrefix); }
@@ -1786,6 +1854,8 @@ int main(int argc, char** argv) {
         try { lex.save(kLexiconArchivePrefix); }
         catch (...) { /* swallow — best effort */ }
         try { plex.save(kPlexusArchivePrefix); }
+        catch (...) { /* swallow — best effort */ }
+        try { lig.save(kLigatureArchivePrefix); }
         catch (...) { /* swallow — best effort */ }
         try { mind.save_attractors(kAttractorsPath); }
         catch (...) { /* swallow — best effort */ }
@@ -2020,6 +2090,13 @@ int main(int argc, char** argv) {
                   << kPlexusArchivePrefix << ".plexus]\n";
     } catch (const std::exception& e) {
         std::cerr << "[plexus save failed: " << e.what() << "]\n";
+    }
+    try {
+        lig.save(kLigatureArchivePrefix);
+        std::cout << "[saved ligature (" << lig.triple_count()
+                  << " typed relations) to " << kLigatureArchivePrefix << ".lig]\n";
+    } catch (const std::exception& e) {
+        std::cerr << "[ligature save failed: " << e.what() << "]\n";
     }
     try {
         mind.save_attractors(kAttractorsPath);
