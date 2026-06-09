@@ -1222,7 +1222,7 @@ std::vector<std::string> Cogitator::infer_path(const std::string& start,
     struct Path { std::vector<std::string> nodes; double score; };
     constexpr std::size_t kBeam   = 24;   // paths kept per level
     constexpr std::size_t kExpand = 16;   // associates explored per frontier node
-    const double          kGoalPull = 1.5;
+    const double          kGoalPull = infer_goal_pull_;   // tuned by measured yield
 
     std::vector<Path> beam{ { { start }, 0.0 } };
     std::vector<std::string> best_partial{ start };
@@ -1255,6 +1255,46 @@ std::vector<std::string> Cogitator::infer_path(const std::string& start,
         beam = std::move(next);
     }
     return best_partial;   // the closest reasoned approach when no full path is found
+}
+
+double Cogitator::benchmark_inference(std::size_t n, std::uint64_t seed,
+                                      std::size_t max_depth) const {
+    if (!plexus_ || concepts_.empty() || n == 0) return -1.0;
+    const std::size_t N = concepts_.size();
+    std::size_t reached = 0, total = 0;
+    for (std::size_t s = 0; s < n; ++s) {
+        const std::string& A =
+            concepts_[(s * 2654435761ull + seed * 1099511628211ull + 1) % N];
+        if (!plexus_->has(A)) continue;
+        const auto ka = plexus_->associates(A, 6);
+        if (ka.empty()) continue;
+        const std::string& B = ka[s % ka.size()].first;
+        // Build a genuine 3-HOP chain A -> B -> C -> D where each step leaves the
+        // previous concept's direct neighbourhood, so the GOAL D is three real
+        // inferences away — hard enough that the search can fail (headroom for the
+        // metric to move, and to DROP if the graph is degraded).
+        std::string C;
+        for (const auto& kv : plexus_->associates(B, 8)) {
+            if (kv.first == A || kv.first == B) continue;
+            if (plexus_->affinity(A, kv.first) > 0.0) continue;
+            C = kv.first;
+            break;
+        }
+        if (C.empty()) continue;
+        std::string D;
+        for (const auto& kv : plexus_->associates(C, 8)) {
+            if (kv.first == A || kv.first == B || kv.first == C) continue;
+            if (plexus_->affinity(A, kv.first) > 0.0) continue;
+            if (plexus_->affinity(B, kv.first) > 0.0) continue;
+            D = kv.first;
+            break;
+        }
+        if (D.empty()) continue;
+        ++total;
+        const auto path = infer_path(A, D, max_depth);
+        if (!path.empty() && path.back() == D) ++reached;
+    }
+    return total ? static_cast<double>(reached) / static_cast<double>(total) : -1.0;
 }
 
 Insight Cogitator::explain(const std::string& subject) const {

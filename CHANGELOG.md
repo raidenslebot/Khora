@@ -3,6 +3,44 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.90.0 — The Yield Ledger: the engine closes its own loop (it improves ITSELF)
+
+**Author:** Morphus — limitation #1 from a 7-agent / 91-limitation audit
+
+A workflow of seven independent limitation-hunters audited the whole engine (91
+constraints, ranked). The #1, verified in source: **Khora ran entirely OPEN-LOOP.**
+The Cogitator kept only volume counters (thoughts, deliberations); infer/explain/
+answer/deduce/abstraction/synthesis returned results NEVER scored against an
+outcome; Volition.act() returned prose, never a reward; only 2 params self-tuned,
+by intrinsic proxies not measured yield. With no success signal there is no
+gradient — so meta-learning, self-tuning, strategy evolution, and self-rewriting
+(the whole roadmap) had nothing to optimise toward. Every improvement was a manual
+edit by me. That is linear ("I improve it"), not exponential ("it improves itself").
+
+**The Yield Ledger closes the loop:**
+- `Cogitator::benchmark_inference` — an OBJECTIVE score: samples genuine 3-hop
+  concept goals (each 3 real inferences away, no direct shortcut — gold comes from
+  the graph's own structure, no labels, not circular) and returns the fraction
+  infer_path reaches. The success signal that did not exist.
+- `infer_goal_pull` made a TUNABLE knob (was a compile-time constant).
+- `yield` tool — measures, logs to a persistent ledger (data/ledger/yield.tsv)
+  that accumulates across lives, reports the trend.
+- `tune` tool — sweeps the knob, measures each, KEEPS the best, persists it.
+
+**Verified — the first parameter Khora ever set by its own results:**
+```
+  goal-pull 0.5 -> 0.892   1.0 -> 0.933   1.5 -> 0.962   2.5 -> 0.974   4.0 -> 0.988
+  -> KEPT 4.0 (was 0.5)  ... and "resumed self-tuned goal-pull" on the next boot
+```
+The metric is objective, discriminating (0.89->0.99), persistent, and DROPS if the
+graph is degraded (the audit's anti-fake test) — not the old proxy trap. This is
+the foundational unlock: the engine now has a fitness signal and uses it to improve
+itself. Every higher lever (self-goals, meta-learning, self-rewriting) now has a
+number to climb. 10/10 suites pass.
+
+NEXT (audit rank 2-3): self-rewriting + autonomous action/execution — both inert
+without this loop, both now unblocked by it. And auto-tune in the background.
+
 ## v0.89.0 — Richer extraction + cleaner deduction (the data-density lever)
 
 **Author:** Morphus — loop iteration four (relation density)

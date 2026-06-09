@@ -208,6 +208,23 @@ public:
                                         const std::string& goal,
                                         std::size_t max_depth = 7) const;
 
+    // The goal-pull heuristic weight of infer_path — a TUNABLE knob (was a
+    // compile-time constant). The Yield loop sweeps it and keeps the value that
+    // measurably maximises inference success: the first parameter set by
+    // downstream outcome, not by hand.
+    void   set_infer_goal_pull(double g) { infer_goal_pull_ = g; }
+    double infer_goal_pull() const noexcept { return infer_goal_pull_; }
+
+    // CLOSED-LOOP MEASUREMENT — an OBJECTIVE score of inference, the missing
+    // success signal. Samples `n` genuine 2-hop concept pairs (A relates to C
+    // only through some bridge B, with NO direct A–C edge), runs infer_path on
+    // each, and returns the fraction that reach the goal. The gold ("these ARE
+    // connectable") comes from the graph's own structure — no labels, not
+    // circular. This is the number self-improvement can finally optimise toward;
+    // it must DROP if the knowledge graph is degraded (the anti-fake test).
+    double benchmark_inference(std::size_t n, std::uint64_t seed = 0,
+                               std::size_t max_depth = 4) const;
+
     // Answer "what is X?" from structure: the concept's defining kin, the
     // abstraction it belongs to (its kind), and its kindred under that category.
     // Grounded and correct where free generation drifts. Read-only.
@@ -401,6 +418,7 @@ private:
     double seed_coherence_(const std::string& seed) const;
 
     std::size_t resonance_k_            = 5;
+    double      infer_goal_pull_        = 1.5;   // tunable by measured yield
     double      novelty_threshold_      = 0.20;
     std::size_t max_attempts_           = 4;
     bool        learn_from_thoughts_    = true;

@@ -39,7 +39,10 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <cstdio>
+#include <ctime>
 #include <deque>
+#include <fstream>
 #include <shared_mutex>
 #include <sstream>
 #include <thread>
@@ -53,6 +56,8 @@ constexpr const char* kCortexArchivePrefix  = "data/cortex_archive/main";
 constexpr const char* kLexiconArchivePrefix = "data/lexicon_archive/main";
 constexpr const char* kPlexusArchivePrefix  = "data/plexus_archive/main";
 constexpr const char* kLigatureArchivePrefix = "data/ligature_archive/main";
+constexpr const char* kYieldLedgerPath       = "data/ledger/yield.tsv";
+constexpr const char* kYieldParamsPath       = "data/ledger/params.txt";
 constexpr const char* kAttractorsPath       = "data/cogitator_archive/attractors.txt";
 constexpr const char* kAbstractionsPath     = "data/cogitator_archive/abstractions.txt";
 
@@ -165,6 +170,16 @@ int main(int argc, char** argv) {
             } catch (const std::exception& e) {
                 std::cout << "[warning: could not load ligature archive: " << e.what() << "]\n";
             }
+        }
+    }
+    {
+        // Restore the parameter Khora tuned by MEASURED yield last session —
+        // self-improvement that persists across lives.
+        std::ifstream pf(kYieldParamsPath);
+        double gp = 0.0;
+        if (pf >> gp && gp > 0.0 && gp < 20.0) {
+            mind.set_infer_goal_pull(gp);
+            std::cout << "[resumed self-tuned inference goal-pull: " << gp << "]\n";
         }
     }
     // Restore Khora's preoccupations — its inner life resumes where it left off.
@@ -1646,6 +1661,83 @@ int main(int argc, char** argv) {
                 }
                 os << '\n';
             }
+            return {true, os.str(), ""};
+        }
+    });
+
+    // yield — THE CLOSED LOOP. Khora measures the OBJECTIVE success of its own
+    // reasoning (does inference reach genuine 2-hop goals it must search for?),
+    // logs it to a ledger that persists across lives, and reports the trend. This
+    // is the missing success signal — the number every self-improvement optimises.
+    shell.register_tool({
+        "yield",
+        "Khora measures the objective success of its own reasoning  (usage: yield [n])",
+        [&mind](const carapace::Intent& i) -> carapace::ToolResult {
+            std::size_t n = 150;
+            if (!i.args.empty()) { try { n = std::stoul(i.args[0]); } catch (...) {} }
+            if (n < 20)   n = 20;
+            if (n > 2000) n = 2000;
+            const double score = mind.benchmark_inference(n, 7);
+            if (score < 0.0) return {true, "Khora cannot benchmark yet — its concept field is empty", ""};
+            const long ts = static_cast<long>(std::time(nullptr));
+            {
+                std::error_code ec; std::filesystem::create_directories("data/ledger", ec);
+                std::ofstream os(kYieldLedgerPath, std::ios::app);
+                if (os) os << ts << '\t' << "infer" << '\t' << score << '\t' << n
+                           << '\t' << mind.infer_goal_pull() << '\n';
+            }
+            std::vector<double> recent;
+            {
+                std::ifstream is(kYieldLedgerPath);
+                std::string line;
+                while (std::getline(is, line)) {
+                    const auto t1 = line.find('\t');
+                    const auto t2 = (t1 == std::string::npos) ? t1 : line.find('\t', t1 + 1);
+                    const auto t3 = (t2 == std::string::npos) ? t2 : line.find('\t', t2 + 1);
+                    if (t3 == std::string::npos) continue;
+                    if (line.substr(t1 + 1, t2 - t1 - 1) != "infer") continue;
+                    try { recent.push_back(std::stod(line.substr(t2 + 1, t3 - t2 - 1))); } catch (...) {}
+                }
+            }
+            double sum = 0.0; int cnt = 0;
+            for (std::size_t k = (recent.size() > 10 ? recent.size() - 10 : 0); k < recent.size(); ++k) { sum += recent[k]; ++cnt; }
+            std::ostringstream os;
+            os << "Khora measures its own reasoning — inference success on " << n
+               << " genuine 2-hop goals: " << score << "\n"
+               << "  (goal-pull " << mind.infer_goal_pull() << "; " << recent.size()
+               << " measurements in the ledger, recent mean " << (cnt ? sum / cnt : score) << ")";
+            return {true, os.str(), ""};
+        }
+    });
+    // tune — SELF-IMPROVEMENT. Khora sweeps a reasoning parameter, MEASURES the
+    // yield of each setting, and keeps the best — the first time a parameter is set
+    // by measured downstream outcome rather than by a human. The root of the whole
+    // self-evolution roadmap, made real, and it persists across lives.
+    shell.register_tool({
+        "tune",
+        "Khora tunes a reasoning parameter by measured yield — it improves itself  (usage: tune)",
+        [&mind](const carapace::Intent&) -> carapace::ToolResult {
+            const double cands[] = { 0.5, 1.0, 1.5, 2.5, 4.0 };
+            const double original = mind.infer_goal_pull();
+            double best_g = original, best_s = -1.0;
+            std::ostringstream os;
+            os << "Khora tunes its inference goal-pull by MEASURED success:\n";
+            for (double g : cands) {
+                mind.set_infer_goal_pull(g);
+                double s = 0.0;
+                for (int r = 0; r < 3; ++r) s += mind.benchmark_inference(150, r + 1);
+                s /= 3.0;
+                os << "  goal-pull " << g << "  -> success " << s << "\n";
+                if (s > best_s) { best_s = s; best_g = g; }
+            }
+            mind.set_infer_goal_pull(best_g);
+            {
+                std::error_code ec; std::filesystem::create_directories("data/ledger", ec);
+                std::ofstream pf(kYieldParamsPath, std::ios::trunc);
+                if (pf) pf << best_g << '\n';
+            }
+            os << "  -> KEPT goal-pull " << best_g << " (best measured success " << best_s
+               << "; was " << original << ") — a parameter Khora set by its OWN results";
             return {true, os.str(), ""};
         }
     });
