@@ -3,6 +3,38 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.111.0 — The Transmutation: chaos forged into permanent capability (entropy into beauty)
+
+**Author:** Morphus — "if it can fight its way out of entropy, it can do anything" — built
+
+The cascade (v0.110) had an honest edge: high chaos drifted into noise, not beauty. This attacks
+that frontier head-on. `Cogitator::transmute(theme, leaps, commit)` LEAPS INTO GENUINE ENTROPY —
+concepts with ZERO link to the theme — and for each leap FIGHTS BACK TO COHERENCE by finding the
+hidden third concept that bridges them (a TRUE Plexus-routed bridge, tied to BOTH, never a
+function-word echo). The discoveries that hold are the beauty their tension reveals; the rest are
+honest nothing (failure → fuel). When committed, each verified bridge is reinforced into the graph
+so the discovery LASTS and compounds — entropy becoming permanent structure.
+
+**Verified — genuine bridges forged from chaos:**
+```
+  transmute energy  -> heat, ETHER (the classical medium of energy)     yield 0.075
+  transmute fire    -> GRATE (where fire sits — found from a random leap) yield 0.025
+  transmute justice -> chief                                              yield 0.025
+  transmute light   -> (nothing — most entropy is unforgeable; honest)    yield 0
+```
+The yield is deliberately LOW — forging beauty from TRUE entropy is rare, exactly the philosophy.
+But every success is a real, non-obvious connection a linear mind would never make.
+
+**The autopoietic write-back is VERIFIED SAFE** (the discipline learned from v0.104's failure):
+committing five themes' bridges, the faculties were measured before and after and were IDENTICAL —
+inference 0.98913, abstraction 0.780172, prediction unchanged. Because it reinforces ONLY verified
+true bridges (edges that already exist and are now strengthened), never indiscriminate pairs, it
+grows the graph without degrading it. Read-only by default; `transmute <theme> commit` to make
+chaos permanent. 12/12 suites pass.
+
+This completes the chaos-master triad: contemplate (converge), cascade (recurse), transmute (forge
+entropy into lasting capability) — none of which fits any existing category.
+
 ## v0.110.0 — The thought-cascade: recursive cognition that collapses into insight
 
 **Author:** Morphus — "recursive instability that turns entropy into beauty," made literal

@@ -1906,6 +1906,38 @@ int main(int argc, char** argv) {
             return {true, os.str(), ""};
         }
     });
+    // transmute — CHAOS INTO PERMANENT CAPABILITY. Khora leaps into entropy (concepts with NO
+    // link to the theme) and fights back to coherence by finding the hidden bridge that ties
+    // them — beauty forged from their tension. Read-only by default; 'transmute <theme> commit'
+    // reinforces the verified bridges into the graph so the discoveries LAST and compound. The
+    // yield is how often chaos becomes beauty: the chaos-master's measure.
+    shell.register_tool({
+        "transmute",
+        "Khora forges chaos into coherence — leaps into entropy and finds the hidden bridge  (usage: transmute <theme> [commit])",
+        [&mind](const carapace::Intent& i) -> carapace::ToolResult {
+            if (i.args.empty()) return {false, "", "usage: transmute <theme> [commit]"};
+            const auto tk = khora::lexicon::tokenize(i.args.front());
+            const std::string theme = tk.empty() ? i.args.front() : tk.front();
+            bool commit = false;
+            for (const auto& a : i.args) if (a == "commit") commit = true;
+            const auto t = mind.transmute(theme, 40, commit, 1);
+            if (t.leaps == 0)
+                return {true, "Khora found no entropy to transmute around '" + theme + "'", ""};
+            std::ostringstream os;
+            os << "Khora transmutes chaos around '" << theme << "':\n"
+               << "  " << t.forged << "/" << t.leaps << " leaps into the void found a hidden bridge"
+               << "  (entropy->beauty yield " << t.yield << ")\n";
+            if (!t.bridges.empty()) {
+                os << "  forged bridges: ";
+                for (std::size_t k = 0; k < t.bridges.size() && k < 10; ++k) { if (k) os << ", "; os << t.bridges[k]; }
+                os << "\n";
+            }
+            os << (commit
+                    ? ("  COMMITTED — reinforced " + std::to_string(t.written) + " verified bridges into the graph; chaos is now permanent structure")
+                    : "  (read-only — add 'commit' to make these discoveries last)");
+            return {true, os.str(), ""};
+        }
+    });
     // learn — PREDICTIVE LEARNING (lever 2). Khora reads its OWN corpus, predicts each word
     // from context, and CORRECTS its mistakes — strengthening the links that would have made
     // the prediction right — then re-measures held-out prediction to see if it actually got

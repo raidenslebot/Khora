@@ -169,6 +169,21 @@ struct Cascade {
     double                   emergence = 0.0;  // mean cross-mode convergence along the chain
 };
 
+// THE TRANSMUTATION — chaos forged into permanent capability. Khora leaps into genuine entropy
+// (a concept with ZERO link to the theme) and FIGHTS BACK to coherence by finding the hidden
+// third concept that bridges them — the beauty their tension reveals. Leaps that forge a TRUE
+// bridge are kept; the rest are honest nothing (failure → fuel). Committed, the verified
+// bridge is reinforced into the graph, so chaos becomes lasting structure that compounds —
+// pennies of entropy into oceans of capability. The `yield` is how often chaos turns to beauty.
+struct Transmutation {
+    std::string              theme;
+    int                      leaps = 0;     // chaotic leaps into the void attempted
+    int                      forged = 0;    // leaps that found a TRUE bridge (entropy -> beauty)
+    int                      written = 0;   // bridges reinforced into the graph (if committed)
+    double                   yield = 0.0;   // forged / leaps — the fight-out-of-entropy rate
+    std::vector<std::string> bridges;       // the novel bridging concepts discovered
+};
+
 // Recursive abstraction — the combinatorial engine of exponential cognition.
 // Khora chunks a cluster of kindred concepts into ONE higher-order concept,
 // then abstracts over THOSE, and over those — a rising tower. Where flat
@@ -401,6 +416,14 @@ public:
     // returns to a concept already thought (it has COLLAPSED into an attractor — an insight) or
     // after `max_steps`. Pure cognition; bounded.
     Cascade cascade(const std::string& seed, std::size_t max_steps = 10, double chaos = 0.2);
+
+    // THE TRANSMUTATION — turn entropy into permanent capability. Take `leaps` chaotic jumps to
+    // concepts with NO connection to `theme`, and for each, find the hidden bridge that links
+    // them (a true Plexus-routed bridge, tied to BOTH). When `commit`, reinforce each verified
+    // bridge into the graph so the discovery LASTS and compounds. Returns the yield (how often
+    // chaos forged beauty) and the novel bridges. Mutating only when committing.
+    Transmutation transmute(const std::string& theme, std::size_t leaps = 16,
+                            bool commit = false, std::uint64_t seed = 0);
 
     // A clean concept to think about, drawn from the centrality-pruned
     // content field (not the function-word-heavy raw vocabulary). Lets the

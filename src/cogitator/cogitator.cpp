@@ -919,6 +919,52 @@ Cascade Cogitator::cascade(const std::string& seed_in, std::size_t max_steps, do
     return out;
 }
 
+Transmutation Cogitator::transmute(const std::string& theme, std::size_t leaps,
+                                   bool commit, std::uint64_t seed) {
+    ensure_field_();
+    Transmutation t; t.theme = theme;
+    if (!plexus_ || !plexus_->has(theme) || concepts_.empty()) return t;
+    const std::size_t N = concepts_.size();
+    std::mt19937_64 rng(0x9E3779B97F4A7C15ull ^
+                        (std::hash<std::string>{}(theme) * 2654435761ull + seed + 11));
+    std::unordered_set<std::string> seen_bridge, used_far;
+
+    for (std::size_t L = 0; L < leaps; ++L) {
+        // LEAP INTO THE VOID — a concept with NO link to the theme (genuine entropy).
+        std::string far;
+        for (int tries = 0; tries < 24 && far.empty(); ++tries) {
+            const std::string& cand = concepts_[rng() % N];
+            if (cand == theme || used_far.count(cand) || !plexus_->has(cand)) continue;
+            if (plexus_->affinity(theme, cand) > 0.0) continue;   // must be truly distant
+            far = cand;
+        }
+        if (far.empty()) continue;
+        used_far.insert(far);
+        ++t.leaps;
+
+        // FIGHT BACK TO COHERENCE — the hidden third that bridges theme and the distant leap.
+        const Synthesis s = synthesize(theme, far, seed + L * 2654435761ull + 1);
+        if (s.emergent.empty()) continue;
+        const auto& top = s.emergent.front();
+        if (top.hamming != 0) continue;             // only a TRUE bridge (tied to BOTH) is beauty
+        if (top.label == theme || top.label == far) continue;
+        if (!is_content_(top.label)) continue;      // a real concept, never a function-word echo
+        if (!seen_bridge.insert(top.label).second) continue;   // novel bridges only
+        ++t.forged;
+        t.bridges.push_back(top.label);
+
+        // MAKE IT LAST — reinforce the verified bridge so the discovery compounds. (Only the
+        // theme<->bridge edge, which the bridge being a true bridge means already exists — we
+        // strengthen a verified connection, never invent a false one.)
+        if (commit && plexus_->has(top.label)) {
+            plexus_->reinforce(theme, top.label, 2);
+            ++t.written;
+        }
+    }
+    t.yield = t.leaps ? static_cast<double>(t.forged) / static_cast<double>(t.leaps) : 0.0;
+    return t;
+}
+
 void Cogitator::note_attractor_(const std::string& label) {
     if (label.empty()) return;
     // Skip Khora's own provisional trace concepts — only real, learned
