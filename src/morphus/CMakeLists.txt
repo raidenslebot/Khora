@@ -20,6 +20,30 @@ target_link_libraries(khora PRIVATE
     khora::volition
 )
 
+# khora_next — the SUCCESSOR target for `ascend` (binary self-replacement). A running
+# khora.exe holds its own image locked, so it cannot relink itself; this is the SAME
+# source built to a distinct binary that the running instance promotes over itself via
+# a detached relauncher (with a known-good backup + rollback). Mirrors khora exactly.
+add_executable(khora_next khora_main.cpp)
+target_link_libraries(khora_next PRIVATE
+    khora::carapace
+    khora::reverie
+    khora::lexicon
+    khora::plexus
+    khora::ligature
+    khora::hand
+    khora::bulwark
+    khora::maw
+    khora::cogitator
+    khora::whetstone
+    khora::reservoir
+    khora::curator
+    khora::lodestone
+    khora::ballast
+    khora::maelstrom
+    khora::volition
+)
+
 # plexus_forge — fast standalone (re)builder of the associative graph, decoupled
 # from the cortex training. Separate target; building it never relinks khora.exe.
 add_executable(plexus_forge plexus_forge.cpp)

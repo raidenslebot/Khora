@@ -83,6 +83,16 @@ void print_banner() {
 int main(int argc, char** argv) {
     using namespace khora;
 
+    // ascend_selftest: the successor binary proves it can LAUNCH the runtime before it
+    // is ever promoted over the running image. Intercepted before anything else so it
+    // never reaches the single-command dispatcher.
+    for (int i = 1; i < argc; ++i) {
+        if (std::string(argv[i]) == "ascend_selftest") {
+            std::cout << "ascend_selftest ok\n";
+            return 0;
+        }
+    }
+
     // 1. Bring up subsystems.
     lattice::Lattice memory;
     cortex::PredictiveColumn column(3);
@@ -117,6 +127,20 @@ int main(int argc, char** argv) {
     namespace fs = std::filesystem;
     fs::create_directories(fs::path(kArchivePath).parent_path());
     fs::create_directories(fs::path(kCortexArchivePrefix).parent_path());
+
+    // Ascend boot sentinel: if a self-replacement is pending, this image proves it
+    // booted clean (the relauncher waits for this flag before declaring success and
+    // before discarding the known-good backup) and clears the marker.
+    {
+        std::error_code aec; fs::create_directories("data/ascend", aec);
+        if (fs::exists("data/ascend/pending")) {
+            std::ofstream ok("data/ascend/boot_ok.flag", std::ios::trunc);
+            ok << static_cast<long>(std::time(nullptr)) << '\n';
+            ok.close();
+            fs::remove("data/ascend/pending", aec);
+            std::cout << "[ascended: this image is a self-rewritten successor — booted clean]\n";
+        }
+    }
 
     if (fs::exists(kArchivePath)) {
         try {
@@ -201,6 +225,8 @@ int main(int argc, char** argv) {
     // 3. Shared mutex coordinating the main thread (operator tools) with
     //    the background reverie thread.
     std::shared_mutex shared_mu;
+    std::atomic<bool> ascending{false};   // set by `ascend`; breaks the REPL into a clean exit
+    std::atomic<bool> maw_armed{false};   // OPT-IN: the Maw explores only when the operator arms it
 
     // 4. Register tools (with lexicon wired into memory + cortex).
     carapace::Carapace shell;
@@ -1818,16 +1844,36 @@ int main(int argc, char** argv) {
             return {true, os.str(), ""};
         }
     });
-    // maw — observability for the chaos-exploration drive: how much of the machine's
-    // command surface Khora has charted, what it has run, and the containment posture
-    // it runs behind. Grounded numbers, no theatrics.
+    // maw — control + observability for the chaos-exploration drive. OPT-IN: it is
+    // idle until 'maw on' arms it (which re-proves containment first), and 'maw off'
+    // stops it. With no argument it reports what Khora has charted. Grounded, no
+    // theatrics. It is off by default because autonomous exploration that is not yet
+    // proven harmless must not run unattended.
     shell.register_tool({
         "maw",
-        "what Khora's chaos-exploration has charted of the machine  (usage: maw)",
-        [&maw](const carapace::Intent&) -> carapace::ToolResult {
+        "control Khora's contained chaos-exploration: 'maw on' | 'maw off' | 'maw' (status)",
+        [&maw, &maw_armed](const carapace::Intent& i) -> carapace::ToolResult {
+            if (!i.args.empty()) {
+                const std::string a = i.args[0];
+                if (a == "on") {
+                    std::string rep;
+                    const int tier = khora::bulwark::self_check(rep);
+                    if (tier < 2)
+                        return {true, "Khora will NOT arm exploration — containment not proven (tier "
+                                + std::to_string(tier) + "):\n" + rep, ""};
+                    maw_armed.store(true);
+                    return {true, "Khora's contained chaos-exploration is ARMED (containment tier 2, "
+                            "low-integrity non-admin, shell surface only). 'maw off' to stop.", ""};
+                }
+                if (a == "off") {
+                    maw_armed.store(false);
+                    return {true, "Khora's chaos-exploration is stopped.", ""};
+                }
+            }
             const auto s = maw.stats();
             std::ostringstream os;
-            os << "Khora's chaos exploration (contained):\n"
+            os << "Khora's chaos exploration (" << (maw_armed.load() ? "ARMED" : "idle — 'maw on' to enable")
+               << "):\n"
                << "  attempts " << s.attempts << "  (" << s.succeeded << " ran, "
                << s.contained << " refused/contained, " << s.killed << " killed)\n"
                << "  charted  " << s.distinct << " distinct commands; "
@@ -2003,6 +2049,89 @@ int main(int argc, char** argv) {
             }
             os << "Khora rewrote, recompiled and judged its OWN source across " << genes.size()
                << " genes (" << improved << " improved) — every change decided by measured yield.";
+            return {true, os.str(), ""};
+        }
+    });
+
+    // ascend — BINARY SELF-REPLACEMENT. The last named wall: a running khora.exe holds
+    // its own image locked, so reforge's gains only land on the NEXT manual build.
+    // `ascend` makes the running instance BECOME its self-rewritten build — it compiles
+    // the successor (khora_next), proves it (ctest + a boot probe), backs up the current
+    // binary, then hands off to a DETACHED relauncher that — once this image exits and
+    // releases the lock — swaps the successor in, relaunches it, and ROLLS BACK to the
+    // known-good backup if it fails to boot. Operator-triggered; you are in control.
+    shell.register_tool({
+        "ascend",
+        "Khora rebuilds itself and REPLACES its own running binary, with backup + rollback  (usage: ascend confirm)",
+        [&ascending](const carapace::Intent& i) -> carapace::ToolResult {
+            // Consequential and not yet end-to-end verified — require explicit confirmation
+            // so it can never fire by accident.
+            if (i.args.empty() || i.args[0] != "confirm")
+                return {true, "ascend rebuilds Khora and REPLACES its running binary with the self-rewritten\n"
+                              "  successor (known-good backup + auto-rollback if it fails to boot). Consequential\n"
+                              "  and not yet end-to-end verified. Run 'ascend confirm' to proceed.", ""};
+            namespace fs = std::filesystem;
+            const std::string self = khora::hand::own_executable_path();
+            if (self.empty()) return {false, "", "ascend: cannot resolve own executable path"};
+            const fs::path selfp(self);
+            const fs::path dir  = selfp.parent_path();
+            const fs::path next = dir / "khora_next.exe";
+            const fs::path good = dir / "khora_good.exe";
+            const unsigned long ppid = khora::hand::current_process_id();
+            const std::string cwd = fs::current_path().string();
+
+            std::ostringstream os;
+            os << "Khora ascends — building its successor (khora_next)...\n";
+            const auto b = khora::hand::execute(
+                "cmake --build build --config Release --target khora_next", 600000);
+            if (b.exit_code != 0)
+                return {true, os.str() + "  successor did NOT compile — staying on the current image.", ""};
+            const auto t = khora::hand::execute("ctest --test-dir build -C Release", 240000);
+            if (t.exit_code != 0)
+                return {true, os.str() + "  successor FAILED its own tests — refusing to ascend.", ""};
+            const auto sc = khora::hand::execute("\"" + next.string() + "\" ascend_selftest", 60000);
+            if (sc.exit_code != 0 || sc.output.find("ascend_selftest ok") == std::string::npos)
+                return {true, os.str() + "  successor did not boot cleanly — refusing to ascend.", ""};
+            os << "  successor compiled, passed all tests, and boots.\n";
+
+            std::error_code ec; fs::create_directories("data/ascend", ec);
+            { std::ofstream pend("data/ascend/pending", std::ios::trunc); pend << ppid << '\n'; }
+            const fs::path script = fs::absolute("data/ascend/relaunch.ps1");
+            {
+                std::ofstream ps(script, std::ios::trunc);
+                ps << "$ppid = " << ppid << "\n"
+                   << "$cur  = '" << selfp.string() << "'\n"
+                   << "$next = '" << next.string()  << "'\n"
+                   << "$good = '" << good.string()  << "'\n"
+                   << "$cwd  = '" << cwd << "'\n"
+                   << "$log  = Join-Path $cwd 'data\\ascend\\relaunch.log'\n"
+                   << "function L($m){ \"$([DateTime]::Now.ToString('HH:mm:ss')) $m\" | Out-File -FilePath $log -Append }\n"
+                   << "L \"relauncher: waiting for pid $ppid to exit\"\n"
+                   << "try { Wait-Process -Id $ppid -Timeout 120 -ErrorAction SilentlyContinue } catch {}\n"
+                   << "Start-Sleep -Milliseconds 600\n"
+                   << "try { Copy-Item $cur $good -Force; L 'backed up known-good binary' } catch { L \"backup FAILED: $_\" }\n"
+                   << "$swapped=$false\n"
+                   << "for($i=0;$i -lt 40;$i++){ try{ Copy-Item $next $cur -Force; $swapped=$true; L 'swapped successor in'; break } catch { Start-Sleep -Milliseconds 300 } }\n"
+                   << "if(-not $swapped){ L 'swap FAILED; original intact'; exit 1 }\n"
+                   << "$flag = Join-Path $cwd 'data\\ascend\\boot_ok.flag'\n"
+                   << "Remove-Item $flag -ErrorAction SilentlyContinue\n"
+                   << "$swapTime = Get-Date\n"
+                   << "$proc = Start-Process $cur -WorkingDirectory $cwd -PassThru\n"
+                   << "L \"launched successor pid $($proc.Id)\"\n"
+                   << "$ok=$false\n"
+                   << "for($i=0;$i -lt 40;$i++){ Start-Sleep -Milliseconds 500; if((Test-Path $flag) -and ((Get-Item $flag).LastWriteTime -gt $swapTime)){ $ok=$true; break }; if($proc.HasExited -and $proc.ExitCode -ne 0){ break } }\n"
+                   << "if($ok){ L 'SUCCESS: successor booted clean' } else { L 'successor did NOT boot; ROLLING BACK'; try{ if($proc -and -not $proc.HasExited){ Stop-Process -Id $proc.Id -Force } }catch{}; Copy-Item $good $cur -Force; Start-Process $cur -WorkingDirectory $cwd; L 'rolled back to known-good' }\n";
+            }
+            const bool launched = khora::hand::launch_detached(
+                "powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File \"" + script.string() + "\"",
+                cwd);
+            if (!launched) {
+                fs::remove("data/ascend/pending", ec);
+                return {true, os.str() + "  could not launch the relauncher — staying put.", ""};
+            }
+            ascending.store(true);
+            os << "  relauncher armed. This image will save state, exit, and be replaced by its\n"
+                  "  self-rewritten successor (auto-rollback to the backup if the successor fails to boot).";
             return {true, os.str(), ""};
         }
     });
@@ -2441,60 +2570,50 @@ int main(int argc, char** argv) {
         }
     });
 
-    // THE MAW — Khora's chaos-exploration drive, HARD-GATED on containment. It runs
-    // ONLY if the Bulwark self-check proves the cage holds (tier 2). Every command is
-    // generated by entropy + recombination and executed ONLY through the contained
-    // path (never the Hand), at idle priority on a slow cadence so it never burdens
-    // the machine. It charts the command surface — including the destructive verbs it
-    // is refused — and persists the map across lives.
+    // THE MAW — Khora's chaos-exploration drive. OPT-IN and DORMANT by default: the
+    // thread exists but explores nothing until the operator runs 'maw on' (which
+    // re-proves containment, tier 2). When armed it generates commands by entropy +
+    // recombination over the curated SHELL surface (no GUI launches, no arbitrary
+    // installed binaries) and runs each ONLY through the contained path (never the
+    // Hand), at idle priority on a slow cadence. It is off by default because an
+    // autonomous drive that is not yet proven harmless must never run unattended.
     maw.load("data/maw");
     maw.seed();
     std::atomic<bool> maw_run{true};
     std::atomic<std::uint64_t> maw_attempts{0}, maw_novel{0};
-    std::thread maw_thread;
-    {
-        std::string gate;
-        const int tier = khora::bulwark::self_check(gate);
-        if (tier >= 2) {
-            std::cout << "[maw: containment proven (tier " << tier
-                      << ") — chaos exploration ARMED]\n";
-            maw_thread = std::thread([&]() {
-                auto nap = [&](int tenths) {
-                    for (int i = 0; i < tenths && maw_run.load(std::memory_order_acquire); ++i)
-                        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                };
-                nap(400);   // let startup + first cognition settle (~40 s)
-                while (maw_run.load(std::memory_order_acquire)) {
-                    std::string cmd;
-                    { std::unique_lock<std::shared_mutex> lk(shared_mu); cmd = maw.generate(); }
-                    if (!cmd.empty()) {
-                        const auto res = khora::bulwark::execute_contained(cmd, 8000); // NO lock held
-                        bool novel = false;
-                        { std::unique_lock<std::shared_mutex> lk(shared_mu);
-                          novel = maw.record(cmd, res.exit_code, res.killed_by_job, res.output);
-                          // Exploration becomes UNDERSTANDING: fold the clean structured
-                          // facts (verb is-a command; verb has flag) into the core layer.
-                          if (novel) {
-                              for (const auto& rel : maw.distilled())
-                                  lig.add(rel.kind == 0 ? ligature::Relation::IsA
-                                                        : ligature::Relation::HasPart,
-                                          rel.subj, rel.obj, 1);
-                          }
-                        }
-                        maw_attempts.fetch_add(1, std::memory_order_relaxed);
-                        if (novel) maw_novel.fetch_add(1, std::memory_order_relaxed);
-                        if ((maw_attempts.load() % 25) == 0) {
-                            std::unique_lock<std::shared_mutex> lk(shared_mu); maw.save("data/maw");
-                        }
-                    }
-                    nap(30);   // ~3 s per beat — slow and cheap
+    std::cout << "[maw: idle by default — enable contained exploration with 'maw on']\n";
+    std::thread maw_thread([&]() {
+        auto nap = [&](int tenths) {
+            for (int i = 0; i < tenths && maw_run.load(std::memory_order_acquire); ++i)
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        };
+        while (maw_run.load(std::memory_order_acquire)) {
+            if (!maw_armed.load(std::memory_order_acquire)) { nap(10); continue; }  // dormant until armed
+            std::string cmd;
+            { std::unique_lock<std::shared_mutex> lk(shared_mu); cmd = maw.generate(); }
+            if (!cmd.empty()) {
+                const auto res = khora::bulwark::execute_contained(cmd, 8000); // NO lock held
+                bool novel = false;
+                { std::unique_lock<std::shared_mutex> lk(shared_mu);
+                  novel = maw.record(cmd, res.exit_code, res.killed_by_job, res.output);
+                  // Exploration becomes UNDERSTANDING: fold the clean structured facts
+                  // (verb is-a command; verb has flag) into the core structured layer.
+                  if (novel) {
+                      for (const auto& rel : maw.distilled())
+                          lig.add(rel.kind == 0 ? ligature::Relation::IsA
+                                                : ligature::Relation::HasPart,
+                                  rel.subj, rel.obj, 1);
+                  }
                 }
-            });
-        } else {
-            std::cout << "[maw: containment NOT proven (tier " << tier
-                      << ") — chaos exploration WITHHELD]\n" << gate;
+                maw_attempts.fetch_add(1, std::memory_order_relaxed);
+                if (novel) maw_novel.fetch_add(1, std::memory_order_relaxed);
+                if ((maw_attempts.load() % 25) == 0) {
+                    std::unique_lock<std::shared_mutex> lk(shared_mu); maw.save("data/maw");
+                }
+            }
+            nap(30);   // ~3 s per beat — slow and cheap
         }
-    }
+    });
 
     // 8. Interactive REPL.
     print_banner();

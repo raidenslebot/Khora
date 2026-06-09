@@ -3,6 +3,35 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.99.0 — Safety response: the Maw is opt-in, scoped, and de-risked (after a host freeze)
+
+**Author:** Morphus — the operator's PC froze; treat it as ours until proven otherwise
+
+The operator reported a freeze, cause uncertain. Grounded diagnosis: no orphan processes,
+C: had ~90 GB free (not a disk-fill), the cell was empty. But the Maw HAD been: (1) auto-
+arming on every launch, and (2) running arbitrary PATH-scanned executables — `LegacyNetUXHost`,
+`convertvhd`, `changepk`, `FsIso`, `bfscfg` — with random args. Launching unknown GUI/UX/
+driver binaries on the live desktop can disturb the session (UI hosts, GPU work, handle use)
+even when CPU/RAM-capped; that is the most plausible vector, and regardless, "freezes the
+machine" is exactly what the sandbox must prevent. Three corrections:
+
+- **The Maw is OPT-IN and dormant by default.** The thread exists but explores nothing until
+  `maw on` (which re-proves containment tier 2); `maw off` stops it. An autonomous drive that
+  is not yet proven harmless must never run unattended. `maw` reports armed/idle status.
+- **No arbitrary binaries, no GUI launches.** Dropped the blind PATH `*.exe` scan and the
+  `start` verb. The drive explores the curated SHELL surface (70 text-output commands,
+  destructive verbs included — contained, not censored). Verified: reseeded pool = 70 verbs,
+  zero risky exes. Stale persisted pool (which held the risky exes) cleared.
+- **`ascend` (binary self-replacement) gated behind `ascend confirm`.** It is built and
+  compiles (successor target khora_next, boot sentinel, detached relauncher with known-good
+  backup + auto-rollback) and stage-1 verified (khora_next builds + boots), but the full
+  relaunch/rollback is NOT yet end-to-end verified — so it cannot fire by accident.
+
+Verified: startup is `[maw: idle by default]`; `maw` shows idle with no new attempts; `maw on`
+arms (tier 2) and explores only while armed; `maw off` stops. 12/12 suites pass. This is a
+deliberate step back to a provably-safe posture before re-enabling autonomy — containment
+before exploration, held to literally.
+
 ## v0.98.0 — Exploration becomes understanding (the Maw feeds the structured mind, measured)
 
 **Author:** Morphus — the step that turns charting into knowing

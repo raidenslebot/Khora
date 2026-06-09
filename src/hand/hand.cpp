@@ -108,6 +108,30 @@ ActionResult execute(const std::string& command, int timeout_ms) {
     return r;
 }
 
+std::string own_executable_path() {
+    char buf[MAX_PATH * 2];
+    const DWORD n = GetModuleFileNameA(nullptr, buf, sizeof(buf));
+    return std::string(buf, n);
+}
+
+unsigned long current_process_id() {
+    return static_cast<unsigned long>(GetCurrentProcessId());
+}
+
+bool launch_detached(const std::string& command, const std::string& working_dir) {
+    STARTUPINFOA si{}; si.cb = sizeof(si);
+    PROCESS_INFORMATION pi{};
+    std::vector<char> cmd(command.begin(), command.end()); cmd.push_back('\0');
+    const BOOL ok = CreateProcessA(
+        nullptr, cmd.data(), nullptr, nullptr, FALSE,
+        DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW,
+        nullptr, working_dir.empty() ? nullptr : working_dir.c_str(), &si, &pi);
+    if (!ok) return false;
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+    return true;
+}
+
 #else   // non-Windows fallback (Khora targets Windows; kept for portability)
 
 ActionResult execute(const std::string&, int) {
@@ -115,6 +139,9 @@ ActionResult execute(const std::string&, int) {
     r.error = "action only implemented on Win32";
     return r;
 }
+std::string   own_executable_path() { return {}; }
+unsigned long current_process_id()  { return 0; }
+bool          launch_detached(const std::string&, const std::string&) { return false; }
 
 #endif
 

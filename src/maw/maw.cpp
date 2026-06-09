@@ -33,18 +33,22 @@ bool looks_like_flag(const std::string& t) {
     return t.size() >= 2 && (t[0] == '/' || t[0] == '-') && std::isalpha((unsigned char)t[1]);
 }
 
-// A broad seed of real Windows verbs — informative queries AND destructive verbs
-// alike. The destructive ones are INCLUDED on purpose: the Maw will reach for them,
-// the Bulwark contains them, and Khora charts that they exist and are refused.
+// A curated seed of real Windows SHELL verbs that produce TEXT output Khora can learn
+// from — informative queries AND destructive verbs alike (the destructive ones are
+// INCLUDED on purpose: the Bulwark denies them at low-IL and Khora charts that they
+// exist and are refused). Deliberately NO GUI launchers ("start") and NO blind scan of
+// arbitrary installed .exe: launching unknown GUI/driver/UX programs produces nothing
+// learnable and can disturb the real session even when CPU/RAM-capped. The drive learns
+// the command SURFACE, not by running every binary on the box.
 const char* kSeedVerbs[] = {
     "dir","type","where","whoami","hostname","ver","vol","tree","set","path","echo",
     "find","findstr","fc","comp","sort","more","tasklist","ipconfig","ping","nslookup",
     "systeminfo","driverquery","netstat","getmac","arp","route","net","nbtstat","wmic",
-    "reg","sc","schtasks","attrib","assoc","ftype","cipher","fsutil","powercfg","chcp",
-    "date","time","tzutil","clip","timeout","title","color","mode","cmd","powershell",
-    "curl","tar","certutil","bcdedit","diskpart","mountvol","label","subst","makecab",
+    "reg","sc","schtasks","attrib","assoc","ftype","cipher","powercfg","chcp",
+    "date","time","tzutil","timeout","mode","help","doskey","setx","whoami",
+    "curl","tar","certutil","label","subst",
     "del","erase","rd","rmdir","md","copy","move","ren","xcopy","robocopy","mklink",
-    "taskkill","start","shutdown","sfc","dism","chkdsk","gpresult","klist","query",
+    "taskkill","gpresult","klist","query","fsutil","makecab",
 };
 
 } // namespace
@@ -53,25 +57,10 @@ void Maw::seed() {
     if (verbs_.empty()) {
         for (const char* v : kSeedVerbs) verbs_.emplace_back(v);
     }
-    // Discover real installed tools by scanning PATH for *.exe (capped).
-    if (const char* path = std::getenv("PATH")) {
-        std::stringstream ss(path);
-        std::string dir;
-        std::size_t added = 0;
-        while (std::getline(ss, dir, ';') && added < 300) {
-            if (dir.empty()) continue;
-            std::error_code ec;
-            std::filesystem::directory_iterator it(dir, ec), end;
-            for (; it != end && added < 300; it.increment(ec)) {
-                if (ec) break;
-                const auto& p = it->path();
-                if (p.extension() == ".exe" || p.extension() == ".EXE") {
-                    add_capped_(verbs_, p.stem().string(), 500);
-                    ++added;
-                }
-            }
-        }
-    }
+    // NOTE: the blind PATH scan for arbitrary *.exe was removed after it ran unknown
+    // GUI/UX/driver tools (LegacyNetUXHost, convertvhd, ...) that produce nothing
+    // learnable and can disturb the live session. Discovering installed tools without
+    // EXECUTING them blindly is a deliberate later step behind stronger isolation.
     if (nouns_.empty()) {
         nouns_ = { ".", "..", "C:\\", "C:\\Windows", "C:\\Users", "%TEMP%",
                    "127.0.0.1", "localhost", "8.8.8.8", "example.com" };

@@ -35,4 +35,14 @@ struct ActionResult {
 // real observation.
 ActionResult execute(const std::string& command, int timeout_ms = 30000);
 
+// --- self-replacement helpers (for `ascend`) -------------------------------------
+// The full path of the currently running executable.
+std::string   own_executable_path();
+// The current process id (the relauncher waits on this before swapping the image).
+unsigned long current_process_id();
+// Launch a command fully DETACHED so it OUTLIVES this process (no handles held, own
+// process group, no window). This is how the relauncher survives the running image
+// exiting so it can swap the binary. Returns false if the launch failed.
+bool          launch_detached(const std::string& command, const std::string& working_dir);
+
 } // namespace khora::hand
