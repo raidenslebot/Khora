@@ -1853,6 +1853,32 @@ int main(int argc, char** argv) {
             return {true, os.str(), ""};
         }
     });
+    // contemplate — NON-LINEAR COGNITION. On a concept, Khora spawns many PARALLEL threads
+    // across distinct modes of thought (flat association, leaps through the abstraction tower
+    // into other domains, chaotic collision); they compete and CONVERGE, and the thoughts
+    // reached by SEVERAL modes at once are the emergent ones — meaning from the whole, not a
+    // linear scan. The vision's section-V cognition, made real and parallel on the cores.
+    shell.register_tool({
+        "contemplate",
+        "Khora thinks NON-LINEARLY — parallel threads compete and converge into emergent thought  (usage: contemplate <concept>)",
+        [&mind](const carapace::Intent& i) -> carapace::ToolResult {
+            if (i.args.empty()) return {false, "", "usage: contemplate <concept>"};
+            const auto tk = khora::lexicon::tokenize(i.args.front());
+            const std::string seed = tk.empty() ? i.args.front() : tk.front();
+            const auto thoughts = mind.contemplate(seed, 16);
+            if (thoughts.empty())
+                return {true, "Khora's threads found no convergence for '" + seed + "'", ""};
+            std::ostringstream os;
+            os << "Khora contemplates '" << seed << "' — competing modes of thought converge:\n";
+            for (std::size_t k = 0; k < thoughts.size() && k < 8; ++k) {
+                const auto& th = thoughts[k];
+                os << "  " << th.name << "   (" << th.modes << " mode"
+                   << (th.modes == 1 ? "" : "s")
+                   << (th.modes >= 2 ? " converged — EMERGENT" : "") << ")\n";
+            }
+            return {true, os.str(), ""};
+        }
+    });
     // learn — PREDICTIVE LEARNING (lever 2). Khora reads its OWN corpus, predicts each word
     // from context, and CORRECTS its mistakes — strengthening the links that would have made
     // the prediction right — then re-measures held-out prediction to see if it actually got

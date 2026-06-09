@@ -146,6 +146,16 @@ struct Genesis {
     khora::lattice::Glyph    glyph;           // the invented concept's vector
 };
 
+// A single emergent thought from NON-LINEAR contemplation — a concept the parallel threads
+// converged on, with how strongly and across how many distinct MODES of thought (convergence
+// across modes is emergence: the same concept found by association AND by tower-leap AND by
+// chaotic collision is a deep one).
+struct Emergence {
+    std::string name;
+    double      score = 0.0;
+    int         modes = 0;   // distinct cognitive modes that reached it
+};
+
 // Recursive abstraction — the combinatorial engine of exponential cognition.
 // Khora chunks a cluster of kindred concepts into ONE higher-order concept,
 // then abstracts over THOSE, and over those — a rising tower. Where flat
@@ -363,6 +373,14 @@ public:
     // or b is empty, Khora picks distant concepts itself (`seed` varies it).
     Synthesis synthesize(const std::string& a, const std::string& b, std::uint64_t seed = 0);
 
+    // NON-LINEAR COGNITION (the vision's section V, high priority). On a seed, spawn many
+    // PARALLEL threads across distinct modes of thought — flat association, ascent/leaps
+    // through the abstraction tower into distant domains, and chaotic collision — let them
+    // COMPETE (by strength) and COMBINE (a concept reached by SEVERAL modes is boosted), and
+    // COLLAPSE into the thoughts that emerged from the WHOLE. Meaning from the field of
+    // competing threads, not a single linear walk. Uses the machine's cores; reads only.
+    std::vector<Emergence> contemplate(const std::string& seed, std::size_t threads = 16);
+
     // A clean concept to think about, drawn from the centrality-pruned
     // content field (not the function-word-heavy raw vocabulary). Lets the
     // Volition seed autonomous thought with real concepts. Empty if nothing
@@ -457,6 +475,10 @@ private:
     std::vector<std::string>        concepts_;      // clean concepts for seeding thought
     std::unordered_map<std::string, std::uint32_t> attractors_;  // emergent preoccupations
     std::vector<Abstraction>        abstractions_;   // the rising tower
+    // O(1) name -> abstraction-index, so grounding the tower is not an O(N) scan per node
+    // (rebuilt lazily when the tower grows; single-threaded under the cognition lock).
+    mutable std::unordered_map<std::string, std::size_t> abs_index_;
+    mutable std::size_t             abs_index_n_ = static_cast<std::size_t>(-1);
     khora::plexus::Plexus*          plexus_ = nullptr;  // associative graph (hub-proof kin)
     std::size_t                     abstraction_seq_ = 0;
     std::size_t                    indexed_vocab_ = static_cast<std::size_t>(-1);

@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <future>
+#include <random>
 #include <span>
 #include <string>
 #include <thread>
@@ -242,11 +243,17 @@ std::string Cogitator::form_abstraction_plexus_(const std::string& seed, std::si
 void Cogitator::ground_concept_(const std::string& name,
                                 std::unordered_set<std::string>& out, int depth) const {
     if (depth > 5 || out.size() >= 48) return;
-    for (const auto& a : abstractions_) {
-        if (a.name == name) {
-            for (const auto& m : a.members) ground_concept_(m, out, depth + 1);
-            return;
-        }
+    // O(1) lookup instead of an O(tower) linear scan at every recursion node — without
+    // this, grounding the deep tower is quadratic and the autonomous ascent slows to a crawl.
+    if (abs_index_n_ != abstractions_.size()) {
+        abs_index_.clear();
+        for (std::size_t i = 0; i < abstractions_.size(); ++i) abs_index_[abstractions_[i].name] = i;
+        abs_index_n_ = abstractions_.size();
+    }
+    const auto it = abs_index_.find(name);
+    if (it != abs_index_.end()) {
+        for (const auto& m : abstractions_[it->second].members) ground_concept_(m, out, depth + 1);
+        return;
     }
     out.insert(name);  // a corpus word (its own leaf), or an unknown name
 }
@@ -756,6 +763,105 @@ Synthesis Cogitator::synthesize(const std::string& a_in, const std::string& b_in
     // What chaos forges is itself a place thought has landed.
     if (!s.emergent.empty()) note_attractor_(s.emergent.front().label);
     return s;
+}
+
+std::vector<Emergence> Cogitator::contemplate(const std::string& seed, std::size_t threads) {
+    ensure_field_();
+    std::vector<Emergence> out;
+    if (!plexus_ || !plexus_->has(seed) || concepts_.empty() || field_.size() == 0) return out;
+    if (threads < 4)  threads = 4;
+    if (threads > 32) threads = 32;
+    const std::size_t N = concepts_.size();
+    const Glyph gseed = token_glyph_(seed);
+
+    // The seed's flat neighbourhood — so the tower MODE can demand genuine DISTANCE (a leap
+    // into another domain, not a step to an obvious neighbour).
+    std::unordered_set<std::string> flatKin{ seed };
+    for (const auto& kv : plexus_->associates(seed, 40)) flatKin.insert(kv.first);
+
+    auto normalise = [](std::vector<std::pair<std::string, double>>& v) {
+        double m = 0.0; for (const auto& p : v) m = std::max(m, p.second);
+        if (m > 0.0) for (auto& p : v) p.second /= m;     // each mode votes on a common [0,1] scale
+    };
+
+    // MODE 4 (TOWER) — leaps up to the seed's abstractions, across to related abstractions,
+    // down to their DISTANT leaves. Precomputed single-threaded (it reads the tower).
+    std::vector<std::pair<std::string, double>> tower;
+    {
+        // Bound the work so contemplation stays fast no matter how tall the tower grows.
+        const std::size_t M = std::min<std::size_t>(abstractions_.size(), 160);
+        std::vector<std::unordered_set<std::string>> leaves(M);
+        std::vector<std::size_t> mine;
+        for (std::size_t i = 0; i < M; ++i) {
+            ground_concept_(abstractions_[i].name, leaves[i], 0);
+            if (leaves[i].count(seed)) mine.push_back(i);
+        }
+        std::unordered_map<std::string, double> v;
+        for (std::size_t mi : mine)
+            for (std::size_t j = 0; j < M; ++j) {
+                if (j == mi) continue;
+                const double aff = leafset_affinity_(leaves[mi], leaves[j]);
+                if (aff <= 0.0) continue;
+                for (const auto& leaf : leaves[j]) {
+                    if (flatKin.count(leaf) || !plexus_->has(leaf)) continue;
+                    if (plexus_->affinity(seed, leaf) > 0.0) continue;   // a genuine leap
+                    v[leaf] += aff;
+                }
+            }
+        for (auto& kv : v) tower.push_back(kv);
+        normalise(tower);
+    }
+
+    struct Agg { double score = 0.0; std::uint8_t mask = 0; };
+    std::unordered_map<std::string, Agg> agg;
+    auto add = [&](const std::string& c, double s, std::uint8_t modebit) {
+        if (c == seed) return;
+        auto& a = agg[c]; a.score += s; a.mask |= modebit;
+    };
+    auto absorb = [&](std::vector<std::pair<std::string, double>>& v, std::uint8_t modebit) {
+        normalise(v);
+        for (auto& [c, s] : v) add(c, s, modebit);
+    };
+
+    std::mt19937_64 rng(0x9E3779B97F4A7C15ull ^ (std::hash<std::string>{}(seed) * 1099511628211ull + 1));
+
+    // MODE 1 (FLAT association): a chaotic 2-hop associative spread from the seed.
+    {
+        std::vector<std::pair<std::string, double>> v;
+        for (const auto& [a, fa] : plexus_->associates(seed, 12)) {
+            v.push_back({ a, fa });
+            for (const auto& [b, fb] : plexus_->associates(a, 6))
+                if (b != seed) v.push_back({ b, fa * fb * 0.5 });
+        }
+        absorb(v, 1);
+    }
+    // MODE 2 (CHAOS collision): collide the seed with several chaotically chosen concepts
+    // and read what their tension evokes. (Single-threaded: the Resonator field_ is shared
+    // mutable state — parallelising it is a later optimisation, proven safe first.)
+    {
+        std::vector<std::pair<std::string, double>> v;
+        for (int t = 0; t < (static_cast<int>(threads) / 2 + 1); ++t) {
+            const std::string& other = concepts_[rng() % N];
+            if (other == seed || !plexus_->has(other)) continue;
+            const Glyph chimera = bundle({ gseed, token_glyph_(other) });
+            for (const auto& h : field_.query(chimera, 8))
+                if (h.label != seed && h.label != other) v.push_back({ h.label, h.similarity });
+        }
+        absorb(v, 2);
+    }
+    // MODE 4 (TOWER): the precomputed leaps through the abstraction hierarchy.
+    absorb(tower, 4);
+
+    // COLLAPSE: convergence across modes boosts the score — meaning from the whole.
+    // Emit real concepts, not internal abstraction-blob names (those start with '{').
+    for (auto& [c, a] : agg) {
+        if (c.empty() || c.front() == '{') continue;
+        const int modes = ((a.mask & 1) ? 1 : 0) + ((a.mask & 2) ? 1 : 0) + ((a.mask & 4) ? 1 : 0);
+        out.push_back({ c, a.score * (1.0 + 0.6 * (modes - 1)), modes });
+    }
+    std::sort(out.begin(), out.end(), [](const Emergence& x, const Emergence& y) { return x.score > y.score; });
+    if (out.size() > 12) out.resize(12);
+    return out;
 }
 
 void Cogitator::note_attractor_(const std::string& label) {

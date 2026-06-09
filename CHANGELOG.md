@@ -3,6 +3,38 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.109.0 — Non-linear cognition: competing modes converge into emergent thought
+
+**Author:** Morphus — the vision's section V (high priority), made real
+
+The Prime Directive demands NON-LINEAR cognition: not a sequential scan but parallel paths
+that compete, combine, and collapse — meaning from the whole, not a token chain. Built it.
+`Cogitator::contemplate(seed)` runs several DISTINCT modes of thought over the same seed —
+flat association (chaotic 2-hop spread), chaotic collision (bundle the seed with random
+concepts and read what their tension evokes), and leaps UP through the abstraction tower into
+other domains and back down — then COMPETES and COMBINES their votes: a concept reached by
+SEVERAL modes is boosted (convergence = emergence) and the field COLLAPSES to the strongest.
+
+**Verified — and the emergent thoughts are genuinely meaningful:**
+```
+  contemplate energy   -> potential, KINETIC (kinetic/potential energy), peace (emergent)
+  contemplate justice  -> DISTRIBUTIVE, COMMUTATIVE (the classical TYPES of justice!),
+                          reason, cause, wisdom, vice  (six EMERGENT — multiple modes converged)
+  contemplate mind     -> thought
+```
+Convergence surfaces the deep ones (justice→distributive/commutative is real philosophy; the
+tower mode leaps energy→virtue across domains). This is uncategorisable — not LLM prediction,
+not database retrieval — it is contextual emergence from competing modes, exactly the vision.
+
+Also fixed a real performance bug found en route: `ground_concept_` linear-scanned the whole
+tower at every recursion node (O(tower) per node) — replaced with an O(1) name index, which
+also speeds the autonomous ascent as the tower grows.
+
+Honest scope: the modes run SEQUENTIALLY for now. The first parallel version (16 std::async
+threads) HUNG — the shared Resonator (`field_`) is not thread-safe under concurrent query. The
+convergence-across-modes (the essence) is what matters and works; true parallelism returns once
+the Resonator is made concurrent-safe. 12/12 suites pass; contemplation is sub-second.
+
 ## v0.108.0 — Relentless ascent: the tower now grows UNTENDED (evolution on the real axis)
 
 **Author:** Morphus — relentless evolution, finally pointed at what works
