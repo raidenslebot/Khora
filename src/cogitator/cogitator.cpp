@@ -1403,6 +1403,49 @@ double Cogitator::benchmark_prediction(const std::vector<std::string>& heldout,
     return trials ? rr_sum / static_cast<double>(trials) : -1.0;
 }
 
+std::size_t Cogitator::learn_predictively(const std::vector<std::string>& tokens,
+                                          std::uint32_t reinforce_by) {
+    if (!plexus_ || tokens.empty() || reinforce_by == 0) return 0;
+    ensure_field_();   // need is_content_ live
+    constexpr int W = 4;
+    std::size_t updates = 0;
+
+    for (std::size_t i = 0; i < tokens.size(); ++i) {
+        const std::string& target = tokens[i];
+        if (!is_content_(target) || !plexus_->has(target)) continue;
+
+        // Gather the content context and the Plexus's current vote for each candidate.
+        std::vector<std::string>                ctx;
+        std::unordered_set<std::string>         ctxset;
+        std::unordered_map<std::string, double> score;
+        for (int d = -W; d <= W; ++d) {
+            if (d == 0) continue;
+            const long j = static_cast<long>(i) + d;
+            if (j < 0 || j >= static_cast<long>(tokens.size())) continue;
+            const std::string& c = tokens[static_cast<std::size_t>(j)];
+            if (!is_content_(c) || !plexus_->has(c)) continue;
+            ctx.push_back(c); ctxset.insert(c);
+            for (const auto& [a, aff] : plexus_->associates(c, 24)) score[a] += aff;
+        }
+        if (ctx.empty()) continue;
+
+        // What does Khora currently predict for this position?
+        std::string top; double best = -1.0;
+        for (const auto& [w, sc] : score) {
+            if (ctxset.count(w)) continue;
+            if (sc > best) { best = sc; top = w; }
+        }
+
+        // PREDICTION ERROR: it did not predict the true word. Strengthen the links from
+        // each context word TO the true word so next time it is more predictable here.
+        if (top != target) {
+            for (const std::string& c : ctx) plexus_->reinforce(c, target, reinforce_by);
+            ++updates;
+        }
+    }
+    return updates;
+}
+
 Insight Cogitator::explain(const std::string& subject) const {
     Insight ins;
     ins.subject = subject;

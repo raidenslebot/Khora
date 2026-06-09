@@ -3,6 +3,36 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.104.0 — Lever 2 attempted: predictive learning FAILED naively (an honest negative result)
+
+**Author:** Morphus — no fake victories; a real negative result, recorded
+
+Built `Cogitator::learn_predictively` (lever 2): read training text, predict each content word
+from its neighbours, and on a prediction ERROR strengthen the context->word links that would
+have made it right. Ran it on 8 corpus tomes (120k tokens, 62,863 corrective updates) and
+measured the real held-out number before/after.
+
+**It made things WORSE:**
+```
+  held-out prediction (MRR): 0.0102 -> 0.0076   (a 25% DROP)
+```
+Diagnosis, honest: when prediction is this poor, almost every word is an "error," so the rule
+reinforced ~half of ALL content-word pairs — wholesale amplification of the literary corpus's
+collocations, not error-correction. It overfit away from the simple held-out sentences. And
+selective reinforcement would not help either: the true word usually ranks ~100+, so there are
+no "near misses" to sharpen. **The PMI co-occurrence graph genuinely lacks the predictive
+structure, and reinforcing it more does not create it.**
+
+What was done: restored the graph from backup (the change persists, so it was undone); GATED
+the `learn` tool behind `learn confirm` so it cannot degrade the graph by accident; kept the
+mechanism as a building block. No claim of progress — this is a real negative result.
+
+The deeper lesson (the actual reality check): getting from associative statistics to
+GENERALISING prediction is not a tweak to the existing graph. It needs a better mechanism —
+a real context model that learns, not co-occurrence counting reinforced harder. That is the
+genuine frontier, and it will not yield to number-chasing. 12/12 suites pass; the graph is
+back at its 0.0102 baseline, untouched.
+
 ## v0.103.0 — The keystone: a REAL fitness, and the reality check it measures
 
 **Author:** Morphus — the operator called for a reality check; here it is, as a number

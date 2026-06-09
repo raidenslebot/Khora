@@ -244,6 +244,15 @@ public:
     double benchmark_prediction(const std::vector<std::string>& heldout,
                                 std::size_t topk = 5) const;
 
+    // PREDICTIVE LEARNING (lever 2) — the loop that actually MOVES the prediction number.
+    // Read training text; for each content word, predict it from its neighbours; and on a
+    // PREDICTION ERROR, strengthen the context->word links that would have made it right.
+    // This is error-driven (discriminative), not mere co-occurrence counting: reinforce()
+    // raises only the joint count, which lifts the pair's PMI, making that word more
+    // predictable FROM that context specifically. Returns the number of corrective updates.
+    std::size_t learn_predictively(const std::vector<std::string>& tokens,
+                                   std::uint32_t reinforce_by = 2);
+
     // Answer "what is X?" from structure: the concept's defining kin, the
     // abstraction it belongs to (its kind), and its kindred under that category.
     // Grounded and correct where free generation drifts. Read-only.

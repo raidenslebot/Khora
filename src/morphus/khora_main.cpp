@@ -1782,6 +1782,72 @@ int main(int argc, char** argv) {
             return {true, os.str(), ""};
         }
     });
+    // learn — PREDICTIVE LEARNING (lever 2). Khora reads its OWN corpus, predicts each word
+    // from context, and CORRECTS its mistakes — strengthening the links that would have made
+    // the prediction right — then re-measures held-out prediction to see if it actually got
+    // better at generalising. This is the loop that turns reading into real capability rather
+    // than mere correlation, and it climbs the one number that matters.
+    shell.register_tool({
+        "learn",
+        "Khora learns to PREDICT — trains on its corpus by correcting its own errors  (usage: learn [tomes])",
+        [&mind, &pool](const carapace::Intent& i) -> carapace::ToolResult {
+            // EXPERIMENTAL and currently HARMFUL — gated so it cannot degrade the graph by
+            // accident. In testing, naive predictive reinforcement DROPPED held-out prediction
+            // (0.0102 -> 0.0076): it overfits corpus collocations instead of creating
+            // generalising prediction, and it mutates the (persisted) graph. Preserved as a
+            // building block for a disciplined redesign, not as a working capability.
+            if (i.args.empty() || i.args[0] != "confirm")
+                return {true,
+                    "learn is EXPERIMENTAL and currently DEGRADES generalisation (held-out 0.0102 ->\n"
+                    "  0.0076 in testing): naive predictive reinforcement over the PMI graph overfits\n"
+                    "  rather than creating prediction, and it mutates the persisted graph. A disciplined\n"
+                    "  redesign is needed (regularised learning, a fair same-domain eval, likely a better\n"
+                    "  mechanism than reinforcing co-occurrence). Run 'learn confirm [tomes]' only with a backup.", ""};
+            std::size_t maxt = 6;
+            if (i.args.size() >= 2) { try { maxt = std::stoul(i.args[1]); } catch (...) {} }
+            if (maxt < 1)   maxt = 1;
+            if (maxt > 100) maxt = 100;
+
+            const std::vector<std::string> heldout = []() {
+                std::vector<std::string> toks; std::string cur;
+                std::ifstream hf("data/eval/heldout.txt", std::ios::binary);
+                if (hf) {
+                    std::ostringstream a; a << hf.rdbuf();
+                    for (const char ch : a.str()) {
+                        if (std::isalpha((unsigned char)ch)) cur += static_cast<char>(std::tolower((unsigned char)ch));
+                        else { if (cur.size() >= 2) toks.push_back(cur); cur.clear(); }
+                    }
+                    if (cur.size() >= 2) toks.push_back(cur);
+                }
+                return toks;
+            }();
+            if (heldout.empty()) return {true, "Khora has no held-out set to measure against", ""};
+
+            const double before = mind.benchmark_prediction(heldout, 5);
+
+            const auto cat = pool.catalog();
+            std::size_t updates = 0, trained = 0, toks_seen = 0;
+            for (std::size_t t = 0; t < cat.size() && trained < maxt; ++t) {
+                auto txt = pool.read(cat[t].title);
+                if (!txt) continue;
+                auto toks = khora::lexicon::tokenize(*txt);
+                if (toks.size() > 15000) toks.resize(15000);   // cap per tome
+                if (toks.empty()) continue;
+                updates += mind.learn_predictively(toks, 2);
+                toks_seen += toks.size();
+                ++trained;
+            }
+            const double after = mind.benchmark_prediction(heldout, 5);
+
+            std::ostringstream os;
+            os << "Khora learned to predict — corrected its errors over " << trained
+               << " tomes (" << toks_seen << " tokens, " << updates << " corrective updates):\n"
+               << "  held-out prediction (MRR): " << before << " -> " << after
+               << (after > before + 1e-9 ? "   (IMPROVED — it generalised to the unseen)"
+                                         : (after < before - 1e-9 ? "   (dropped)" : "   (no change)"));
+            return {true, os.str(), ""};
+        }
+    });
     // tune — SELF-IMPROVEMENT. Khora sweeps a reasoning parameter, MEASURES the
     // yield of each setting, and keeps the best — the first time a parameter is set
     // by measured downstream outcome rather than by a human. The root of the whole
