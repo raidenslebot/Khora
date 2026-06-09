@@ -7,6 +7,7 @@ target_link_libraries(khora PRIVATE
     khora::lexicon
     khora::plexus
     khora::ligature
+    khora::hand
     khora::cogitator
     khora::whetstone
     khora::reservoir

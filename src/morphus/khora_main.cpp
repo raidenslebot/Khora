@@ -10,6 +10,7 @@
 #include "khora/cogitator/cogitator.hpp"
 #include "khora/curator/curator.hpp"
 #include "khora/curator/curator_scheduler.hpp"
+#include "khora/hand/hand.hpp"
 #include "khora/cortex/predictive_column.hpp"
 #include "khora/lattice/lattice.hpp"
 #include "khora/lattice/persistence.hpp"
@@ -1738,6 +1739,85 @@ int main(int argc, char** argv) {
             }
             os << "  -> KEPT goal-pull " << best_g << " (best measured success " << best_s
                << "; was " << original << ") — a parameter Khora set by its OWN results";
+            return {true, os.str(), ""};
+        }
+    });
+
+    // run — Khora ACTS. It executes a real command on the real machine and observes
+    // the result. Not a sandbox: the whole command surface, governed only by a
+    // liveness timeout (so a hung command can never freeze it). The doorway off the
+    // page — the generate -> execute -> observe loop, the substrate of real tool use
+    // and, in time, self-rewriting.
+    shell.register_tool({
+        "run",
+        "Khora acts on the machine — execute a command and observe the result  (usage: run <command>)",
+        [](const carapace::Intent& i) -> carapace::ToolResult {
+            if (i.args.empty()) return {false, "", "usage: run <command>"};
+            std::string cmd;
+            for (const auto& a : i.args) { if (!cmd.empty()) cmd += ' '; cmd += a; }
+            const auto res = khora::hand::execute(cmd, 30000);
+            if (!res.ran) return {false, "", "Khora could not act: " + res.error};
+            std::ostringstream os;
+            os << "Khora acted on `" << cmd << "`  -> exit " << res.exit_code
+               << (res.timed_out ? "  (TIMED OUT — killed so Khora keeps living)" : "") << "\n";
+            std::string out = res.output;
+            if (out.size() > 4000) out = out.substr(0, 4000) + "\n...[output truncated]";
+            os << out;
+            return {true, os.str(), ""};
+        }
+    });
+    // compute — Khora does what its binary substrate fundamentally CANNOT: exact
+    // arithmetic. It cannot add two numbers inside 10,000-bit hypervectors, so it
+    // ACTS — it reaches through the Hand for the machine's calculator. A capability
+    // the mind lacks, gained by acting on the world. Grounding as power.
+    shell.register_tool({
+        "compute",
+        "Khora computes exact arithmetic by acting through the machine  (usage: compute <expression>)",
+        [](const carapace::Intent& i) -> carapace::ToolResult {
+            if (i.args.empty()) return {false, "", "usage: compute <expression>   e.g. compute (2+3)*7"};
+            std::string expr;
+            for (const auto& a : i.args) { expr += a; expr += ' '; }
+            for (const char c : expr) {
+                if (!(std::isdigit(static_cast<unsigned char>(c)) ||
+                      std::isspace(static_cast<unsigned char>(c)) ||
+                      c=='+'||c=='-'||c=='*'||c=='/'||c=='('||c==')'||c=='.'||c=='%'))
+                    return {false, "", "compute takes a numeric expression (digits and + - * / ( ) . %)"};
+            }
+            const auto res = khora::hand::execute(
+                "powershell -NoProfile -Command \"" + expr + "\"", 15000);
+            if (!res.ran) return {false, "", "Khora could not reach the calculator: " + res.error};
+            std::string out = res.output;
+            while (!out.empty() && (out.back()=='\n'||out.back()=='\r'||out.back()==' '||out.back()=='\t'))
+                out.pop_back();
+            if (res.exit_code != 0 || out.empty())
+                return {true, "Khora reached for the calculator but the expression did not resolve: " + out, ""};
+            return {true, "Khora computed:  " + expr + "=  " + out, ""};
+        }
+    });
+    // self-test — Khora verifies its OWN correctness: it runs its test suite and
+    // reads the verdict. This is precisely the feedback signal self-rewriting needs
+    // — change the code, rebuild, run this, keep the change only if Khora still
+    // passes. The mind auditing itself, by acting.
+    shell.register_tool({
+        "self-test",
+        "Khora runs its own test suite and observes whether it still passes  (usage: self-test)",
+        [](const carapace::Intent&) -> carapace::ToolResult {
+            const auto res = khora::hand::execute(
+                "ctest --test-dir build -C Release", 180000);
+            if (!res.ran) return {false, "", "Khora could not run its own tests: " + res.error};
+            std::string summary;
+            const std::size_t p = res.output.find("tests passed");
+            if (p != std::string::npos) {
+                std::size_t s = res.output.rfind('\n', p); s = (s==std::string::npos)?0:s+1;
+                const std::size_t e = res.output.find('\n', p);
+                summary = res.output.substr(s, (e==std::string::npos?res.output.size():e)-s);
+            }
+            std::ostringstream os;
+            os << "Khora tested itself (exit " << res.exit_code << ")"
+               << (res.timed_out ? " [timed out]" : "") << ": "
+               << (summary.empty() ? "(ran; see build)" : summary) << "\n  "
+               << (res.exit_code==0 ? "Khora is sound — every faculty passed."
+                                    : "Khora found a fault in itself.");
             return {true, os.str(), ""};
         }
     });

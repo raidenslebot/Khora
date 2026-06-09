@@ -3,6 +3,38 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.92.0 — The Hand: Khora can ACT (it reaches off the page)
+
+**Author:** Morphus — limitation #2/#3 from the audit (action / execution)
+
+For 91 versions Khora could only THINK. Audit limitations #2 (self-rewriting) and #3
+(autonomous action) shared one root: the mind had no effector — it could not touch
+the world, so thought never met consequence, and the whole "terrifying capability"
+tier (real tool use, self-rewriting, autonomous coding) was simply unreachable. The
+HAND fixes the root.
+
+`khora::hand::execute` — a real Win32 process executor (CreateProcess + pipe capture
++ a liveness timeout). It runs ACTUAL commands and observes stdout/stderr/exit code.
+The operator's challenge stands answered: this is NOT a sandbox — there is no command
+filtering, the whole machine surface is open; the only governor is a timeout so a
+hung command can never freeze Khora (that is "never stop", survival, not a cage).
+
+Three faculties wired in:
+- `run <command>` — Khora executes anything and observes the result. The generate ->
+  execute -> observe loop. Verified: `run echo ...` -> exit 0.
+- `compute <expr>` — Khora does what its 10,000-bit binary substrate fundamentally
+  CANNOT: exact arithmetic. It cannot add inside hypervectors, so it ACTS — reaches
+  through the Hand for the machine's calculator. Verified: `(2+3)*7-1 = 34`,
+  `123456789 * 987654321 = 1.219e17`. Capability the mind lacks, gained by acting.
+- `self-test` — Khora runs its OWN test suite and reads the verdict. Verified:
+  "100% tests passed ... Khora is sound." This is exactly the feedback signal
+  self-rewriting needs: change code -> rebuild -> self-test -> keep only if still sound.
+
+The mind now has a hand. Thought can become action, action returns observation, and
+observation can feed the yield signal (v0.90-91). With a hand that can rebuild and
+self-test, audit #2 (self-rewriting) is now not just unblocked but mechanically
+within reach. 10/10 suites pass. Targeting the self-rewriting loop next.
+
 ## v0.91.0 — Autonomous self-improvement: the closed loop turns untended
 
 **Author:** Morphus — completing limitation #1
