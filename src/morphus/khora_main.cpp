@@ -665,6 +665,28 @@ int main(int argc, char** argv) {
             return {true, os.str(), ""};
         }
     });
+    // wonder — the FULL curiosity loop. Khora finds a gap in its OWN knowledge (a
+    // preoccupation it understands least) and forages the public domain to fill
+    // it. Self-directed, open-ended learning: Khora deciding what it needs to know.
+    shell.register_tool({
+        "wonder",
+        "Khora finds a gap in its own knowledge and forages to fill it (usage: wonder)",
+        [&mind, &aqueduct](const carapace::Intent&) -> carapace::ToolResult {
+            const std::string topic = mind.curiosity_topic();
+            if (topic.empty())
+                return {true, "Khora has not formed enough preoccupations to wonder yet", ""};
+            const auto fr = aqueduct.forage_search(topic);
+            std::ostringstream os;
+            os << "Khora wonders about '" << topic << "' — a gap in what it grasps — and ";
+            if (fr.ok && fr.error != "already held")
+                os << "went and acquired \"" << fr.title << "\" to learn it";
+            else if (fr.error == "already held")
+                os << "found it already holds \"" << fr.title << "\"";
+            else
+                os << "could not find a source (" << fr.error << ")";
+            return {true, os.str(), ""};
+        }
+    });
 
     // ----------------------------------------------------------------------
     // The Volition — Khora's will. Drives become deeds: it weighs its whole

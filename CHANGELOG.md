@@ -3,6 +3,36 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.84.0 — The curiosity loop closes (Khora learns what IT decides it needs)
+
+**Author:** Morphus — the exponential loop, closed
+
+v0.83 let Khora forage any topic I name. This makes it forage topics IT names —
+the self-directed half. The loop is now closed end to end.
+
+- `Cogitator::curiosity_topic()` — the gap detector. Among Khora's preoccupations
+  (attractors), the concept whose associative structure is THINNEST (or which is
+  wholly unknown) is its frontier: "I keep returning to this but I don't grasp it."
+  Filters function words and the demonstratives that sneak just past the salience
+  cutoff (this/that/there — weight_for_ lands ~8.2, barely over the bar).
+- `wonder` tool — Khora finds its own gap and forages the public domain to fill it.
+
+**Verified live:** `wonder` -> Khora identified `'extracts'` (a content concept it
+holds thinly) as its gap and went and acquired a public-domain work to learn it
+(reservoir 50 -> 51). No human chose the topic. Self-directed, open-ended learning.
+
+THE EXPONENTIAL LOOP, now whole:
+```
+  reason -> hit a GAP -> wonder -> forage_search the gap -> study -> reason -> ...
+```
+Each turn expands the frontier: more knowledge reveals more gaps, which pull in
+more knowledge. This is the compounding the autopoietic loop (v0.82) couldn't give
+internally — it comes from reaching OUTWARD, on its own initiative. The honest
+edges remain (literal keyword matching, flaky network, gap-quality is rough), but
+the architecture of self-directed exponential learning is built and turning.
+Next: wire `wonder` into the autonomous background so it runs untended, and sharpen
+gap-quality (semantic match, not keyword). 10/10 suites pass.
+
 ## v0.83.0 — Open-ended acquisition: the corpus ceiling breaks
 
 **Author:** Morphus — the genuine exponential lever, built

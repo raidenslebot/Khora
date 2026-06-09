@@ -287,6 +287,14 @@ public:
     // by how often deliberation/rumination has landed there.
     std::vector<std::pair<std::string, std::uint32_t>> top_attractors(std::size_t n = 10) const;
 
+    // CURIOSITY — the gap detector that directs open-ended learning. Among the
+    // concepts Khora keeps thinking about (its attractors), the one it understands
+    // LEAST (thinnest associative structure, or wholly unknown) is its frontier:
+    // "I keep returning to X but I don't really grasp it." Returns that concept as
+    // a topic to go and learn — the self-directed half of the exponential loop.
+    // (Non-const: it ensures the content field is built so the filter is live.)
+    std::string curiosity_topic();
+
     // Persist / restore Khora's preoccupations so its inner life continues
     // across restarts — the same developing mind each run, not a fresh one.
     void save_attractors(const std::filesystem::path& path) const;

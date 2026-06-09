@@ -1284,6 +1284,39 @@ Insight Cogitator::explain(const std::string& subject) const {
     return ins;
 }
 
+std::string Cogitator::curiosity_topic() {
+    ensure_field_();   // make sure the salient content set is live for is_content_
+    // A few demonstratives/common verbs sit just above the salience cutoff and
+    // sneak into the content set; they are not concepts to be curious about.
+    static const std::unordered_set<std::string> kNotConcepts = {
+        "this","that","there","then","them","they","these","those","their","theirs",
+        "what","when","with","from","have","will","your","yours","here","were","been",
+        "would","could","should","about","which","while","where","into","than","very",
+        "much","such","more","most","some","like","only","also","even","well","both",
+        "each","many","other","being","doing","does","done","made","make","upon","unto"
+    };
+    // Walk the preoccupations from most-pondered down; return the one whose
+    // associative structure is thinnest (or which is wholly unknown) — the gap
+    // Khora keeps circling but cannot yet grasp.
+    const auto top = top_attractors(24);
+    std::string gap;
+    double weakest = 1e18;
+    for (const auto& a : top) {
+        const std::string& c = a.first;
+        if (c.empty() || c[0] == '{' || c.size() < 4) continue;   // skip abstractions/fragments
+        if (kNotConcepts.count(c)) continue;                      // demonstratives, not concepts
+        if (!is_content_(c)) continue;                            // function words aren't concepts
+        if (!plexus_ || !plexus_->has(c)) { return c; }            // utterly unknown — pure gap
+        double known = 0.0;
+        for (const auto& kv : plexus_->associates(c, 6)) known += kv.second;
+        if (known < weakest) { weakest = known; gap = c; }
+    }
+    // Fallback: a clean wandering concept if no attractors have formed yet.
+    if (gap.empty() && !concepts_.empty())
+        gap = concepts_[concepts_.size() / 2];
+    return gap;
+}
+
 std::string Cogitator::distill_knowledge(const std::string& seed) {
     if (!plexus_ || !plexus_->has(seed)) return {};
     // The seed's direct kin are the BRIDGES through which transitive relations
