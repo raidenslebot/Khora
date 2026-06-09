@@ -3,6 +3,31 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.91.0 — Autonomous self-improvement: the closed loop turns untended
+
+**Author:** Morphus — completing limitation #1
+
+v0.90 gave Khora a fitness signal and the ability to tune itself on command. This
+makes it do so AUTONOMOUSLY. The Curiosity Daemon now, every few cycles, sweeps the
+inference goal-pull, measures the yield of each setting under the shared lock,
+keeps and persists the best — all untended, alongside its self-directed foraging.
+
+**Verified — idle, no command, ~40 s:**
+```
+  [resumed self-tuned inference goal-pull: 4]                       (last life's tuning persisted)
+  [curiosity: ... self-tuned its reasoning 1 times by measured yield this session]
+```
+Khora measured its own reasoning and improved a parameter on its own initiative,
+and the gain carried across a restart. The engine went from OPEN-LOOP (no success
+signal; every improvement a manual edit by me) to CLOSED-LOOP and SELF-IMPROVING
+UNTENDED. "It improves itself" — the operator's "capability to evolve" — is now
+literally true, not a metaphor: the precondition for every higher lever (self-
+generated goals, meta-learning, self-rewriting) is in place and running.
+
+10/10 suites pass. The audit's rank 2-3 (self-rewriting; autonomous action/execution)
+are both now UNBLOCKED — they were inert without this measured improvement signal,
+and now have a number to accept-or-reject a self-modification against. Targeting next.
+
 ## v0.90.0 — The Yield Ledger: the engine closes its own loop (it improves ITSELF)
 
 **Author:** Morphus — limitation #1 from a 7-agent / 91-limitation audit

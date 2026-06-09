@@ -2124,13 +2124,14 @@ int main(int argc, char** argv) {
     //     takes the unique lock briefly; the (blocking, flaky) network fetch is
     //     done WITHOUT any lock, so it never stalls cognition.
     std::atomic<bool> curiosity_run{true};
-    std::atomic<std::uint64_t> curiosity_wonders{0}, curiosity_acquired{0};
+    std::atomic<std::uint64_t> curiosity_wonders{0}, curiosity_acquired{0}, curiosity_tuned{0};
     std::thread curiosity([&]() {
         auto nap = [&](int tenths) {
             for (int i = 0; i < tenths && curiosity_run.load(std::memory_order_acquire); ++i)
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
         };
         nap(250);   // ~25 s for startup + first cognition to settle
+        std::uint64_t cycle = 0;
         while (curiosity_run.load(std::memory_order_acquire)) {
             std::string topic;
             {
@@ -2143,7 +2144,35 @@ int main(int argc, char** argv) {
                 if (fr.ok && fr.error != "already held")
                     curiosity_acquired.fetch_add(1, std::memory_order_relaxed);
             }
-            nap(1800);   // wonder about once every ~3 minutes
+
+            // AUTONOMOUS SELF-TUNING — the closed loop turning untended. Every few
+            // cycles Khora sweeps its inference goal-pull, measures the yield of
+            // each, keeps and persists the best. It improves itself, no one asking.
+            if ((cycle % 3) == 0) {
+                static const double cands[] = { 0.5, 1.0, 1.5, 2.5, 4.0 };
+                double best_g = mind.infer_goal_pull(), best_s = -1.0;
+                {
+                    std::unique_lock<std::shared_mutex> lk(shared_mu);
+                    for (double g : cands) {
+                        mind.set_infer_goal_pull(g);
+                        double s = 0.0;
+                        for (int r = 0; r < 2; ++r) s += mind.benchmark_inference(100, r + 1);
+                        s *= 0.5;
+                        if (s > best_s) { best_s = s; best_g = g; }
+                    }
+                    mind.set_infer_goal_pull(best_g);
+                }
+                if (best_s >= 0.0) {
+                    std::error_code ec; std::filesystem::create_directories("data/ledger", ec);
+                    { std::ofstream pf(kYieldParamsPath, std::ios::trunc); if (pf) pf << best_g << '\n'; }
+                    { std::ofstream lg(kYieldLedgerPath, std::ios::app);
+                      if (lg) lg << static_cast<long>(std::time(nullptr)) << "\tinfer-auto\t"
+                                 << best_s << "\t100\t" << best_g << '\n'; }
+                    curiosity_tuned.fetch_add(1, std::memory_order_relaxed);
+                }
+            }
+            ++cycle;
+            nap(1800);   // wonder + self-tune about once every ~3 minutes
         }
     });
 
@@ -2177,10 +2206,11 @@ int main(int argc, char** argv) {
               << furnace_cores << " cores, " << furnace_forged.load()
               << " abstractions forged, " << furnace_distilled.load()
               << " verified discoveries distilled into knowledge this session]\n";
-    if (curiosity_wonders.load() > 0)
+    if (curiosity_wonders.load() > 0 || curiosity_tuned.load() > 0)
         std::cout << "[curiosity: wondered " << curiosity_wonders.load()
                   << " times, acquired " << curiosity_acquired.load()
-                  << " new works to fill its own knowledge gaps this session]\n";
+                  << " new works; self-tuned its reasoning " << curiosity_tuned.load()
+                  << " times by measured yield this session]\n";
     governor.stop();
     scheduler.stop();
     whet.stop();
