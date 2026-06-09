@@ -8,6 +8,7 @@ target_link_libraries(khora PRIVATE
     khora::plexus
     khora::ligature
     khora::hand
+    khora::bulwark
     khora::cogitator
     khora::whetstone
     khora::reservoir
@@ -27,6 +28,11 @@ target_link_libraries(plexus_forge PRIVATE
     khora::plexus
     khora::ligature
 )
+
+# bulwark_probe — proves the containment cage in isolation (red-team requirement:
+# containment must be proven before any autonomous driver can use it).
+add_executable(bulwark_probe bulwark_probe.cpp)
+target_link_libraries(bulwark_probe PRIVATE khora::bulwark)
 
 # reforge_eval — successor-evaluator for the self-rewriting loop. A SEPARATE binary
 # (khora.exe locks itself while running, so it cannot relink itself): Khora rewrites

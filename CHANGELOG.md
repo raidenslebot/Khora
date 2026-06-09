@@ -3,6 +3,65 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.96.0 — The Bulwark: a proven containment cage (contain the blast radius, not the capability)
+
+**Author:** Morphus — operator directive: temporarily sandbox Khora until it is trained
+not to damage the machine, WITHOUT removing any capability. Designed and red-teamed by a
+9-agent workflow (4 designers + 4 Windows red-teamers + synthesis).
+
+The red-team overturned the naive design and its findings drive this build:
+- The sandbox must be the PARENT's, not the child's: this box runs the operator as a
+  split-token admin with ConsentPromptBehaviorAdmin=0 (silent elevation), so a contained
+  child is meaningless if the parent is one un-prompted API call from admin.
+- The OS access check is the wall, not string blocklists (computed paths / UNC / `\\?\` /
+  COM all bypass a filter). So: a real low-integrity, non-admin token + real ACLs.
+- Resource caps need teeth: assign-to-job BEFORE resume (or a fork bomb wins the race),
+  no breakaway, active-process cap, RAM-relative memory cap, CPU hard-cap, idle priority,
+  a disk free-floor (a full C: bricks boot — jobs don't limit disk).
+
+Built — `khora::bulwark`, the contained execution path for AUTONOMOUS action (the Hand
+stays the operator's uncontained effector; the operator is a human in control):
+- `execute_contained()` runs any command inside a Job Object cage (KILL_ON_JOB_CLOSE, no
+  breakaway, ActiveProcessLimit 64, JobMemory = physRAM−8GB, CPU HARD_CAP 50%, IDLE
+  priority) under a low-integrity non-admin restricted token (admin alias disabled, all
+  privileges dropped, IL=Low), in a cell cwd, with a 5GB system-volume free-floor — every
+  primitive FAIL-CLOSED (any failure ⇒ launch NOTHING).
+- `self_check()` proves the cage with canaries; `bulwark_probe` + `BulwarkTest` (in the
+  ctest net) gate it.
+- `contain [command]` REPL tool: the sandboxed twin of `run`.
+
+**Verified on the real machine:**
+```
+  bulwark self-check -> tier 2: contained command captured; write to C:\Windows DENIED;
+                                runaway killed by the job on timeout.   11/11 suites pass.
+  contain whoami /groups          -> Mandatory Label\Low Mandatory Level S-1-16-4096 (de-privileged)
+  contain del C:\Windows\...\hosts -> "Access is denied"  (executed, observed, contained)
+                                       hosts file intact afterward — zero damage.
+  contain echo capability is whole -> runs.   Capability whole, blast radius contained.
+```
+
+This is STAGE 1 — the foundation. Honest scope: it de-privileges and resource-caps every
+autonomous command via the OS, but it is not yet the full design. Still to build (in the
+red-team's order): a dedicated low-priv `khora_sbx` user + NTFS quota + DENY-write ACLs on
+src/include/build (so self-rewrite can't escape); a VHDX-isolated cell; a SYSTEM Warden
+that reaps any scheduled task/service/Run-key Khora plants; host UAC hardening (the
+audit-first `install/harden_host.ps1`, operator-run, elevated). The Maw (chaos exploration)
+is HARD-GATED on self_check and is deliberately NOT built until this cage is hardened
+further; the ascend (binary self-replacement) is last. Containment proven before autonomy —
+exactly as the audit demanded.
+
+## v0.95.0 — The closed loop spans a SECOND faculty (deduction made measurable)
+
+(Changelog + version-string for v0.95 were omitted from that commit — an oversight,
+corrected here; the code shipped in commit e28a125.)
+
+Broadened the fitness signal past inference. `Ligature::benchmark_deduction` constructs
+genuinely-derivable facts (X is-a A, A rel Z, X rel Z not direct) and measures the fraction
+deduce() recovers; the `yield` tool now reports + logs inference AND deduction. A first cut
+scored 0.022 — a strawman, because deduce() rightly ignores support<2 links and generic
+parents; fixed to test only in-contract facts: true recall 1.000 (deduction sound; the
+signal now serves as a regression guard). The closed loop is no longer single-faculty.
+
 ## v0.94.0 — General self-rewriting: Khora evolves EVERY gene it can find
 
 **Author:** Morphus — hardening limitation #2, and a new one found while building

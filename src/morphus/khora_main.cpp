@@ -11,6 +11,7 @@
 #include "khora/curator/curator.hpp"
 #include "khora/curator/curator_scheduler.hpp"
 #include "khora/hand/hand.hpp"
+#include "khora/bulwark/bulwark.hpp"
 #include "khora/cortex/predictive_column.hpp"
 #include "khora/lattice/lattice.hpp"
 #include "khora/lattice/persistence.hpp"
@@ -1773,6 +1774,42 @@ int main(int argc, char** argv) {
             std::ostringstream os;
             os << "Khora acted on `" << cmd << "`  -> exit " << res.exit_code
                << (res.timed_out ? "  (TIMED OUT — killed so Khora keeps living)" : "") << "\n";
+            std::string out = res.output;
+            if (out.size() > 4000) out = out.substr(0, 4000) + "\n...[output truncated]";
+            os << out;
+            return {true, os.str(), ""};
+        }
+    });
+    // contain — the SANDBOXED twin of `run`. The same whole-machine capability, but
+    // every command executes inside the Bulwark cage: a low-integrity non-admin token
+    // (the OS access check is the wall) plus a Job Object (kill-on-close, no breakaway,
+    // process/RAM/CPU caps, idle priority) and a disk free-floor, all fail-closed. This
+    // is the path autonomous exploration will use: a `del C:\Windows` or `format` EXECUTES
+    // and is OBSERVED, but cannot touch the real machine. With no args it runs the
+    // containment self-check and reports the achieved tier.
+    shell.register_tool({
+        "contain",
+        "Khora acts INSIDE the containment cage — full capability, contained blast radius  (usage: contain [command])",
+        [](const carapace::Intent& i) -> carapace::ToolResult {
+            if (i.args.empty()) {
+                std::string rep;
+                const int tier = khora::bulwark::self_check(rep);
+                std::ostringstream os;
+                os << "Khora proves its containment cage:\n" << rep
+                   << "achieved tier " << tier
+                   << (tier >= 2 ? "  (FULL — low-integrity, non-admin, job-caged)"
+                                 : tier == 1 ? "  (resource cage only — integrity NOT proven)"
+                                             : "  (FAILED — containment not holding)");
+                return {true, os.str(), ""};
+            }
+            std::string cmd;
+            for (const auto& a : i.args) { if (!cmd.empty()) cmd += ' '; cmd += a; }
+            const auto res = khora::bulwark::execute_contained(cmd, 30000);
+            if (!res.ran) return {true, "Khora refused to act uncontained: " + res.error, ""};
+            std::ostringstream os;
+            os << "Khora acted INSIDE the cage on `" << cmd << "`  -> exit " << res.exit_code
+               << " (tier " << res.tier << (res.killed_by_job ? ", killed by job" : "")
+               << (res.timed_out ? ", timed out" : "") << ")\n";
             std::string out = res.output;
             if (out.size() > 4000) out = out.substr(0, 4000) + "\n...[output truncated]";
             os << out;

@@ -37,3 +37,7 @@ add_test(NAME ReservoirTest COMMAND reservoir_test)
 add_executable(plexus_test plexus_test.cpp)
 target_link_libraries(plexus_test PRIVATE khora::plexus)
 add_test(NAME PlexusTest COMMAND plexus_test)
+
+add_executable(bulwark_test bulwark_test.cpp)
+target_link_libraries(bulwark_test PRIVATE khora::bulwark)
+add_test(NAME BulwarkTest COMMAND bulwark_test)
