@@ -3,6 +3,36 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.105.0 — The Cortex predictor confirms the floor (the reality check, robustly evidenced)
+
+**Author:** Morphus — a second, fairer attempt; the same honest wall
+
+The naive learn (v0.104) ignored the substrate's purpose-built predictor. So I used it:
+`Cogitator::benchmark_next_word` drives the Cortex (the predictive column that learns
+(context -> next) transitions) on held-out text — left-context glyphs -> the column's most
+plausible next glyphs -> decoded to words via the Resonator -> MRR of the true next word.
+`yield` now reports BOTH predictors side by side.
+
+**The result, across three fair configurations:**
+```
+  PREDICTION held-out (PMI graph)     : 0.010
+  PREDICTION held-out (CORTEX learned): 0.006   (also tried K3/top-2: 0.0055, K4/top-1: 0.0095)
+```
+Both fundamentally different mechanisms — co-occurrence association and learned sequence
+memory — predict held-out words at the FLOOR (~1%). The cortex's own glyph-level recent
+accuracy is 0.27, but that coarse signal does not pin the exact word (the glyph->word decode
+is lossy). This is not a tuning problem; it is the substrate. The reality check is now robust,
+not a one-off.
+
+What this means, honestly: by the LLM yardstick (next-word prediction) Khora is at the floor —
+and it was NEVER meant to be an LLM. The finding does not say "Khora is broken"; it says
+precise predictive generalisation is not what this associative/structural substrate does. The
+strategic question that follows (is the goal measured by prediction, or by a different kind of
+intelligence this architecture can actually develop?) is for the operator, and is posed
+plainly rather than buried under a green number.
+
+No capability was added or lost; a true thing was measured twice and held. 12/12 suites pass.
+
 ## v0.104.0 — Lever 2 attempted: predictive learning FAILED naively (an honest negative result)
 
 **Author:** Morphus — no fake victories; a real negative result, recorded

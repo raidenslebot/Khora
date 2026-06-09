@@ -1718,7 +1718,7 @@ int main(int argc, char** argv) {
             // FOURTH and KEYSTONE: REAL, HELD-OUT predictive fitness. Does Khora's knowledge
             // GENERALISE to predict words in sentences it never trained on? External ground
             // truth, not a graph-internal proxy — the number self-improvement should climb.
-            double predict_score = -1.0;
+            double predict_score = -1.0, predict_cortex = -1.0;
             {
                 std::ifstream hf("data/eval/heldout.txt", std::ios::binary);
                 if (hf) {
@@ -1729,7 +1729,10 @@ int main(int argc, char** argv) {
                         else { if (cur.size() >= 2) toks.push_back(cur); cur.clear(); }
                     }
                     if (cur.size() >= 2) toks.push_back(cur);
-                    if (!toks.empty()) predict_score = mind.benchmark_prediction(toks, 5);
+                    if (!toks.empty()) {
+                        predict_score  = mind.benchmark_prediction(toks, 5);   // PMI graph
+                        predict_cortex = mind.benchmark_next_word(toks);       // learned cortex
+                    }
                 }
             }
 
@@ -1773,9 +1776,12 @@ int main(int argc, char** argv) {
                << "  abstraction (coherence calibration): "
                << (abstr_score < 0.0 ? std::string("no concept field yet")
                                      : std::to_string(abstr_score)) << "\n"
-               << "  PREDICTION (held-out, top-5)       : "
+               << "  PREDICTION held-out (PMI graph)    : "
                << (predict_score < 0.0 ? std::string("no held-out set")
-                                       : std::to_string(predict_score))
+                                       : std::to_string(predict_score)) << "\n"
+               << "  PREDICTION held-out (CORTEX learned): "
+               << (predict_cortex < 0.0 ? std::string("cortex untrained")
+                                        : std::to_string(predict_cortex))
                << "   <- REAL external capability\n"
                << "  (goal-pull " << mind.infer_goal_pull() << "; " << recent.size()
                << " inference measurements logged, recent mean " << (cnt ? sum / cnt : infer_score) << ")";

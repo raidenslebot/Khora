@@ -1403,6 +1403,47 @@ double Cogitator::benchmark_prediction(const std::vector<std::string>& heldout,
     return trials ? rr_sum / static_cast<double>(trials) : -1.0;
 }
 
+double Cogitator::benchmark_next_word(const std::vector<std::string>& heldout) const {
+    if (heldout.empty() || cortex_.associations() == 0) return -1.0;
+    // Build a fast glyph->word decoder over the whole vocabulary (once).
+    maelstrom::Resonator dec(256);
+    dec.build(lex_.semantic_field());
+
+    constexpr std::size_t K  = 4;    // left-context window fed to the column
+    constexpr std::size_t NC = 48;   // candidate next-glyphs requested from the column
+    double      rr_sum = 0.0;
+    std::size_t trials = 0;
+
+    for (std::size_t i = 0; i < heldout.size(); ++i) {
+        const std::string& target = heldout[i];
+        if (!is_content_(target) || !lex_.has(target)) continue;
+
+        std::vector<Glyph> ctx;
+        for (std::size_t d = (i > K ? i - K : 0); d < i; ++d)
+            ctx.push_back(lex_.glyph_for(heldout[d]));
+        if (ctx.empty()) continue;
+
+        const auto cands = cortex_.predict_candidates(ctx, NC);
+        if (cands.empty()) continue;
+
+        // Each predicted glyph is lossy, so credit its TWO nearest words (in confidence
+        // order), giving the column a fair shot at the exact word it half-predicted.
+        std::vector<std::string>        ranked;
+        std::unordered_set<std::string> seen;
+        for (const auto& cg : cands) {
+            for (const auto& hit : dec.query(cg, 2)) {
+                if (seen.insert(hit.label).second) ranked.push_back(hit.label);
+            }
+        }
+        if (ranked.empty()) continue;
+
+        ++trials;
+        for (std::size_t r = 0; r < ranked.size(); ++r)
+            if (ranked[r] == target) { rr_sum += 1.0 / static_cast<double>(r + 1); break; }
+    }
+    return trials ? rr_sum / static_cast<double>(trials) : -1.0;
+}
+
 std::size_t Cogitator::learn_predictively(const std::vector<std::string>& tokens,
                                           std::uint32_t reinforce_by) {
     if (!plexus_ || tokens.empty() || reinforce_by == 0) return 0;

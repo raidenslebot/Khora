@@ -244,6 +244,14 @@ public:
     double benchmark_prediction(const std::vector<std::string>& heldout,
                                 std::size_t topk = 5) const;
 
+    // Held-out next-word prediction via the CORTEX (the purpose-built predictive column),
+    // not the PMI graph: for each content word, take the left-context glyphs, ask the
+    // column for the most plausible next glyphs (the next-values of the nearest learned
+    // contexts), decode each to a word, and return the mean reciprocal rank of the TRUE
+    // next word. This tests the substrate's actual LEARNED (context -> next) transitions —
+    // a real predictive mechanism rather than co-occurrence counting.
+    double benchmark_next_word(const std::vector<std::string>& heldout) const;
+
     // PREDICTIVE LEARNING (lever 2) — the loop that actually MOVES the prediction number.
     // Read training text; for each content word, predict it from its neighbours; and on a
     // PREDICTION ERROR, strengthen the context->word links that would have made it right.
