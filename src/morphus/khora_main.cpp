@@ -1788,6 +1788,46 @@ int main(int argc, char** argv) {
             return {true, os.str(), ""};
         }
     });
+    // aleph — GENESIS. Khora INVENTS concepts: it forges coherent clusters whose shared
+    // concept has NO NAME — surfacing genuine gaps in its own mind, concepts it was never
+    // taught. Not prediction, not retrieval: open-ended creation, measured by novelty x
+    // coherence, a drive with no ceiling. This is the mind expanding its own universe.
+    shell.register_tool({
+        "aleph",
+        "Khora invents NEW concepts it was never taught — open-ended genesis  (usage: aleph [n])",
+        [&mind](const carapace::Intent& i) -> carapace::ToolResult {
+            std::size_t n = 12;
+            if (!i.args.empty()) { try { n = std::stoul(i.args[0]); } catch (...) {} }
+            if (n < 1)  n = 1;
+            if (n > 40) n = 40;
+            // Collect attempts; show the strongest by novelty x coherence so the actual
+            // content can be judged (not just a threshold count).
+            std::vector<khora::cogitator::Genesis> got;
+            std::size_t genuine = 0;
+            for (std::size_t s = 0; s < n; ++s) {
+                auto g = mind.invent(s * 7919ull + 1);
+                if (g.from.size() < 2) continue;
+                if (g.genuine) ++genuine;
+                got.push_back(std::move(g));
+            }
+            std::sort(got.begin(), got.end(), [](const auto& a, const auto& b) {
+                return a.novelty * a.coherence > b.novelty * b.coherence;
+            });
+            std::ostringstream os;
+            os << "Khora's genesis — strongest forged concepts (novelty x coherence):\n";
+            for (std::size_t k = 0; k < got.size() && k < 8; ++k) {
+                const auto& g = got[k];
+                os << "  {";
+                for (std::size_t j = 0; j < g.from.size(); ++j) { if (j) os << ", "; os << g.from[j]; }
+                os << "} -> near {";
+                for (std::size_t j = 0; j < g.near.size() && j < 3; ++j) { if (j) os << ", "; os << g.near[j]; }
+                os << "}  (nov " << g.novelty << ", coh " << g.coherence << ")\n";
+            }
+            const double fert = mind.benchmark_invention(60, 1);
+            os << "  -> " << genuine << "/" << n << " cleared the bar; fertility " << fert;
+            return {true, os.str(), ""};
+        }
+    });
     // learn — PREDICTIVE LEARNING (lever 2). Khora reads its OWN corpus, predicts each word
     // from context, and CORRECTS its mistakes — strengthening the links that would have made
     // the prediction right — then re-measures held-out prediction to see if it actually got

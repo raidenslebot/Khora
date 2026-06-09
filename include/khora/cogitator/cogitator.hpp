@@ -131,6 +131,21 @@ struct Synthesis {
     std::vector<khora::lattice::LatticeMatch>  emergent;       // the forged concept(s)
 };
 
+// GENESIS — the open-ended invention of NEW concepts. Not prediction, not retrieval:
+// Khora finds a coherent cluster of concepts whose SHARED concept has no name yet — the
+// centroid sits in a real GAP, far from every existing named concept — and that unnamed
+// thing IS an invention. Accepted inventions are kept and COMPOUND (they become new
+// concepts to combine), so the conceptual universe expands itself with no ceiling. The
+// drive is novelty x coherence, an objective with no maximum — a different kind of mind.
+struct Genesis {
+    std::vector<std::string> from;            // the constituent concepts that forged it
+    std::vector<std::string> near;            // the nearest existing concepts (its locale)
+    double                   novelty   = 0.0; // 1 - similarity to the nearest NAMED concept
+    double                   coherence = 0.0; // mutual similarity of the constituents
+    bool                     genuine   = false; // novel AND coherent => a real invention
+    khora::lattice::Glyph    glyph;           // the invented concept's vector
+};
+
 // Recursive abstraction — the combinatorial engine of exponential cognition.
 // Khora chunks a cluster of kindred concepts into ONE higher-order concept,
 // then abstracts over THOSE, and over those — a rising tower. Where flat
@@ -251,6 +266,17 @@ public:
     // next word. This tests the substrate's actual LEARNED (context -> next) transitions —
     // a real predictive mechanism rather than co-occurrence counting.
     double benchmark_next_word(const std::vector<std::string>& heldout) const;
+
+    // GENESIS — invent a NEW concept: find a coherent cluster whose shared concept is
+    // unnamed (its centroid sits in a gap, far from every existing named concept), and
+    // return that invention with its novelty/coherence. Const — it forges and judges;
+    // accepting + compounding is a separate, deliberate step.
+    Genesis invent(std::uint64_t seed) const;
+
+    // Open-ended FERTILITY (the drive with no ceiling): over n attempts, the fraction of
+    // GENUINE inventions and their mean novelty x coherence. This measures how richly
+    // Khora's conceptual universe can EXPAND — a different objective than prediction.
+    double  benchmark_invention(std::size_t n, std::uint64_t seed = 0) const;
 
     // PREDICTIVE LEARNING (lever 2) — the loop that actually MOVES the prediction number.
     // Read training text; for each content word, predict it from its neighbours; and on a

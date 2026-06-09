@@ -1444,6 +1444,67 @@ double Cogitator::benchmark_next_word(const std::vector<std::string>& heldout) c
     return trials ? rr_sum / static_cast<double>(trials) : -1.0;
 }
 
+Genesis Cogitator::invent(std::uint64_t seed) const {
+    Genesis g;
+    if (concepts_.empty() || field_.size() == 0 || !plexus_) return g;
+    const std::size_t N = concepts_.size();
+
+    // A seed concept and its kin form the constituent cluster — coherent enough to mean
+    // something, with the spread that lets their shared concept be one nobody named.
+    const std::string& seedc = concepts_[(seed * 2654435761ull + 1) % N];
+    if (!plexus_->has(seedc)) return g;
+    const auto kin = plexus_->associates(seedc, 8);
+    std::vector<std::string> cluster{ seedc };
+    std::vector<Glyph>       glyphs{ token_glyph_(seedc) };
+    for (const auto& k : kin) {
+        if (cluster.size() >= 4) break;
+        cluster.push_back(k.first);
+        glyphs.push_back(token_glyph_(k.first));
+    }
+    if (cluster.size() < 2) return g;
+    g.from = cluster;
+
+    // Coherence: how tightly the constituents cohere (a real cluster, not noise).
+    double coh = 0.0; int pairs = 0;
+    for (std::size_t i = 0; i < glyphs.size(); ++i)
+        for (std::size_t j = i + 1; j < glyphs.size(); ++j) { coh += glyphs[i].similarity(glyphs[j]); ++pairs; }
+    g.coherence = pairs ? coh / pairs : 0.0;
+
+    // The invented concept is the cluster's centroid — the thing they have in common.
+    g.glyph = bundle(std::span<const Glyph>{ glyphs.data(), glyphs.size() });
+
+    // Novelty: how FAR the centroid is from the nearest EXISTING NAMED concept that is not
+    // itself a constituent. If something already sits there, the shared concept is named
+    // (not novel); if the nearest named concept is far, this shared concept is UNNAMED — a
+    // genuine gap, an invention.
+    const auto hits = field_.query(g.glyph, 12);
+    double nearest = 0.0;
+    for (const auto& h : hits) {
+        bool is_constituent = false;
+        for (const auto& c : cluster) if (h.label == c) { is_constituent = true; break; }
+        if (is_constituent) continue;
+        if (nearest == 0.0) nearest = h.similarity;       // closest non-constituent named concept
+        if (g.near.size() < 5) g.near.push_back(h.label);
+    }
+    g.novelty = 1.0 - nearest;
+
+    // Genuine iff the constituents cohere AND their shared concept is unnamed (novel).
+    g.genuine = (g.coherence >= 0.25) && (g.novelty >= 0.55);
+    return g;
+}
+
+double Cogitator::benchmark_invention(std::size_t n, std::uint64_t seed) const {
+    if (concepts_.empty() || field_.size() == 0 || n == 0) return -1.0;
+    double sum = 0.0; std::size_t attempts = 0;
+    for (std::size_t s = 0; s < n; ++s) {
+        const Genesis g = invent(seed * 1000003ull + s + 1);
+        if (g.from.size() < 2) continue;
+        ++attempts;
+        sum += g.novelty * g.coherence;     // open-ended fertility: novelty x coherence
+    }
+    return attempts ? sum / static_cast<double>(attempts) : -1.0;
+}
+
 std::size_t Cogitator::learn_predictively(const std::vector<std::string>& tokens,
                                           std::uint32_t reinforce_by) {
     if (!plexus_ || tokens.empty() || reinforce_by == 0) return 0;
