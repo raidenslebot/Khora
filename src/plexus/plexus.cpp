@@ -196,6 +196,21 @@ void Plexus::prune_all() {
         if (adj_[i].size() > max_degree_) prune_(i);
 }
 
+void Plexus::reinforce(const std::string& a, const std::string& b, std::uint32_t add) {
+    if (add == 0 || a == b) return;
+    const std::uint32_t ia = intern_(a);
+    const std::uint32_t ib = intern_(b);
+    // Raise ONLY the joint count (both directions) and the total — this lifts
+    // PMI(a,b) exactly as observing the pair would, without inflating either
+    // word's marginal frequency. Khora strengthening a reasoned, verified link.
+    adj_[ia][ib] += add;
+    adj_[ib][ia] += add;
+    total_cooc_ += 2ull * static_cast<std::uint64_t>(add);
+    ++reinforcements_;
+    if (adj_[ia].size() > max_degree_ * kPruneTriggerFactor) prune_(ia);
+    if (adj_[ib].size() > max_degree_ * kPruneTriggerFactor) prune_(ib);
+}
+
 std::uint64_t Plexus::edge_count() const noexcept {
     std::uint64_t e = 0;
     for (const auto& m : adj_) e += m.size();

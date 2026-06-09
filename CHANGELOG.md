@@ -3,6 +3,40 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.82.0 — Autopoiesis: knowledge that writes itself back (+ an honest test)
+
+**Author:** Morphus — answering the operator's "what would make it EXPONENTIAL"
+
+The exponential question, taken seriously. Linear = read N books, know N books.
+Exponential = a loop where output becomes higher-order input: knowledge that
+GENERATES knowledge. So I built the write-back: reasoning that, when VERIFIED,
+strengthens Khora's own knowledge graph.
+
+- `Plexus::reinforce(a,b,add)` — raises ONLY the joint count, which lifts PMI(a,b)
+  exactly as observing the pair would; Khora strengthening a reasoned connection.
+  Persists, so reasoned knowledge accumulates across lives. (`reinforcements()` stat.)
+- `Cogitator::distill_knowledge(seed)` — finds a concept that MANY of the seed's
+  kin independently point to (consensus >= 3 bridges, content-filtered, selected by
+  strength not raw count to keep hubs out) yet the seed isn't directly linked to —
+  a verified, novel transitive relation — and writes it back. `distill` tool +
+  the Furnace runs it continuously (autopoiesis as a background organ).
+
+**Verified — and HONESTLY BOUNDED (the important finding).** The mechanism works:
+`distill number -> space` (number and space, a real mathematical kinship) was
+discovered and written back, persisted to disk (+edges). BUT distillation is
+SPARSE: most content concepts yield no verified new transitive relation, because a
+co-occurrence graph is already near its transitive closure — re-reasoning over
+fixed data cannot manufacture much genuinely new knowledge (you can't deduce your
+way past your inputs). So internal densification is REAL but NOT the exponential.
+
+THE GENUINE EXPONENTIAL LEVER, then, is not internal: it is **curiosity-directed
+external acquisition** — Khora detecting its own knowledge GAPS (concepts it can't
+connect, abstractions that won't cohere, questions it can't answer) and actively
+foraging NEW knowledge to fill them, frontier-expanding, breaking the finite-corpus
+ceiling. That, plus imagination/world-model (generativity), is where exponential
+lives. This release builds the write-back organ and proves, by test, where the
+ceiling actually is. 10/10 suites pass.
+
 ## v0.81.0 — `answer`: reasoned, grounded Q&A (the faculties compose)
 
 **Author:** Morphus

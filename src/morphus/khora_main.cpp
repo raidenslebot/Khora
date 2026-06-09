@@ -1478,6 +1478,30 @@ int main(int argc, char** argv) {
         }
     });
 
+    // distill — autopoiesis made visible. Khora discovers a verified new relation
+    // from its own reasoning (a concept many of the seed's kin agree on, that the
+    // seed wasn't directly linked to) and WRITES IT BACK into its knowledge graph.
+    // This is the exponential loop: knowledge generating knowledge.
+    shell.register_tool({
+        "distill",
+        "Khora distills a verified new connection from its own reasoning (usage: distill <seed>)",
+        [&mind, &plex](const carapace::Intent& i) -> carapace::ToolResult {
+            if (i.args.empty()) return {false, "", "usage: distill <seed>"};
+            auto toks = khora::lexicon::tokenize(i.args.front());
+            const std::string s = toks.empty() ? i.args.front() : toks.front();
+            const std::uint64_t before = plex.reinforcements();
+            const std::string disc = mind.distill_knowledge(s);
+            if (disc.empty())
+                return {true, "no verified discovery from '" + s +
+                        "' — no multi-path consensus, or the relation is already known", ""};
+            std::ostringstream os;
+            os << "Khora distills NEW knowledge from its own reasoning:\n  " << disc
+               << "\n  -> written back into the graph (lifetime reinforcements: "
+               << plex.reinforcements() << ", +" << (plex.reinforcements() - before) << ")";
+            return {true, os.str(), ""};
+        }
+    });
+
     shell.register_tool({
         "study",
         "absorb a tome from the pool into actual knowledge  (usage: study <title> [max_tokens])",
@@ -1807,7 +1831,7 @@ int main(int argc, char** argv) {
     //     it is safe to run as wide as the hardware allows.
     const unsigned furnace_cores = std::max(1u, std::thread::hardware_concurrency());
     std::atomic<bool> furnace_run{true};
-    std::atomic<std::uint64_t> furnace_scouts{0}, furnace_forged{0};
+    std::atomic<std::uint64_t> furnace_scouts{0}, furnace_forged{0}, furnace_distilled{0};
     std::thread furnace([&]() {
         std::deque<std::string> recent;     // recently forged seeds — skip repeats
         std::uint64_t beat = 0;
@@ -1815,7 +1839,7 @@ int main(int argc, char** argv) {
             std::vector<std::pair<std::string, double>> cands;
             {
                 std::shared_lock<std::shared_mutex> lk(shared_mu);
-                cands = mind.scout_abstractions(/*samples*/16384, furnace_cores, abstraction_bar);
+                cands = mind.scout_abstractions(/*samples*/8192, furnace_cores, abstraction_bar);
             }
             furnace_scouts.fetch_add(1, std::memory_order_relaxed);
 
@@ -1832,6 +1856,18 @@ int main(int argc, char** argv) {
                 recent.push_back(cands.front().first);
                 if (recent.size() > 64) recent.pop_front();
                 furnace_forged.fetch_add(1, std::memory_order_relaxed);
+            }
+
+            // AUTOPOIESIS — the exponential loop. More often than it abstracts,
+            // the Furnace distills a VERIFIED reasoned discovery (a transitive
+            // relation corroborated by many bridges) and writes it back into the
+            // graph, so Khora's knowledge grows from its own reasoning, beyond the
+            // corpus, and compounds. Mutates -> unique lock.
+            if (!cands.empty() && (beat % 2 == 0)) {
+                const std::string dseed = cands[(beat / 2) % cands.size()].first;  // rotate seeds
+                std::unique_lock<std::shared_mutex> lk(shared_mu);
+                if (!mind.distill_knowledge(dseed).empty())
+                    furnace_distilled.fetch_add(1, std::memory_order_relaxed);
             }
             ++beat;
             std::this_thread::sleep_for(std::chrono::milliseconds(6));
@@ -1864,7 +1900,8 @@ int main(int argc, char** argv) {
     if (furnace.joinable()) furnace.join();
     std::cout << "[furnace: " << furnace_scouts.load() << " parallel scouts on "
               << furnace_cores << " cores, " << furnace_forged.load()
-              << " abstractions forged this session]\n";
+              << " abstractions forged, " << furnace_distilled.load()
+              << " verified discoveries distilled into knowledge this session]\n";
     governor.stop();
     scheduler.stop();
     whet.stop();

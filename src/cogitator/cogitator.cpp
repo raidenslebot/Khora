@@ -1284,4 +1284,49 @@ Insight Cogitator::explain(const std::string& subject) const {
     return ins;
 }
 
+std::string Cogitator::distill_knowledge(const std::string& seed) {
+    if (!plexus_ || !plexus_->has(seed)) return {};
+    // The seed's direct kin are the BRIDGES through which transitive relations
+    // are reached.
+    const auto bridges = plexus_->associates(seed, 12);
+    if (bridges.size() < 3) return {};
+
+    // For every concept reachable through a bridge, count how MANY independent
+    // bridges reach it (consensus) and accumulate the connection strength. A
+    // relation corroborated by many bridges is far more than a single fluke path.
+    std::unordered_map<std::string, int>    consensus;
+    std::unordered_map<std::string, double> strength;
+    for (const auto& br : bridges) {
+        for (const auto& kv : plexus_->associates(br.first, 8)) {
+            const std::string& c = kv.first;
+            if (c == seed || c == br.first) continue;
+            if (c.size() < 4) continue;   // drop short function words ("by","of","is")
+            consensus[c] += 1;
+            strength[c]  += std::min(br.second, kv.second);   // weakest-link bridge strength
+        }
+    }
+
+    // The best VERIFIED discovery: reached by ENOUGH independent bridges (a
+    // corroborated relation, not a fluke) and selected by STRENGTH not raw count
+    // (count alone favours hubs) — yet NOT already a strong direct link of the
+    // seed (so it is genuinely new), and not a frequency hub of its own.
+    constexpr int kMinConsensus = 3;
+    const double  stop = static_cast<double>(plexus_->total_tokens()) * 0.004;  // function-word cut
+    std::string best; int best_con = 0; double best_str = 0.0;
+    for (const auto& cs : consensus) {
+        if (cs.second < kMinConsensus) continue;
+        if (static_cast<double>(plexus_->occurrences(cs.first)) > stop) continue;  // hub word
+        if (plexus_->affinity(seed, cs.first) > 1.0) continue;                     // already known
+        const double s = strength[cs.first];
+        if (s > best_str) { best = cs.first; best_con = cs.second; best_str = s; }
+    }
+    if (best.empty()) return {};
+
+    // Write the verified discovery back — modestly, scaled by consensus. Khora's
+    // knowledge now grows from its own reasoning, beyond the corpus.
+    const std::uint32_t add = static_cast<std::uint32_t>(std::min(best_con, 6));
+    plexus_->reinforce(seed, best, add);
+    return seed + " ~> " + best + "  (verified via " + std::to_string(best_con) + " paths)";
+}
+
 } // namespace khora::cogitator

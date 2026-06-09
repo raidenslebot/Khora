@@ -69,6 +69,17 @@ public:
     std::vector<std::pair<std::string, double>>
     associates(std::string_view word, std::size_t k = 8) const;
 
+    // REINFORCE — the autopoietic write-back. Strengthen the a<->b connection by
+    // `add` (raising the joint count, hence PMI), as if Khora had observed it.
+    // This is how reasoning becomes knowledge: a verified discovery (a relation
+    // Khora reasoned and corroborated) is written back so the graph GROWS BEYOND
+    // the corpus and compounds. Marginal occurrences are deliberately NOT bumped —
+    // raising only the joint count is exactly what lifts the mutual information.
+    // Use only on VERIFIED discoveries; unverified write-back is an echo chamber.
+    void          reinforce(const std::string& a, const std::string& b,
+                            std::uint32_t add);
+    std::uint64_t reinforcements() const noexcept { return reinforcements_; }
+
     // Inspectors.
     std::size_t   vocabulary_size() const noexcept { return word_.size(); }
     std::uint64_t total_tokens()    const noexcept { return total_tokens_; }
@@ -105,9 +116,10 @@ private:
     std::vector<std::string>                                    word_;  // id -> word
     std::vector<std::uint32_t>                                  occ_;   // id -> frequency
     std::vector<std::unordered_map<std::uint32_t, std::uint32_t>> adj_; // id -> (id -> cooc)
-    std::uint64_t total_tokens_ = 0;   // N — corpus length
-    std::uint64_t total_cooc_   = 0;   // W — total co-occurrence weight
-    std::size_t   max_degree_   = 160;
+    std::uint64_t total_tokens_   = 0;   // N — corpus length
+    std::uint64_t total_cooc_     = 0;   // W — total co-occurrence weight
+    std::uint64_t reinforcements_ = 0;   // verified discoveries written back (autopoiesis)
+    std::size_t   max_degree_     = 160;
 };
 
 } // namespace khora::plexus
