@@ -27,7 +27,8 @@ StudyOutcome study_tome(Reservoir& pool, khora::lexicon::Lexicon& lex,
                         khora::cortex::PredictiveColumn& cortex,
                         const std::string& title, std::size_t max_tokens,
                         khora::lattice::Lattice* concept_space,
-                        khora::plexus::Plexus* plexus) {
+                        khora::plexus::Plexus* plexus,
+                        khora::ligature::Ligature* ligature) {
     StudyOutcome o;
     o.title = title;
     auto text = pool.read(title);   // bumps times_read
@@ -50,6 +51,11 @@ StudyOutcome study_tome(Reservoir& pool, khora::lexicon::Lexicon& lex,
     // hub-proof PMI similarity needs. One study, two memories: the distributional
     // glyph and the explicit associative graph.
     if (plexus) plexus->observe(tokens, 3);
+
+    // The same token stream feeds the Ligature, which extracts TYPED relations
+    // (is-a, causes, has) by syntactic pattern — so studying a tome yields
+    // STRUCTURE, not only association. Acquired knowledge becomes understanding.
+    if (ligature) ligature->extract(tokens);
 
     o.tokens      = tokens.size();
     o.acc_after   = cortex.recent_accuracy();
@@ -102,9 +108,10 @@ Curator::Curator(Reservoir& pool, Aqueduct& aqueduct,
                  khora::lexicon::Lexicon& lex,
                  khora::cortex::PredictiveColumn& cortex,
                  khora::lattice::Lattice* concept_space,
-                 khora::plexus::Plexus* plexus)
+                 khora::plexus::Plexus* plexus,
+                 khora::ligature::Ligature* ligature)
     : pool_(pool), aqueduct_(aqueduct), lex_(lex), cortex_(cortex),
-      concept_space_(concept_space), plexus_(plexus) {}
+      concept_space_(concept_space), plexus_(plexus), ligature_(ligature) {}
 
 Decision Curator::decide() const {
     const auto cat = pool_.catalog();
@@ -203,7 +210,7 @@ std::string Curator::act(std::size_t study_tokens) {
 
     switch (d.kind) {
         case Decision::Study: {
-            const auto o = study_tome(pool_, lex_, cortex_, d.title, study_tokens, concept_space_, plexus_);
+            const auto o = study_tome(pool_, lex_, cortex_, d.title, study_tokens, concept_space_, plexus_, ligature_);
             ++studies_;
             if (o.ok) {
                 os << "  STUDIED \"" << o.title << "\": " << o.tokens << " tokens, vocab "

@@ -18,6 +18,7 @@
 #include "khora/cortex/predictive_column.hpp"
 #include "khora/lattice/lattice.hpp"
 #include "khora/lexicon/lexicon.hpp"
+#include "khora/ligature/ligature.hpp"
 #include "khora/plexus/plexus.hpp"
 #include "khora/reservoir/aqueduct.hpp"
 #include "khora/reservoir/reservoir.hpp"
@@ -53,7 +54,8 @@ StudyOutcome study_tome(khora::reservoir::Reservoir& pool,
                         const std::string& title,
                         std::size_t max_tokens = 200000,
                         khora::lattice::Lattice* concept_space = nullptr,
-                        khora::plexus::Plexus* plexus = nullptr);
+                        khora::plexus::Plexus* plexus = nullptr,
+                        khora::ligature::Ligature* ligature = nullptr);
 
 struct Decision {
     enum Kind { Study, Forage, Deepen, Idle } kind = Idle;
@@ -69,7 +71,8 @@ public:
             khora::lexicon::Lexicon&     lex,
             khora::cortex::PredictiveColumn& cortex,
             khora::lattice::Lattice*     concept_space = nullptr,
-            khora::plexus::Plexus*       plexus = nullptr);
+            khora::plexus::Plexus*       plexus = nullptr,
+            khora::ligature::Ligature*   ligature = nullptr);
 
     // Decide the next knowledge action without executing it.
     Decision decide() const;
@@ -90,6 +93,7 @@ private:
     khora::cortex::PredictiveColumn&  cortex_;
     khora::lattice::Lattice*          concept_space_ = nullptr;
     khora::plexus::Plexus*            plexus_ = nullptr;
+    khora::ligature::Ligature*        ligature_ = nullptr;
 
     double      mastery_target_ = 0.6;
     std::size_t studies_ = 0;

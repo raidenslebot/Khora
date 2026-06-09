@@ -94,7 +94,7 @@ int main(int argc, char** argv) {
 
     // The Curator — Khora decides for itself what to learn next. Studied
     // vocabulary is promoted into `memory` so cognition can think over it.
-    curator::Curator curator(pool, aqueduct, lex, column, &memory, &plex);
+    curator::Curator curator(pool, aqueduct, lex, column, &memory, &plex, &lig);
 
     // The Ballast — Khora may now claim up to 24 GB of system RAM (raised from
     // 4 GB: the operator has 32 GB and wants the headroom USED). It still backs
@@ -954,7 +954,7 @@ int main(int argc, char** argv) {
     shell.register_tool({
         "pursue",
         "direct Khora to investigate a topic: acquire, study, then think on it  (usage: pursue <topic>)",
-        [&aqueduct, &pool, &lex, &column, &memory, &mind, &plex](const carapace::Intent& i) -> carapace::ToolResult {
+        [&aqueduct, &pool, &lex, &column, &memory, &mind, &plex, &lig](const carapace::Intent& i) -> carapace::ToolResult {
             if (i.args.empty()) return {false, "", "usage: pursue <topic>"};
             const std::string topic = i.args[0];
             std::ostringstream os;
@@ -971,7 +971,7 @@ int main(int argc, char** argv) {
 
             // 2. Absorb it into living knowledge.
             if (!title.empty()) {
-                const auto o = khora::curator::study_tome(pool, lex, column, title, 60000, &memory, &plex);
+                const auto o = khora::curator::study_tome(pool, lex, column, title, 60000, &memory, &plex, &lig);
                 if (o.ok) os << "  studied: vocabulary " << o.vocab_before << " -> " << o.vocab_after
                              << " (+" << o.cooccurrences << " cooccurrences)\n";
                 else      os << "  (study failed: " << o.error << ")\n";
@@ -1487,7 +1487,7 @@ int main(int argc, char** argv) {
     shell.register_tool({
         "answer",
         "Khora reasons an answer to a question from its structure (usage: answer <question>)",
-        [&mind, &lex](const carapace::Intent& i) -> carapace::ToolResult {
+        [&mind, &lex, &lig](const carapace::Intent& i) -> carapace::ToolResult {
             if (i.args.empty()) return {false, "", "usage: answer <question>"};
             std::string q;
             for (const auto& a : i.args) { if (!q.empty()) q += ' '; q += a; }
@@ -1518,6 +1518,13 @@ int main(int argc, char** argv) {
             os << "Khora reasons about \"" << q << "\":\n";
             for (std::size_t k = 0; k < known.size() && k < 2; ++k) {
                 const auto ins = mind.explain(known[k]);
+                // What it IS (structured, from the Ligature) — a real definition.
+                const auto isa = lig.objects(khora::ligature::Relation::IsA, known[k], 3);
+                if (!isa.empty()) {
+                    os << "  " << known[k] << " is a ";
+                    for (std::size_t j = 0; j < isa.size(); ++j) { if (j) os << " / "; os << isa[j].first; }
+                    os << "\n";
+                }
                 os << "  " << known[k] << " is about: ";
                 for (std::size_t j = 0; j < ins.defines.size() && j < 5; ++j) {
                     if (j) os << ", ";
@@ -1617,7 +1624,7 @@ int main(int argc, char** argv) {
     shell.register_tool({
         "study",
         "absorb a tome from the pool into actual knowledge  (usage: study <title> [max_tokens])",
-        [&pool, &lex, &column, &memory, &plex](const carapace::Intent& i) -> carapace::ToolResult {
+        [&pool, &lex, &column, &memory, &plex, &lig](const carapace::Intent& i) -> carapace::ToolResult {
             if (i.args.empty()) return {false, "", "usage: study <title> [max_tokens]"};
             std::size_t max_tokens = 60000;
             std::size_t title_args = i.args.size();
@@ -1628,7 +1635,7 @@ int main(int argc, char** argv) {
             std::string title;
             for (std::size_t k = 0; k < title_args; ++k) { if (k) title += ' '; title += i.args[k]; }
 
-            const auto o = khora::curator::study_tome(pool, lex, column, title, max_tokens, &memory, &plex);
+            const auto o = khora::curator::study_tome(pool, lex, column, title, max_tokens, &memory, &plex, &lig);
             if (!o.ok) return {false, "", o.error};
             std::ostringstream os;
             os << "studied \"" << o.title << "\"\n"

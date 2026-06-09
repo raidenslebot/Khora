@@ -3,6 +3,37 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.87.0 — Ligature fully alive: live structured learning + structured answers
+
+**Author:** Morphus — loop iteration two on limitation #1
+
+v0.86 built the structured-relation layer but only the offline forge populated it,
+and reasoning didn't use it. This closes both gaps.
+
+- **Live extraction:** `study_tome` (the shared learning path) now runs
+  `ligature.extract` alongside lexicon + plexus. So every tome the autonomous
+  Curiosity Daemon acquires becomes TYPED STRUCTURE automatically — acquisition
+  becomes understanding, untended. Threaded through study_tome + the Curator.
+- **Structured answering:** `answer` now states what each concept IS (is-a, from
+  the Ligature) before what it's about (kin, from the Plexus) and how it connects
+  (the reasoned path). Three layers of knowledge in one answer.
+
+**Verified:** `answer "how is light related to heat"` ->
+```
+  light is a mixture        heat is a energy          (structure)
+  light is about: polarized, ray, velocity            (association)
+  it connects them: light -> ray -> heat              (inference)
+```
+The #1 limitation — associative-only representation — is now fully addressed: Khora
+extracts structure as it learns, persists it, and reasons with it. Correlation,
+taxonomy, and inference compose into a single grounded answer. 10/10 suites pass.
+
+LOOP, re-ranked. With representation no longer the binding constraint, the new #1
+is the LEARNING/COMPREHENSION gap: the cortex still learns by distributional
+statistics, generation can't compose, and there's no genuine deduction over the
+new relations (is-a transitivity exists; causal/rule inference doesn't). After
+that: meta-cognition (self-measured improvement) and self-rewriting. Targeting next.
+
 ## v0.86.0 — The Ligature: structured relations (association becomes understanding)
 
 **Author:** Morphus — targeting limitation #1 by the operator's own method
