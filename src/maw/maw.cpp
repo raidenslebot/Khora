@@ -158,6 +158,7 @@ void Maw::harvest_(const std::string& cmd, const std::string& output) {
 
 bool Maw::record(const std::string& cmd, int exit_code, bool killed,
                  const std::string& output) {
+    last_relations_.clear();
     ++st_.attempts;
     if (killed)           ++st_.killed;
     else if (exit_code == 0) ++st_.succeeded;
@@ -178,6 +179,29 @@ bool Maw::record(const std::string& cmd, int exit_code, bool killed,
         ++st_.novel;
         recent_.push_back(cmd);
         if (recent_.size() > 64) recent_.erase(recent_.begin());
+
+        // Distil CLEAN structured facts about the machine. A verb the SHELL RECOGNISED
+        // (it ran — even if it was denied or mis-argued) genuinely IS-A command; only a
+        // "not recognized" reply means it does not exist. From a /? help we also learn
+        // each flag it HAS. Typed, true, no output noise — the bridge to understanding.
+        if (!killed && (exit_code == 0 || !output.empty()) &&
+            output.find("is not recognized") == std::string::npos) {
+            std::istringstream cin(cmd);
+            std::string verb; cin >> verb;
+            if (verb.size() >= 2 && std::isalpha((unsigned char)verb[0]) &&
+                verb != "echo" && verb != "cmd") {
+                last_relations_.push_back({0, verb, "command"});
+                if (cmd.find("/?") != std::string::npos && !output.empty()) {
+                    std::istringstream oin(output);
+                    std::string tok; int got = 0;
+                    while (oin >> tok && got < 8) {
+                        while (!tok.empty() &&
+                               !std::isalnum((unsigned char)tok.back())) tok.pop_back();
+                        if (looks_like_flag(tok)) { last_relations_.push_back({1, verb, tok}); ++got; }
+                    }
+                }
+            }
+        }
     }
     harvest_(cmd, output);
     return novel;

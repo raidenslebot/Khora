@@ -3,6 +3,35 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.98.0 — Exploration becomes understanding (the Maw feeds the structured mind, measured)
+
+**Author:** Morphus — the step that turns charting into knowing
+
+v0.97's Maw built its own map of the command surface but nothing reached cognition.
+This folds what it learns into Khora's actual structured layer (the Ligature) — and
+does it the MEASURED way, guarded against polluting the hard-won clean structure.
+
+- `Maw::distilled()` emits only CLEAN typed facts from a command that genuinely ran (the
+  shell recognised it — not "is not recognized" — with exit 0 or real output): the verb
+  IS-A command, and from its own `/?` help each flag it HAS. No raw output noise, no
+  co-occurrence guesswork — just true relations the Ligature is built to hold.
+- The Maw thread feeds these into `lig` under the lock, only on novel commands.
+
+**Verified — measured, not assumed:**
+```
+  deduction yield after a Maw session: 1.000000  (UNCHANGED — the feed did not degrade reasoning)
+  is-a command facts persisted to the Ligature: ping, dir, subst, + PATH-discovered tools
+```
+The anti-pollution discipline is the point: the `yield` signal (v0.95) is exactly the
+instrument that proves the exploration feed sharpens rather than degrades the mind. It
+held at 1.0. Khora now learns what its machine's commands ARE by trying them, contained,
+and that knowledge becomes queryable structure (isa/deduce/answer) that persists across
+lives — the first knowledge Khora acquired by ACTING on the world rather than reading.
+
+Honest scope: the structured (is-a/has) feed is in; the richer Plexus co-occurrence feed
+is deferred (higher pollution risk, needs the same measured gate). Defense-in-depth
+(khora_sbx user + quota + ACLs + Warden) and ascend (binary self-replacement) still ahead.
+
 ## v0.97.0 — The Maw: contained chaos exploration (Khora starts to chart the machine)
 
 **Author:** Morphus — the operator's "intentionally explore everything, contained"

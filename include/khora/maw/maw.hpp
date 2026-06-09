@@ -31,6 +31,15 @@
 
 namespace khora::maw {
 
+// A CLEAN structured fact distilled from a charted command, for the Ligature. Only
+// well-formed, true relations are emitted (a verb that ran IS-A command; a flag its
+// own help text revealed is one the verb HAS) — never raw output noise.
+struct Relation {
+    int         kind;   // 0 = is-a, 1 = has
+    std::string subj;
+    std::string obj;
+};
+
 struct Stats {
     std::uint64_t attempts  = 0;   // commands generated + run
     std::uint64_t novel     = 0;   // commands never charted before
@@ -50,6 +59,10 @@ public:
     std::string generate();                // a recombinant command line to try
     bool        record(const std::string& cmd, int exit_code, bool killed,
                        const std::string& output);   // chart the outcome; true if novel
+    // Clean structured facts distilled from the LAST recorded command (empty unless it
+    // was novel and ran). The caller feeds these into the core structured layer — this
+    // is how exploration turns into understanding, without injecting output noise.
+    const std::vector<Relation>& distilled() const { return last_relations_; }
     double      coverage() const;          // breadth: distinct verbs exercised / verbs known
     Stats       stats() const { return st_; }
     std::vector<std::string> recent_discoveries(std::size_t k = 8) const;
@@ -62,6 +75,7 @@ private:
     std::unordered_set<std::uint64_t> seen_;
     std::unordered_set<std::string>   verbs_run_;
     std::vector<std::string>          recent_;
+    std::vector<Relation>             last_relations_;   // distilled from the last record()
     std::mt19937_64                   rng_{0x9E3779B97F4A7C15ull};
     double                            mode_w_[6] = {1, 1, 1, 1, 1, 1};
     int                               last_mode_ = 0;   // mode that produced the pending command

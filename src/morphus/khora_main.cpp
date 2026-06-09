@@ -2471,7 +2471,16 @@ int main(int argc, char** argv) {
                         const auto res = khora::bulwark::execute_contained(cmd, 8000); // NO lock held
                         bool novel = false;
                         { std::unique_lock<std::shared_mutex> lk(shared_mu);
-                          novel = maw.record(cmd, res.exit_code, res.killed_by_job, res.output); }
+                          novel = maw.record(cmd, res.exit_code, res.killed_by_job, res.output);
+                          // Exploration becomes UNDERSTANDING: fold the clean structured
+                          // facts (verb is-a command; verb has flag) into the core layer.
+                          if (novel) {
+                              for (const auto& rel : maw.distilled())
+                                  lig.add(rel.kind == 0 ? ligature::Relation::IsA
+                                                        : ligature::Relation::HasPart,
+                                          rel.subj, rel.obj, 1);
+                          }
+                        }
                         maw_attempts.fetch_add(1, std::memory_order_relaxed);
                         if (novel) maw_novel.fetch_add(1, std::memory_order_relaxed);
                         if ((maw_attempts.load() % 25) == 0) {
