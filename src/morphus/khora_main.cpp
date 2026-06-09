@@ -1672,21 +1672,31 @@ int main(int argc, char** argv) {
     // is the missing success signal — the number every self-improvement optimises.
     shell.register_tool({
         "yield",
-        "Khora measures the objective success of its own reasoning  (usage: yield [n])",
-        [&mind](const carapace::Intent& i) -> carapace::ToolResult {
+        "Khora measures the objective success of its own reasoning, across faculties  (usage: yield [n])",
+        [&mind, &lig](const carapace::Intent& i) -> carapace::ToolResult {
             std::size_t n = 150;
             if (!i.args.empty()) { try { n = std::stoul(i.args[0]); } catch (...) {} }
             if (n < 20)   n = 20;
             if (n > 2000) n = 2000;
-            const double score = mind.benchmark_inference(n, 7);
-            if (score < 0.0) return {true, "Khora cannot benchmark yet — its concept field is empty", ""};
+            const double infer_score  = mind.benchmark_inference(n, 7);
+            if (infer_score < 0.0) return {true, "Khora cannot benchmark yet — its concept field is empty", ""};
+            // Second faculty: deduction over the structured (Ligature) layer. The
+            // closed loop now spans MORE than one faculty — the whole mind grows
+            // measurable, one faculty at a time.
+            const double deduce_score = lig.benchmark_deduction(n, 7);
+
             const long ts = static_cast<long>(std::time(nullptr));
             {
                 std::error_code ec; std::filesystem::create_directories("data/ledger", ec);
                 std::ofstream os(kYieldLedgerPath, std::ios::app);
-                if (os) os << ts << '\t' << "infer" << '\t' << score << '\t' << n
-                           << '\t' << mind.infer_goal_pull() << '\n';
+                if (os) {
+                    os << ts << '\t' << "infer" << '\t' << infer_score << '\t' << n
+                       << '\t' << mind.infer_goal_pull() << '\n';
+                    if (deduce_score >= 0.0)
+                        os << ts << '\t' << "deduce" << '\t' << deduce_score << '\t' << n << "\t0\n";
+                }
             }
+            // Trend of the inference faculty across the persistent ledger.
             std::vector<double> recent;
             {
                 std::ifstream is(kYieldLedgerPath);
@@ -1703,10 +1713,13 @@ int main(int argc, char** argv) {
             double sum = 0.0; int cnt = 0;
             for (std::size_t k = (recent.size() > 10 ? recent.size() - 10 : 0); k < recent.size(); ++k) { sum += recent[k]; ++cnt; }
             std::ostringstream os;
-            os << "Khora measures its own reasoning — inference success on " << n
-               << " genuine 2-hop goals: " << score << "\n"
+            os << "Khora measures its own mind across faculties, on " << n << " goals each:\n"
+               << "  inference (4-hop graph reasoning): " << infer_score << "\n"
+               << "  deduction (property inheritance)  : "
+               << (deduce_score < 0.0 ? std::string("no structured facts yet")
+                                      : std::to_string(deduce_score)) << "\n"
                << "  (goal-pull " << mind.infer_goal_pull() << "; " << recent.size()
-               << " measurements in the ledger, recent mean " << (cnt ? sum / cnt : score) << ")";
+               << " inference measurements logged, recent mean " << (cnt ? sum / cnt : infer_score) << ")";
             return {true, os.str(), ""};
         }
     });

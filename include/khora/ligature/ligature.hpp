@@ -84,6 +84,13 @@ public:
     // a pure association graph (the Plexus) provably could not produce.
     std::vector<Inference> deduce(const std::string& subject, int max_depth = 3) const;
 
+    // OBJECTIVE self-measurement of the DEDUCTION faculty. Constructs facts that are
+    // genuinely derivable (X is-a A, A rel Z, with X rel Z NOT directly asserted) and
+    // returns the fraction that deduce() actually recovers. A fitness signal for
+    // reasoning over structure — the closed loop, reaching past inference into
+    // deduction so a second faculty becomes measurable (and, in time, evolvable).
+    double benchmark_deduction(std::size_t n = 200, std::uint64_t seed = 0) const;
+
     // Inspectors.
     std::uint64_t triple_count() const noexcept { return triples_; }
     std::uint64_t assertions()   const noexcept { return assertions_; }

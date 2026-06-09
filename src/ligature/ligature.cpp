@@ -291,6 +291,56 @@ std::vector<Inference> Ligature::deduce(const std::string& subject, int max_dept
     return uniq;
 }
 
+double Ligature::benchmark_deduction(std::size_t n, std::uint64_t seed) const {
+    const auto& isa = fwd_[static_cast<std::size_t>(Relation::IsA)];
+    if (isa.empty() || n == 0) return -1.0;
+
+    // The benchmark must be FAIR: test only facts deduce() is CONTRACTED to derive —
+    // support >= 2 on both links (one-offs are noise it rightly ignores) and a
+    // non-generic is-a parent (generic parents carry no inheritable structure). A
+    // score here is true recall over in-contract facts, not a strawman.
+    static const std::unordered_set<std::string> generic = {
+        "thing","things","one","ones","way","ways","part","parts","sort","kind",
+        "type","him","her","them","those","these","something","someone","somebody",
+        "anyone","anything","everyone","nothing","person","matter","point","case",
+        "form","name","word","term","number","piece","set","group"
+    };
+
+    std::vector<const std::string*> subs;
+    subs.reserve(isa.size());
+    for (const auto& kv : isa) subs.push_back(&kv.first);
+    const std::size_t N = subs.size();
+
+    std::size_t total = 0, recovered = 0;
+    for (std::size_t s = 0; s < n; ++s) {
+        const std::string& X =
+            *subs[(s * 2654435761ull + seed * 1099511628211ull + 1) % N];
+
+        bool constructed = false;
+        for (const auto& [A, ca] : objects(Relation::IsA, X, 4)) {
+            if (A == X || ca < 2 || generic.count(A)) continue;   // deduce's preconditions
+            for (const Relation rel : { Relation::Causes, Relation::HasPart }) {
+                for (const auto& [Z, cz] : objects(rel, A, 4)) {
+                    if (Z == X || Z == A || cz < 2) continue;
+                    if (count(rel, X, Z) > 0) continue;   // already direct — not a derivation
+                    // X --is-a--> A --rel--> Z, all well-attested: deduce SHOULD derive X rel Z.
+                    ++total;
+                    constructed = true;
+                    bool found = false;
+                    for (const auto& inf : deduce(X, 3)) {
+                        if (inf.relation == rel && inf.object == Z) { found = true; break; }
+                    }
+                    if (found) ++recovered;
+                    break;
+                }
+                if (constructed) break;
+            }
+            if (constructed) break;
+        }
+    }
+    return total ? static_cast<double>(recovered) / static_cast<double>(total) : -1.0;
+}
+
 // ---- Persistence: a compact text file <prefix>.lig --------------------------
 //   one line per triple:  relIndex<TAB>subject<TAB>object<TAB>count
 
