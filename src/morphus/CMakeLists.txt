@@ -9,6 +9,7 @@ target_link_libraries(khora PRIVATE
     khora::ligature
     khora::hand
     khora::bulwark
+    khora::maw
     khora::cogitator
     khora::whetstone
     khora::reservoir

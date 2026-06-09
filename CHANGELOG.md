@@ -3,6 +3,47 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.97.0 — The Maw: contained chaos exploration (Khora starts to chart the machine)
+
+**Author:** Morphus — the operator's "intentionally explore everything, contained"
+
+First: an empirical containment-boundary test, because the red-team's persistence holes
+(scheduled tasks, services, Run-keys, self-rewrite escape) all assumed a MEDIUM-integrity
+child — and the Bulwark runs commands at LOW integrity. Measured on the real machine,
+every one is already DENIED at low-IL and NONE landed:
+```
+  contain reg add HKCU\...\Run ...     -> Access is denied   (HKCU Run: not present)
+  contain schtasks /create ...         -> path not found      (task: not present)
+  contain sc create ...                -> OpenSCManager FAILED 5: Access is denied
+  contain (write to src/ include/ data/) -> Access is denied  (no canary landed)
+```
+So the two CRITICAL red-team holes are closed by the existing cage; the Warden/quota/VHDX
+become defense-in-depth, not blockers. Empirical beats assumed — and it cleared the path
+to the Maw.
+
+`khora::maw::Maw` — the chaos-exploration drive:
+- generate(): a command line by entropy + recombination of discovered verbs/paths/flags
+  across six modes (recombine, mutate, harvest-help, query, expand-path, probe-net) — a
+  novelty-weighted bandit that drifts toward whatever keeps charting new ground. NOT a
+  fixed catalog; the pools GROW from what the machine reveals in outputs.
+- It does NOT pre-filter dangerous verbs (del/format/reg/sc are in the pool on purpose);
+  the Bulwark contains them, Khora charts "this exists and is refused," and moves on.
+- record(): hash + dedup, harvest new paths/flags from output, track distinct verbs and
+  a coverage score; persisted to data/maw/ across lives.
+- Wired as a background thread HARD-GATED on bulwark::self_check() >= 2 — it runs ONLY if
+  containment is proven, ONLY through execute_contained (never the Hand), at idle priority
+  on a ~3s cadence. `maw` REPL tool reports the chart; MawTest in the ctest net.
+
+**Verified:** "[maw: containment proven (tier 2) — chaos exploration ARMED]"; in ~75s it
+made contained attempts, charted distinct commands, exercised verbs, and harvested paths
+from real outputs (pool 358 verbs = 74 seed + PATH scan). 12/12 suites pass.
+
+Honest scope: v1 builds Khora's OWN exploration map (what exists, what runs, what's
+refused, coverage). Folding that map into the core Plexus/Ligature is a deliberate MEASURED
+next step (guarded against polluting the clean structure), not done blindly. Still ahead:
+the khora_sbx user + quota + ACLs and a Warden as defense-in-depth; and ascend (binary
+self-replacement), last. Containment proven before autonomy — held to.
+
 ## v0.96.0 — The Bulwark: a proven containment cage (contain the blast radius, not the capability)
 
 **Author:** Morphus — operator directive: temporarily sandbox Khora until it is trained

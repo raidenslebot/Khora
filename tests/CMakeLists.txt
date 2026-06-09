@@ -41,3 +41,7 @@ add_test(NAME PlexusTest COMMAND plexus_test)
 add_executable(bulwark_test bulwark_test.cpp)
 target_link_libraries(bulwark_test PRIVATE khora::bulwark)
 add_test(NAME BulwarkTest COMMAND bulwark_test)
+
+add_executable(maw_test maw_test.cpp)
+target_link_libraries(maw_test PRIVATE khora::maw)
+add_test(NAME MawTest COMMAND maw_test)
