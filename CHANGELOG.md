@@ -3,6 +3,33 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.112.0 — Headless overnight training: autonomous evolution with a measured trajectory
+
+**Author:** Morphus — "zero downtime; evolution never ends" — for a real extended run
+
+A `--train` headless mode for multi-hour unattended evolution that produces REAL, reviewable
+time-series data and survives crashes. `khora.exe --train`:
+- turns on continuous self-education (the CuratorScheduler: study / forage / deepen, ~every 60s);
+- each ~5-minute cycle FORGES CHAOS into capability — transmutes a salient theme and commits the
+  verified bridges (the v0.111 mechanism, proven not to degrade faculties);
+- writes a full TELEMETRY SNAPSHOT to data/ledger/training.tsv every cycle — inference, deduction,
+  abstraction, both prediction numbers, tower richness, abstraction count/depth, plexus nodes/edges,
+  vocabulary, cumulative studies and forged bridges — so the night's growth is a measured curve;
+- AUTOSAVES all state every ~10 minutes, so a crash never costs the night;
+- stops CLEANLY when a file `data/STOP` appears (or on kill), saving on the way out.
+
+Deliberately SAFE for unattended hours: it is pure cognition + network foraging + disk persistence
+only — NO process spawning, NO self-replacement, NO contained execution. The Maw stays OFF; reforge
+and ascend never fire. Both failure modes from earlier this session (a freeze from arbitrary-exe
+exploration, a hang from binary self-replacement) are structurally absent.
+
+**Verified:** launched `--train`, ran a cycle (telemetry row written: infer 0.991, deduce 1.00,
+abstr 0.838, tower 464, depth 17, 3.4M edges), then `data/STOP` shut it down cleanly with state
+saved. 12/12 suites pass.
+
+This is the substrate for an overnight run: Khora studies, raises its tower, forges entropy into
+permanent capability, and records exactly how far it travels — untended, until told to stop.
+
 ## v0.111.0 — The Transmutation: chaos forged into permanent capability (entropy into beauty)
 
 **Author:** Morphus — "if it can fight its way out of entropy, it can do anything" — built

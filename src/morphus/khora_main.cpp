@@ -85,12 +85,15 @@ int main(int argc, char** argv) {
 
     // ascend_selftest: the successor binary proves it can LAUNCH the runtime before it
     // is ever promoted over the running image. Intercepted before anything else so it
-    // never reaches the single-command dispatcher.
+    // never reaches the single-command dispatcher. --train: headless overnight evolution.
+    bool train_mode = false;
     for (int i = 1; i < argc; ++i) {
-        if (std::string(argv[i]) == "ascend_selftest") {
+        const std::string a = argv[i];
+        if (a == "ascend_selftest") {
             std::cout << "ascend_selftest ok\n";
             return 0;
         }
+        if (a == "--train") train_mode = true;
     }
 
     // 1. Bring up subsystems.
@@ -2605,8 +2608,8 @@ int main(int argc, char** argv) {
         return shell.dispatch(intent);
     };
 
-    // 6. Non-interactive single-command mode: khora <verb> [args...]
-    if (argc > 1) {
+    // 6. Non-interactive single-command mode: khora <verb> [args...]  (not for --train)
+    if (argc > 1 && !train_mode) {
         std::ostringstream line;
         for (int i = 1; i < argc; ++i) {
             if (i > 1) line << ' ';
@@ -2842,24 +2845,103 @@ int main(int argc, char** argv) {
         }
     });
 
-    // 8. Interactive REPL.
-    print_banner();
-    std::cout << "[reverie + self-training active; ballast governing RAM @ "
-              << ballast.cap_mb() << "MB cap]\n\n";
-    while (true) {
-        const std::string line = read_line_prompt("khora> ");
-        if (line == "__EOF__") { std::cout << "\n[EOF]\n"; break; }
-        if (line.empty()) continue;
+    // 8. Either headless TRAINING (overnight autonomous evolution) or the interactive REPL.
+    if (train_mode) {
+        std::cout << "[TRAINING MODE — headless autonomous evolution. The only limit is physics.]\n"
+                  << "[continuous self-education ON; chaos forged each cycle; telemetry ->\n"
+                  << " data/ledger/training.tsv; autosave; STOP cleanly by creating file data/STOP]\n"
+                  << std::flush;
+        curator_bg.start(std::chrono::seconds(60), 60000);   // continuous study / forage / deepen
 
-        const auto intent = carapace::Carapace::parse(line);
-        if (intent.verb == "exit" || intent.verb == "quit") break;
+        const long t_start = static_cast<long>(std::time(nullptr));
+        const std::uint64_t studies0 = static_cast<std::uint64_t>(curator.studies());
+        std::uint64_t bridges_total = 0;
+        {
+            std::error_code ec; std::filesystem::create_directories("data/ledger", ec);
+            std::ofstream h("data/ledger/training.tsv", std::ios::app);
+            if (h) h << "# === training run started " << t_start << " ===\n"
+                        "# ts\tmin\tinfer\tdeduce\tabstr\tpred_pmi\tpred_cortex\ttower\tabs_n\tabs_d\t"
+                        "plex_nodes\tplex_edges\tvocab\tstudies\tbridges\n";
+        }
+        auto nap_or_stop = [&](int tenths) {
+            for (int k = 0; k < tenths; ++k) {
+                if (std::filesystem::exists("data/STOP")) return;
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
+        };
 
-        const auto r = locked_dispatch(intent);
-        if (r.ok) {
-            std::cout << r.output;
-            if (!r.output.empty() && r.output.back() != '\n') std::cout << '\n';
-        } else {
-            std::cerr << "error: " << r.error << "\n";
+        std::size_t cycle = 0;
+        while (!std::filesystem::exists("data/STOP")) {
+            // CHAOS forged into permanent capability — transmute a salient theme, commit the
+            // verified bridges (proven not to degrade the faculties).
+            {
+                std::unique_lock<std::shared_mutex> lk(shared_mu);
+                const std::string theme = mind.wandering_seed(static_cast<std::uint64_t>(cycle) * 2654435761ull + 1);
+                if (!theme.empty()) {
+                    const auto tr = mind.transmute(theme, 24, /*commit*/true, static_cast<std::uint64_t>(cycle) + 1);
+                    bridges_total += static_cast<std::uint64_t>(tr.written);
+                }
+            }
+            // MEASURED snapshot of how far it has come.
+            double inf, ded, abs, pp = -1.0, pc = -1.0, tower; std::size_t an, pln, ple, voc; int ad;
+            {
+                std::unique_lock<std::shared_mutex> lk(shared_mu);
+                inf = mind.benchmark_inference(150, 7);
+                ded = lig.benchmark_deduction(150, 7);
+                abs = mind.benchmark_abstraction(150, 7);
+                std::ifstream hf("data/eval/heldout.txt", std::ios::binary);
+                if (hf) {
+                    std::ostringstream all; all << hf.rdbuf();
+                    std::vector<std::string> toks; std::string w;
+                    for (const char ch : all.str()) {
+                        if (std::isalpha((unsigned char)ch)) w += static_cast<char>(std::tolower((unsigned char)ch));
+                        else { if (w.size() >= 2) toks.push_back(w); w.clear(); }
+                    }
+                    if (w.size() >= 2) toks.push_back(w);
+                    if (!toks.empty()) { pp = mind.benchmark_prediction(toks, 5); pc = mind.benchmark_next_word(toks); }
+                }
+                tower = mind.tower_richness(); an = mind.abstraction_count(); ad = mind.abstraction_depth();
+                pln = plex.vocabulary_size(); ple = plex.edge_count(); voc = lex.vocabulary_size();
+            }
+            const long now = static_cast<long>(std::time(nullptr));
+            const std::uint64_t studies = static_cast<std::uint64_t>(curator.studies()) - studies0;
+            {
+                std::ofstream o("data/ledger/training.tsv", std::ios::app);
+                if (o) o << now << '\t' << (now - t_start) / 60 << '\t' << inf << '\t' << ded << '\t' << abs
+                         << '\t' << pp << '\t' << pc << '\t' << tower << '\t' << an << '\t' << ad << '\t'
+                         << pln << '\t' << ple << '\t' << voc << '\t' << studies << '\t' << bridges_total << '\n';
+            }
+            if (cycle % 2 == 0) persist_silently();   // autosave — a crash never costs the night
+            std::cout << "[train c" << cycle << " | " << (now - t_start) / 60 << "min | "
+                      << an << " abs d" << ad << " | tower " << static_cast<long>(tower) << " | "
+                      << ple << " edges | " << studies << " studies | " << bridges_total << " bridges]\n"
+                      << std::flush;
+            ++cycle;
+            nap_or_stop(3000);   // ~5 minutes between snapshots
+        }
+        std::error_code ec; std::filesystem::remove("data/STOP", ec);
+        curator_bg.stop();
+        std::cout << "[TRAINING STOPPED after " << (static_cast<long>(std::time(nullptr)) - t_start) / 60
+                  << " min, " << cycle << " cycles — state saved]\n";
+    } else {
+        print_banner();
+        std::cout << "[reverie + self-training active; ballast governing RAM @ "
+                  << ballast.cap_mb() << "MB cap]\n\n";
+        while (true) {
+            const std::string line = read_line_prompt("khora> ");
+            if (line == "__EOF__") { std::cout << "\n[EOF]\n"; break; }
+            if (line.empty()) continue;
+
+            const auto intent = carapace::Carapace::parse(line);
+            if (intent.verb == "exit" || intent.verb == "quit") break;
+
+            const auto r = locked_dispatch(intent);
+            if (r.ok) {
+                std::cout << r.output;
+                if (!r.output.empty() && r.output.back() != '\n') std::cout << '\n';
+            } else {
+                std::cerr << "error: " << r.error << "\n";
+            }
         }
     }
 
