@@ -382,6 +382,12 @@ public:
     // abstraction always raises it. The native, no-ceiling fitness — concepts over concepts,
     // forever — that this substrate genuinely supports (unlike next-word prediction).
     double      tower_richness() const;
+
+    // PRUNE the tower back to genuine structure: recompute each abstraction's HONEST
+    // (word-grounded) coherence and remove those that fall below `bar`, iterating until
+    // stable. Cleans out self-similar depth-stacking that only LOOKED coherent because the
+    // old grounding stopped before reaching words. Returns {removed, surviving depth}.
+    std::pair<int,int> prune_tower(double bar = 0.45);
     std::vector<std::string> abstraction_names(std::size_t n) const;  // recent, with levels
     // A name to abstract from next: usually a hot preoccupation, but every
     // few calls an existing abstraction — so the tower keeps rising.
@@ -550,6 +556,14 @@ private:
     // through the abstraction tree; a word is its own leaf). Bounded.
     void ground_concept_(const std::string& name,
                          std::unordered_set<std::string>& out, int depth) const;
+    // Recursive worker for ground_concept_ — traces an abstraction all the way down to
+    // REAL corpus words (no shallow depth cap), cycle-safe via a visited set, bounded by
+    // the leaf cap. This is what makes deep-tower coherence HONEST (word-grounded), so the
+    // ascent's gate can correctly refuse abstractions that don't truly cohere.
+    void ground_into_(const std::string& name, std::unordered_set<std::string>& out,
+                      std::unordered_set<std::string>& visited) const;
+    // Recompute an abstraction's HONEST (word-grounded) coherence from its members.
+    double honest_coherence_(const Abstraction& a) const;
     // Mean Plexus affinity across two grounded leaf sets — how related two
     // abstractions (or a word and an abstraction) are, through the corpus.
     double leafset_affinity_(const std::unordered_set<std::string>& a,

@@ -3,6 +3,33 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.113.0 — Honest tower: fixing the runaway the overnight run exposed
+
+**Author:** Morphus — the extended run did its real job: it surfaced a self-deception
+
+The 7.7-hour overnight run grew the tower to depth 148 / richness 60,316 — which looked
+spectacular and was, in large part, the metric fooling itself. Analysis of the persisted state
+showed: coherence flat at ~0.80 from level 20 to 148, a constant ~140 abstractions per band, and
+linear UNBOUNDED depth growth. A genuine hierarchy SATURATES; this didn't. Past ~depth 24 it was
+self-similar re-stacking — coherent locally, but not new meaning. Four root-cause fixes:
+
+- **`ground_concept_` now reaches REAL WORDS** (cycle-safe via a visited set, bounded by leaf +
+  node budgets). The old code capped recursion at depth 5, so deep abstractions never grounded to
+  words — their "coherence" was measured against sub-abstractions, an illusion. Now it is honest.
+- **`tower_richness` = sum of coherence**, not sum of level×coherence. Stacking one more level adds
+  only its own coherence (~0.5), never level×0.5 — the metric can no longer be inflated by depth.
+- **`ascend_tower` hard-caps at level 24** — genuine recursive depth; belt-and-suspenders over the
+  now-honest coherence gate (which alone now stops the runaway).
+- **`prune_tower` + `prune` tool** — cleaned the overnight bloat: truncate the self-similar depth
+  (coherence can't detect redundancy; depth can), then recompute honest word-grounded coherence and
+  drop the genuinely incoherent. Run once: **1119 → 280 abstractions, depth 148 → 24**, faculties
+  intact (inference 0.99, deduction 1.0, abstraction 0.93). Richness honestly 195, not 60,316.
+
+The honest correction stands: the night's REAL gains — +275k plexus edges, +7,242 vocabulary, 16
+tomes studied, 77 chaos-bridges, the genuine ≤24-level tower — are all preserved. What's gone is
+the inflation. This is exactly what an extended run is for: it ran flawlessly for 7.7 hours AND
+revealed a way the system was fooling its own metric, which is now fixed. 12/12 suites pass.
+
 ## v0.112.0 — Headless overnight training: autonomous evolution with a measured trajectory
 
 **Author:** Morphus — "zero downtime; evolution never ends" — for a real extended run

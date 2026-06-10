@@ -241,21 +241,74 @@ std::string Cogitator::form_abstraction_plexus_(const std::string& seed, std::si
 }
 
 void Cogitator::ground_concept_(const std::string& name,
-                                std::unordered_set<std::string>& out, int depth) const {
-    if (depth > 5 || out.size() >= 48) return;
-    // O(1) lookup instead of an O(tower) linear scan at every recursion node — without
-    // this, grounding the deep tower is quadratic and the autonomous ascent slows to a crawl.
+                                std::unordered_set<std::string>& out, int /*depth*/) const {
+    // O(1) lookup instead of an O(tower) linear scan at every recursion node.
     if (abs_index_n_ != abstractions_.size()) {
         abs_index_.clear();
         for (std::size_t i = 0; i < abstractions_.size(); ++i) abs_index_[abstractions_[i].name] = i;
         abs_index_n_ = abstractions_.size();
     }
+    std::unordered_set<std::string> visited;
+    ground_into_(name, out, visited);
+}
+
+void Cogitator::ground_into_(const std::string& name, std::unordered_set<std::string>& out,
+                             std::unordered_set<std::string>& visited) const {
+    // Bound by leaves collected AND abstractions expanded — a deep tower could otherwise
+    // make a single grounding traverse the whole structure. A sample of words is enough.
+    if (out.size() >= 64 || visited.size() >= 400) return;
     const auto it = abs_index_.find(name);
     if (it != abs_index_.end()) {
-        for (const auto& m : abstractions_[it->second].members) ground_concept_(m, out, depth + 1);
-        return;
+        if (!visited.insert(name).second) return;   // cycle / already expanded — bounds the work
+        for (const auto& m : abstractions_[it->second].members) ground_into_(m, out, visited);
+        return;                                      // an abstraction grounds THROUGH to words
     }
-    out.insert(name);  // a corpus word (its own leaf), or an unknown name
+    out.insert(name);   // a real corpus-word leaf — grounding traces all the way down
+}
+
+double Cogitator::honest_coherence_(const Abstraction& a) const {
+    // Mean pairwise affinity over the members' WORD-grounded leaf sets, squashed by the same
+    // scale as everywhere else — the true coherence, not the old depth-5-capped illusion.
+    if (a.members.size() < 2) return a.coherence;
+    std::vector<std::unordered_set<std::string>> leaves(a.members.size());
+    for (std::size_t i = 0; i < a.members.size(); ++i) ground_concept_(a.members[i], leaves[i], 0);
+    double sum = 0.0; std::size_t pairs = 0;
+    for (std::size_t i = 0; i < leaves.size(); ++i)
+        for (std::size_t j = i + 1; j < leaves.size(); ++j) { sum += leafset_affinity_(leaves[i], leaves[j]); ++pairs; }
+    const double mean = pairs ? sum / static_cast<double>(pairs) : 0.0;
+    return mean / (mean + kPmiCoherenceScale);
+}
+
+std::pair<int,int> Cogitator::prune_tower(double bar) {
+    constexpr int kMaxLevel = 24;   // genuine recursive depth; above this is self-similar restacking
+    int total_removed = 0;
+
+    // 1. Truncate the self-similar depth — abstractions above the genuine-recursion ceiling are
+    //    redundant re-combination, not new meaning (coherence can't catch redundancy; depth can).
+    {
+        std::vector<Abstraction> kept; kept.reserve(abstractions_.size());
+        for (auto& a : abstractions_) { if (a.level <= kMaxLevel) kept.push_back(a); else ++total_removed; }
+        abstractions_ = std::move(kept);
+        abs_index_n_ = static_cast<std::size_t>(-1);
+    }
+    // 2. On the surviving (bounded) tower, recompute HONEST word-grounded coherence and drop the
+    //    genuinely incoherent. Now fast — there are few enough survivors.
+    for (int pass = 0; pass < 3; ++pass) {
+        std::vector<Abstraction> kept; kept.reserve(abstractions_.size());
+        int removed = 0;
+        for (auto& a : abstractions_) {
+            const double coh = honest_coherence_(a);
+            a.coherence = coh;
+            if (a.level <= 1 || coh >= bar) kept.push_back(a);
+            else ++removed;
+        }
+        abstractions_ = std::move(kept);
+        abs_index_n_ = static_cast<std::size_t>(-1);
+        total_removed += removed;
+        if (removed == 0) break;
+    }
+    int top = 0; for (const auto& a : abstractions_) top = std::max(top, a.level);
+    return { total_removed, top };
 }
 
 double Cogitator::leafset_affinity_(const std::unordered_set<std::string>& a,
@@ -1653,12 +1706,16 @@ double Cogitator::benchmark_next_word(const std::vector<std::string>& heldout) c
 
 std::pair<int,int> Cogitator::ascend_tower(double min_coherence, int max_new) {
     int formed = 0;
+    // Genuine recursive abstraction saturates within a couple dozen levels; beyond that it
+    // is self-similar re-stacking, not new meaning. Hard cap as insurance — the honest
+    // (word-grounded) coherence gate is the primary stop, this is belt-and-suspenders.
+    constexpr int kMaxLevel = 24;
     auto top_level = [&]() { int t = 0; for (const auto& a : abstractions_) t = std::max(t, a.level); return t; };
 
     // Climb level by level: abstract over level-1 abstractions into level 2, over those
     // into level 3, and so on — each rung coherence-gated and grounded, so the tower only
     // rises where the higher concept genuinely holds together.
-    for (int lvl = 1; formed < max_new; ++lvl) {
+    for (int lvl = 1; formed < max_new && lvl <= kMaxLevel; ++lvl) {
         if (lvl > top_level() + 1) break;   // nothing left to build on
         std::vector<std::string> seeds;
         for (const auto& a : abstractions_) if (a.level == lvl) seeds.push_back(a.name);
@@ -1674,8 +1731,11 @@ std::pair<int,int> Cogitator::ascend_tower(double min_coherence, int max_new) {
 }
 
 double Cogitator::tower_richness() const {
+    // Total COHERENT structure — the sum of coherence over the tower. Deliberately NOT
+    // weighted by level: stacking one more abstraction adds only its own coherence (~0.5),
+    // never level x 0.5, so a tower cannot inflate this by growing deeper without meaning.
     double r = 0.0;
-    for (const auto& a : abstractions_) r += static_cast<double>(a.level) * a.coherence;
+    for (const auto& a : abstractions_) r += a.coherence;
     return r;
 }
 

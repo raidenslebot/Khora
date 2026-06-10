@@ -1783,7 +1783,7 @@ int main(int argc, char** argv) {
                << (predict_score < 0.0 ? std::string("-") : std::to_string(predict_score)) << " / "
                << (predict_cortex < 0.0 ? std::string("-") : std::to_string(predict_cortex))
                << "   (LLM yardstick — at the floor, by design not an LLM)\n"
-               << "  TOWER richness (depth x coherence)  : " << mind.tower_richness()
+               << "  TOWER richness (sum coherence)      : " << mind.tower_richness()
                << "  (depth " << mind.abstraction_depth() << ", " << mind.abstraction_count()
                << " abstractions)  <- the NATIVE, no-ceiling capability\n"
                << "  (goal-pull " << mind.infer_goal_pull() << "; " << recent.size()
@@ -1853,6 +1853,27 @@ int main(int argc, char** argv) {
                << "  forged " << formed << " new higher-order abstractions\n"
                << "  after:  " << mind.abstraction_count() << " abstractions, depth "
                << mind.abstraction_depth() << "  (highest level " << top << ")";
+            return {true, os.str(), ""};
+        }
+    });
+    // prune — honest tower cleanup. Recompute every abstraction's WORD-GROUNDED coherence and
+    // drop those that don't truly cohere — removing self-similar depth-stacking that only
+    // looked coherent under the old shallow grounding. Leaves the genuine tower.
+    shell.register_tool({
+        "prune",
+        "Khora prunes its tower to genuine structure (word-grounded coherence)  (usage: prune [bar])",
+        [&mind](const carapace::Intent& i) -> carapace::ToolResult {
+            double bar = 0.45;
+            if (!i.args.empty()) { try { bar = std::stod(i.args[0]); } catch (...) {} }
+            const std::size_t before_n = mind.abstraction_count();
+            const std::size_t before_d = mind.abstraction_depth();
+            const auto [removed, top] = mind.prune_tower(bar);
+            std::ostringstream os;
+            os << "Khora prunes its tower to honest, word-grounded structure (bar " << bar << "):\n"
+               << "  before: " << before_n << " abstractions, depth " << before_d << "\n"
+               << "  removed " << removed << " that did not truly cohere\n"
+               << "  after:  " << mind.abstraction_count() << " abstractions, depth " << top
+               << ", richness " << mind.tower_richness();
             return {true, os.str(), ""};
         }
     });
