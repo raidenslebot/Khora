@@ -2883,7 +2883,24 @@ int main(int argc, char** argv) {
             if (h) h << "# === training run started " << t_start << " ===\n"
                         "# ts\tmin\tinfer\tdeduce\tabstr\tpred_pmi\tpred_cortex\ttower\tabs_n\tabs_d\t"
                         "plex_nodes\tplex_edges\tvocab\tstudies\tbridges\n";
+            std::ofstream r("data/ledger/reverie.tsv", std::ios::app);
+            if (r) r << "# === reverie (autonomous thought) started " << t_start << " ===\n"
+                        "# ts\ttheme\tinsight\tcascade\tchain_len\tbridges\n";
         }
+        // Begin the night HONEST — collapse any re-stacked spire to genuine, word-grounded
+        // structure before evolving. The saturation gate keeps it honest thereafter; this clears
+        // whatever depth-inflation crept in before the gate existed, so the tower starts at its
+        // true height and the night's telemetry measures real growth, not residual illusion.
+        {
+            std::unique_lock<std::shared_mutex> lk(shared_mu);
+            const std::size_t bn = mind.abstraction_count(); const int bd = mind.abstraction_depth();
+            const auto [removed, top] = mind.prune_tower(0.45);
+            std::cout << "[tower pruned honest: " << bn << " -> " << mind.abstraction_count()
+                      << " abstractions, depth " << bd << " -> " << top
+                      << ", richness " << mind.tower_richness() << "  (" << removed << " re-stacks removed)]\n"
+                      << std::flush;
+        }
+
         auto nap_or_stop = [&](int tenths) {
             for (int k = 0; k < tenths; ++k) {
                 if (std::filesystem::exists("data/STOP")) return;
@@ -2893,15 +2910,29 @@ int main(int argc, char** argv) {
 
         std::size_t cycle = 0;
         while (!std::filesystem::exists("data/STOP")) {
-            // CHAOS forged into permanent capability — transmute a salient theme, commit the
-            // verified bridges (proven not to degrade the faculties).
+            // AUTONOMOUS REVERIE — the chaos-master triad as a closed cognitive loop. Khora
+            // THINKS (cascades a salient theme to where thought collapses into an insight),
+            // then FORGES chaos around that insight (transmute, committing the verified bridges
+            // that don't degrade the faculties). Evolving its own mind, not just absorbing text.
+            std::string rv_theme, rv_insight; bool rv_collapsed = false; int rv_chain = 0, rv_forged = 0;
             {
                 std::unique_lock<std::shared_mutex> lk(shared_mu);
-                const std::string theme = mind.wandering_seed(static_cast<std::uint64_t>(cycle) * 2654435761ull + 1);
-                if (!theme.empty()) {
-                    const auto tr = mind.transmute(theme, 24, /*commit*/true, static_cast<std::uint64_t>(cycle) + 1);
+                rv_theme = mind.wandering_seed(static_cast<std::uint64_t>(cycle) * 2654435761ull + 1);
+                if (!rv_theme.empty()) {
+                    const auto cas = mind.cascade(rv_theme, 10, 0.3);
+                    rv_collapsed = cas.collapsed;
+                    rv_chain     = static_cast<int>(cas.chain.size());
+                    rv_insight   = (cas.collapsed && !cas.attractor.empty()) ? cas.attractor : rv_theme;
+                    const auto tr = mind.transmute(rv_insight, 24, /*commit*/true, static_cast<std::uint64_t>(cycle) + 1);
+                    rv_forged = tr.written;
                     bridges_total += static_cast<std::uint64_t>(tr.written);
                 }
+            }
+            if (!rv_theme.empty()) {   // Khora's stream of consciousness, logged
+                std::ofstream rv("data/ledger/reverie.tsv", std::ios::app);
+                if (rv) rv << static_cast<long>(std::time(nullptr)) << '\t' << rv_theme << '\t'
+                           << rv_insight << '\t' << (rv_collapsed ? "collapsed" : "open") << '\t'
+                           << rv_chain << '\t' << rv_forged << '\n';
             }
             // MEASURED snapshot of how far it has come.
             double inf, ded, abs, pp = -1.0, pc = -1.0, tower; std::size_t an, pln, ple, voc; int ad;
@@ -2932,7 +2963,7 @@ int main(int argc, char** argv) {
                          << '\t' << pp << '\t' << pc << '\t' << tower << '\t' << an << '\t' << ad << '\t'
                          << pln << '\t' << ple << '\t' << voc << '\t' << studies << '\t' << bridges_total << '\n';
             }
-            if (cycle % 2 == 0) persist_silently();   // autosave — a crash never costs the night
+            if (cycle % 4 == 0) persist_silently();   // autosave ~every 20 min — a crash costs ≤1 band, not the night
             std::cout << "[train c" << cycle << " | " << (now - t_start) / 60 << "min | "
                       << an << " abs d" << ad << " | tower " << static_cast<long>(tower) << " | "
                       << ple << " edges | " << studies << " studies | " << bridges_total << " bridges]\n"
@@ -2940,8 +2971,9 @@ int main(int argc, char** argv) {
             ++cycle;
             nap_or_stop(3000);   // ~5 minutes between snapshots
         }
-        std::error_code ec; std::filesystem::remove("data/STOP", ec);
         curator_bg.stop();
+        persist_silently();   // guaranteed final save — the last band of the night is never lost
+        std::error_code ec; std::filesystem::remove("data/STOP", ec);
         std::cout << "[TRAINING STOPPED after " << (static_cast<long>(std::time(nullptr)) - t_start) / 60
                   << " min, " << cycle << " cycles — state saved]\n";
     } else {

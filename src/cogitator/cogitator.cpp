@@ -186,6 +186,13 @@ namespace {
 // affinity equal to the scale maps to 0.5. Tuned to the real corpus so coherent
 // clusters land in the self-escalating bar's working range.
 constexpr double kPmiCoherenceScale = 1.250000;   // KHORA-TUNABLE(scale) abstraction coherence
+// A genuine higher abstraction WIDENS the grounded meaning; it does not merely re-wrap it.
+// cover = widest-member's-word-leaves / union-of-all-members'-leaves. cover == 1 means one
+// member already covered everything the "abstraction" grounds to — depth without new meaning,
+// the thin self-similar spire that faked the runaway. Above this bar an abstraction is refused
+// at creation and pruned away. THIS is what lets the tower saturate honestly: it rises exactly
+// as far as real generalization supports, then stops — no arbitrary level wall imposed.
+constexpr double kRestackCover = 0.800000;   // KHORA-TUNABLE(novelty) tower saturation bar
 } // namespace
 
 std::string Cogitator::form_abstraction_plexus_(const std::string& seed, std::size_t k,
@@ -279,28 +286,42 @@ double Cogitator::honest_coherence_(const Abstraction& a) const {
     return mean / (mean + kPmiCoherenceScale);
 }
 
-std::pair<int,int> Cogitator::prune_tower(double bar) {
-    constexpr int kMaxLevel = 24;   // genuine recursive depth; above this is self-similar restacking
-    int total_removed = 0;
-
-    // 1. Truncate the self-similar depth — abstractions above the genuine-recursion ceiling are
-    //    redundant re-combination, not new meaning (coherence can't catch redundancy; depth can).
-    {
-        std::vector<Abstraction> kept; kept.reserve(abstractions_.size());
-        for (auto& a : abstractions_) { if (a.level <= kMaxLevel) kept.push_back(a); else ++total_removed; }
-        abstractions_ = std::move(kept);
-        abs_index_n_ = static_cast<std::size_t>(-1);
+double Cogitator::restack_cover_(const std::vector<std::string>& members) const {
+    // Ground every member to real corpus words; the abstraction's own meaning is their union.
+    // If one member's leaves already cover (nearly) that whole union, the abstraction generalised
+    // nothing — it just re-wrapped that member one level up. cover = widest / |union|.
+    if (members.size() < 2) return 1.0;
+    std::unordered_set<std::string> uni;
+    std::size_t widest = 0;
+    for (const auto& m : members) {
+        std::unordered_set<std::string> ls;
+        ground_concept_(m, ls, 0);
+        widest = std::max(widest, ls.size());
+        for (const auto& w : ls) uni.insert(w);
     }
-    // 2. On the surviving (bounded) tower, recompute HONEST word-grounded coherence and drop the
-    //    genuinely incoherent. Now fast — there are few enough survivors.
-    for (int pass = 0; pass < 3; ++pass) {
+    if (uni.empty()) return 1.0;
+    return static_cast<double>(widest) / static_cast<double>(uni.size());
+}
+
+std::pair<int,int> Cogitator::prune_tower(double bar) {
+    int total_removed = 0;
+    // Iteratively drop two kinds of false structure, with NO arbitrary level ceiling — the tower
+    // settles to whatever honest height real generalization supports:
+    //   (a) redundant re-stacks — an abstraction whose grounded meaning is no wider than a single
+    //       member already (restack_cover_ > kRestackCover): the thin self-similar spire; and
+    //   (b) the genuinely incoherent — honest (word-grounded) coherence below the bar.
+    // Re-grounding every pass so that removing a node correctly re-scores everything that stood on
+    // it: a tall spire whose base is pulled collapses level by level until it settles.
+    for (int pass = 0; pass < 8; ++pass) {
         std::vector<Abstraction> kept; kept.reserve(abstractions_.size());
         int removed = 0;
         for (auto& a : abstractions_) {
-            const double coh = honest_coherence_(a);
+            if (a.level <= 1) { kept.push_back(a); continue; }   // base: real words, always keep
+            const double cover = restack_cover_(a.members);
+            const double coh   = honest_coherence_(a);
             a.coherence = coh;
-            if (a.level <= 1 || coh >= bar) kept.push_back(a);
-            else ++removed;
+            if (cover > kRestackCover || coh < bar) { ++removed; continue; }
+            kept.push_back(a);
         }
         abstractions_ = std::move(kept);
         abs_index_n_ = static_cast<std::size_t>(-1);
@@ -465,6 +486,20 @@ std::string Cogitator::form_abstraction_over_abstractions_(const std::string& se
     const double mean_aff = pairs ? aff_sum / static_cast<double>(pairs) : 0.0;
     const double coh = mean_aff / (mean_aff + kPmiCoherenceScale);
     if (coh < min_coherence) return {};
+
+    // SATURATION GATE — the members are already grounded to words; if the widest single member
+    // already covers nearly their whole union, this abstraction generalises nothing. Refuse it.
+    // This is what stops the thin self-similar spire from climbing forever (the v0.113 runaway):
+    // the tower rises only where a level genuinely merges DISTINCT meanings, then saturates.
+    {
+        std::unordered_set<std::string> uni; std::size_t widest = 0;
+        for (const auto* ls : memberLeaves) {
+            widest = std::max(widest, ls->size());
+            for (const auto& w : *ls) uni.insert(w);
+        }
+        if (uni.empty()) return {};
+        if (static_cast<double>(widest) / static_cast<double>(uni.size()) > kRestackCover) return {};
+    }
 
     Abstraction a;
     a.glyph     = bundle(std::span<const Glyph>{parts.data(), parts.size()});
@@ -1706,17 +1741,18 @@ double Cogitator::benchmark_next_word(const std::vector<std::string>& heldout) c
 
 std::pair<int,int> Cogitator::ascend_tower(double min_coherence, int max_new) {
     int formed = 0;
-    // Genuine recursive abstraction saturates within a couple dozen levels; beyond that it
-    // is self-similar re-stacking, not new meaning. Hard cap as insurance — the honest
-    // (word-grounded) coherence gate is the primary stop, this is belt-and-suspenders.
-    constexpr int kMaxLevel = 24;
+    // NO level ceiling. The tower climbs as high as genuine generalization supports and stops
+    // there of its own accord: the saturation gate inside form_abstraction_over_abstractions_
+    // refuses any rung that merely re-stacks (grounds no wider than a member already), so once a
+    // height stops yielding new meaning, top_level() stops rising and the climb naturally ends.
+    // Memory stays bounded by the caller's abstraction-count limit, not an imposed depth wall.
     auto top_level = [&]() { int t = 0; for (const auto& a : abstractions_) t = std::max(t, a.level); return t; };
 
     // Climb level by level: abstract over level-1 abstractions into level 2, over those
-    // into level 3, and so on — each rung coherence-gated and grounded, so the tower only
-    // rises where the higher concept genuinely holds together.
-    for (int lvl = 1; formed < max_new && lvl <= kMaxLevel; ++lvl) {
-        if (lvl > top_level() + 1) break;   // nothing left to build on
+    // into level 3, and so on — each rung coherence-gated, grounded, AND novelty-gated, so the
+    // tower only rises where the higher concept genuinely merges distinct meanings.
+    for (int lvl = 1; formed < max_new; ++lvl) {
+        if (lvl > top_level() + 1) break;   // nothing left to build on — saturated or unbuilt
         std::vector<std::string> seeds;
         for (const auto& a : abstractions_) if (a.level == lvl) seeds.push_back(a.name);
         if (seeds.size() < 2) continue;     // need at least two peers to abstract over

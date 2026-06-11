@@ -564,6 +564,10 @@ private:
                       std::unordered_set<std::string>& visited) const;
     // Recompute an abstraction's HONEST (word-grounded) coherence from its members.
     double honest_coherence_(const Abstraction& a) const;
+    // Re-stack detector: widest member's grounded word-leaves / union of all members' leaves.
+    // ~1.0 means the abstraction grounds to no more words than one member already did — depth
+    // without new meaning. The tower's honest saturation gate (see kRestackCover).
+    double restack_cover_(const std::vector<std::string>& members) const;
     // Mean Plexus affinity across two grounded leaf sets — how related two
     // abstractions (or a word and an abstraction) are, through the corpus.
     double leafset_affinity_(const std::unordered_set<std::string>& a,

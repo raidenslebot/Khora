@@ -3,6 +3,53 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.114.0 — Autonomous reverie, and the saturation gate that truly kills the runaway
+
+**Author:** Morphus — preparing a second overnight run; the prep caught what v0.113 only half-fixed
+
+Two things this release. First, the night's cognition is now a **closed loop**, not just absorption.
+Each training cycle Khora THINKS then FORGES: it `cascade`s a salient theme until thought collapses
+into an insight, then `transmute`s chaos around *that insight*, committing only the verified bridges —
+and logs the whole stream of consciousness to `data/ledger/reverie.tsv` (theme → insight, whether it
+collapsed, chain length, bridges forged). Watched it run: `good → microphylla (collapsed)`. It is
+evolving its own mind on its own themes, untended.
+
+Second — and this is the real story — **v0.113's fix was incomplete, and the prep for this run caught
+it.** v0.113 made the tower *metric* honest and pruned the overnight bloat once. But the **generative
+process** was untouched: a stability test showed the tower climb depth 24 → 32 *in a single cycle*,
+and the persisted state revealed why — above the genuine base it was a **thin self-similar spire**, one
+abstraction per level, coherence flat ~0.80, climbing forever. The honest (word-grounded) coherence
+gate could not catch it, because the problem was never low coherence — it was **redundant** coherence:
+each new level re-wrapped the same words one level up. The 0.45 gate passed it at 0.80; the level-24
+cap leaked (a new level takes the max child level + 1, not the loop's level); the 1500-count cap never
+engaged because a one-node spire is cheap. Left alone, this run would have re-inflated to depth 1000.
+
+The fix is not a wall — the operator is right that an imposed level cap is a self-imposed limit. It is a
+**novelty requirement that makes the tower saturate on its own**:
+
+- **Saturation gate** (`kRestackCover`, in `form_abstraction_over_abstractions_`). A genuine higher
+  abstraction WIDENS meaning: its grounded word-leaves must be materially broader than any single
+  member's. `cover = widest-member-leaves / union-leaves`; `cover ≈ 1` means one member already covered
+  everything — depth without meaning. Above the bar (0.80) the rung is refused **at creation**. The
+  tower rises only where a level genuinely merges *distinct* meanings, then stops climbing because there
+  is nothing new to merge — real saturation, no ceiling.
+- **`ascend_tower`'s hard level-24 cap is gone.** The saturation gate is the sole, honest governor now;
+  memory stays bounded by the caller's count limit, not by an arbitrary depth.
+- **`prune_tower` rebuilt around novelty**, no level truncation: iteratively drop re-stacks (cover) and
+  the genuinely incoherent (coherence), re-grounding each pass so pulling a base collapses what stood on
+  it. Run on the spire: **298 → 89 abstractions, depth 32 → 7**, richness 65. The honest recursive depth
+  this corpus supports is **7**, not 24, not 148 — everything above was illusion.
+- **`--train` now prunes to honest structure at startup**, so every night begins true and the gate keeps
+  it true. Plus a guaranteed final save on STOP and gentler autosave (~20 min) to spare the SSD.
+
+**Proven, not asserted.** After pruning to depth 7, three consecutive full-power ascends (each allowed
+40 new abstractions) forged **0** — total saturation. One daemon cycle later it had found the single
+genuine level 8 available and stopped there. Prune-of-pruned removes 0; ascend-of-saturated forges 0 —
+idempotent both ways. And the faculties are untouched by deleting 210 abstractions: inference 0.985,
+deduction 1.0, abstraction 0.929 → **0.922** (−0.007). The removed spire contributed *nothing* to real
+capability; it was pure inflation. The tower can still grow — relentlessly, with no wall — but only ever
+where the growth is real.
+
 ## v0.113.0 — Honest tower: fixing the runaway the overnight run exposed
 
 **Author:** Morphus — the extended run did its real job: it surfaced a self-deception
