@@ -8,6 +8,7 @@
 #include "khora/carapace/builtin_tools.hpp"
 #include "khora/carapace/carapace.hpp"
 #include "khora/cogitator/cogitator.hpp"
+#include "khora/crystallize/crystallize.hpp"
 #include "khora/curator/curator.hpp"
 #include "khora/curator/curator_scheduler.hpp"
 #include "khora/hand/hand.hpp"
@@ -1696,6 +1697,44 @@ int main(int argc, char** argv) {
             return {true, os.str(), ""};
         }
     });
+    // crystallize — REASON a new typed relation out of the associative field. The Ligature
+    // otherwise grows only from text syntax; this lets Khora's own thinking grow its structured
+    // knowledge: if several of a concept's strongest Plexus kin share an is-a parent that also
+    // has direct affinity to the concept, Khora concludes the concept is-a that parent. Read-only by
+    // default; 'commit' writes the verified relation into the Ligature for deduce/relate to use.
+    shell.register_tool({
+        "crystallize",
+        "Khora reasons a verified is-a from its associations and (optionally) writes it  (usage: crystallize <concept> [commit])",
+        [&plex, &lig](const carapace::Intent& i) -> carapace::ToolResult {
+            if (i.args.empty()) return {false, "", "usage: crystallize <concept> [commit]"};
+            auto toks = khora::lexicon::tokenize(i.args.front());
+            const std::string c = toks.empty() ? i.args.front() : toks.front();
+            const bool commit = (i.args.size() >= 2 && i.args.back() == "commit");
+            khora::crystallize::Options opt;
+            opt.min_support = 3;
+            const auto cr = khora::crystallize::infer_isa(plex, lig, c, opt);
+            if (!cr)
+                return {true, "no verified is-a crystallized for '" + c +
+                        "' — no multi-kin consensus, or the relation is already known", ""};
+            std::ostringstream os;
+            os << "Khora crystallizes structure from association:\n  " << cr.subject
+               << " is-a " << cr.parent << "   (corroborated by " << cr.support
+               << " independent kin)";
+            if (!cr.witnesses.empty()) {
+                os << "\n  witnesses: ";
+                for (std::size_t k = 0; k < cr.witnesses.size(); ++k) {
+                    if (k) os << ", ";
+                    os << cr.witnesses[k];
+                }
+            }
+            if (commit) { const std::size_t written = khora::crystallize::commit(lig, cr);
+                          os << (written
+                                 ? "\n  -> written into the Ligature (deduce/relate now reason from it)"
+                                 : "\n  -> already present or cycle-blocked before commit"); }
+            else        { os << "\n  (read-only — add 'commit' to write it into structured knowledge)"; }
+            return {true, os.str(), ""};
+        }
+    });
 
     // yield — THE CLOSED LOOP. Khora measures the OBJECTIVE success of its own
     // reasoning (does inference reach genuine 2-hop goals it must search for?),
@@ -2755,7 +2794,7 @@ int main(int argc, char** argv) {
     //     takes the unique lock briefly; the (blocking, flaky) network fetch is
     //     done WITHOUT any lock, so it never stalls cognition.
     std::atomic<bool> curiosity_run{true};
-    std::atomic<std::uint64_t> curiosity_wonders{0}, curiosity_acquired{0}, curiosity_tuned{0}, curiosity_ascended{0};
+    std::atomic<std::uint64_t> curiosity_wonders{0}, curiosity_acquired{0}, curiosity_tuned{0}, curiosity_ascended{0}, curiosity_crystallized{0};
     std::thread curiosity([&]() {
         auto nap = [&](int tenths) {
             for (int i = 0; i < tenths && curiosity_run.load(std::memory_order_acquire); ++i)
@@ -2815,6 +2854,26 @@ int main(int argc, char** argv) {
                     if (formed > 0) curiosity_ascended.fetch_add(static_cast<std::uint64_t>(formed),
                                                                  std::memory_order_relaxed);
                 }
+            }
+
+            // STRUCTURAL CRYSTALLIZATION — association becomes typed knowledge.
+            // The scan is small and conservative: sample current thought-seeds,
+            // infer only multi-witness is-a relations, and commit only if the
+            // Ligature still does not know the edge and it cannot form a cycle.
+            {
+                std::unique_lock<std::shared_mutex> lk(shared_mu);
+                std::vector<std::string> seeds;
+                seeds.reserve(12);
+                for (int k = 0; k < 12; ++k) {
+                    std::string s = mind.focused_seed(cycle * 13 + static_cast<std::uint64_t>(k));
+                    if (s.empty()) s = mind.wandering_seed(cycle * 31 + static_cast<std::uint64_t>(k));
+                    if (!s.empty()) seeds.push_back(std::move(s));
+                }
+                const auto crystals = khora::crystallize::infer_many(plex, lig, seeds, 4);
+                const std::size_t written = khora::crystallize::commit_many(lig, crystals);
+                if (written > 0)
+                    curiosity_crystallized.fetch_add(static_cast<std::uint64_t>(written),
+                                                     std::memory_order_relaxed);
             }
             ++cycle;
             nap(1800);   // wonder + self-tune + ascend, about once every ~3 minutes
@@ -2877,12 +2936,13 @@ int main(int argc, char** argv) {
         const long t_start = static_cast<long>(std::time(nullptr));
         const std::uint64_t studies0 = static_cast<std::uint64_t>(curator.studies());
         std::uint64_t bridges_total = 0;
+        std::uint64_t crystals_total = 0;
         {
             std::error_code ec; std::filesystem::create_directories("data/ledger", ec);
             std::ofstream h("data/ledger/training.tsv", std::ios::app);
             if (h) h << "# === training run started " << t_start << " ===\n"
                         "# ts\tmin\tinfer\tdeduce\tabstr\tpred_pmi\tpred_cortex\ttower\tabs_n\tabs_d\t"
-                        "plex_nodes\tplex_edges\tvocab\tstudies\tbridges\n";
+                        "plex_nodes\tplex_edges\tvocab\tstudies\tbridges\tcrystals\n";
             std::ofstream r("data/ledger/reverie.tsv", std::ios::app);
             if (r) r << "# === reverie (autonomous thought) started " << t_start << " ===\n"
                         "# ts\ttheme\tinsight\tcascade\tchain_len\tbridges\n";
@@ -2927,6 +2987,16 @@ int main(int argc, char** argv) {
                     rv_forged = tr.written;
                     bridges_total += static_cast<std::uint64_t>(tr.written);
                 }
+
+                std::vector<std::string> seeds;
+                seeds.reserve(24);
+                for (int k = 0; k < 24; ++k) {
+                    std::string s = mind.focused_seed(static_cast<std::uint64_t>(cycle) * 97 + static_cast<std::uint64_t>(k));
+                    if (s.empty()) s = mind.wandering_seed(static_cast<std::uint64_t>(cycle) * 131 + static_cast<std::uint64_t>(k));
+                    if (!s.empty()) seeds.push_back(std::move(s));
+                }
+                const auto crystals = khora::crystallize::infer_many(plex, lig, seeds, 8);
+                crystals_total += static_cast<std::uint64_t>(khora::crystallize::commit_many(lig, crystals));
             }
             if (!rv_theme.empty()) {   // Khora's stream of consciousness, logged
                 std::ofstream rv("data/ledger/reverie.tsv", std::ios::app);
@@ -2961,12 +3031,14 @@ int main(int argc, char** argv) {
                 std::ofstream o("data/ledger/training.tsv", std::ios::app);
                 if (o) o << now << '\t' << (now - t_start) / 60 << '\t' << inf << '\t' << ded << '\t' << abs
                          << '\t' << pp << '\t' << pc << '\t' << tower << '\t' << an << '\t' << ad << '\t'
-                         << pln << '\t' << ple << '\t' << voc << '\t' << studies << '\t' << bridges_total << '\n';
+                         << pln << '\t' << ple << '\t' << voc << '\t' << studies << '\t' << bridges_total
+                         << '\t' << crystals_total << '\n';
             }
             if (cycle % 4 == 0) persist_silently();   // autosave ~every 20 min — a crash costs ≤1 band, not the night
             std::cout << "[train c" << cycle << " | " << (now - t_start) / 60 << "min | "
                       << an << " abs d" << ad << " | tower " << static_cast<long>(tower) << " | "
-                      << ple << " edges | " << studies << " studies | " << bridges_total << " bridges]\n"
+                      << ple << " edges | " << studies << " studies | " << bridges_total
+                      << " bridges | " << crystals_total << " crystals]\n"
                       << std::flush;
             ++cycle;
             nap_or_stop(3000);   // ~5 minutes between snapshots
@@ -3017,12 +3089,13 @@ int main(int argc, char** argv) {
               << furnace_cores << " cores, " << furnace_forged.load()
               << " abstractions forged, " << furnace_distilled.load()
               << " verified discoveries distilled into knowledge this session]\n";
-    if (curiosity_wonders.load() > 0 || curiosity_tuned.load() > 0 || curiosity_ascended.load() > 0)
+    if (curiosity_wonders.load() > 0 || curiosity_tuned.load() > 0 || curiosity_ascended.load() > 0 || curiosity_crystallized.load() > 0)
         std::cout << "[curiosity: wondered " << curiosity_wonders.load()
                   << " times, acquired " << curiosity_acquired.load()
                   << " new works; self-tuned " << curiosity_tuned.load()
                   << " times; raised its abstraction tower by " << curiosity_ascended.load()
-                  << " higher-order concepts this session]\n";
+                  << " higher-order concepts; crystallized " << curiosity_crystallized.load()
+                  << " structured relations this session]\n";
     governor.stop();
     scheduler.stop();
     whet.stop();

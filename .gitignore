@@ -22,3 +22,7 @@ Thumbs.db
 
 /data/
 
+
+# Runtime / training artifacts (multi-GB archives) - never commit
+/data/
+

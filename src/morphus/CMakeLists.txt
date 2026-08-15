@@ -7,6 +7,7 @@ target_link_libraries(khora PRIVATE
     khora::lexicon
     khora::plexus
     khora::ligature
+    khora::crystallize
     khora::hand
     khora::bulwark
     khora::maw
@@ -31,6 +32,7 @@ target_link_libraries(khora_next PRIVATE
     khora::lexicon
     khora::plexus
     khora::ligature
+    khora::crystallize
     khora::hand
     khora::bulwark
     khora::maw
