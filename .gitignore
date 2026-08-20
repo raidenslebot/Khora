@@ -1,5 +1,16 @@
+# --- build output ---------------------------------------------------------
 /build/
+/build-*/
 /out/
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+cmake_install.cmake
+compile_commands.json
+.ninja_deps
+.ninja_log
+
+# --- compiler / linker artifacts ------------------------------------------
 *.obj
 *.exe
 *.dll
@@ -8,21 +19,22 @@
 *.idb
 *.ilk
 *.exp
+
+# --- editor / IDE ---------------------------------------------------------
 *.user
 .vs/
-CMakeCache.txt
-CMakeFiles/
-CMakeScripts/
-cmake_install.cmake
-compile_commands.json
+.vscode/settings.json
+.cache/
 *.swp
 *~
+
+# --- tooling caches -------------------------------------------------------
+.pytest_cache/
+__pycache__/
+
+# --- os -------------------------------------------------------------------
 .DS_Store
 Thumbs.db
 
+# --- runtime / training artifacts (multi-GB archives) — never commit ------
 /data/
-
-
-# Runtime / training artifacts (multi-GB archives) - never commit
-/data/
-

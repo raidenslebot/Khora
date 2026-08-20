@@ -1,0 +1,25 @@
+# Khora static analysis. Bug-finding only -- readability/modernize/style checks
+# are deliberately off: this is a 17k-line existing codebase and style churn
+# would bury the findings that matter.
+#
+# Run with:  .\tools\khora.ps1 tidy            (whole tree)
+#            .\tools\khora.ps1 tidy src/lattice (one path)
+Checks: >
+  -*,
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-narrowing-conversions,
+  cert-err34-c,
+  cert-flp30-c,
+  cert-oop58-cpp,
+  concurrency-*,
+  misc-misplaced-const,
+  misc-uniqueptr-reset-release,
+  misc-unused-using-decls,
+  performance-*,
+  -performance-avoid-endl,
+  portability-*
+
+WarningsAsErrors: ''
+HeaderFilterRegex: '.*[/\]khora[/\].*'
+FormatStyle: none
