@@ -168,9 +168,32 @@ system. That is the difference between a result and a capability, and closing it
 is the first item in the backlog. The Synapse Bus has been in exactly this state
 for 115 releases, which is the argument for not letting these two settle into it.
 
-Also found while auditing and not yet fixed: `Carapace::register_tool` assigns
-into a map, and four tool names are registered twice across 95 registration
-sites, so 91 tools are reachable and four handlers are silently shadowed.
+### Four tools were unreachable
+
+`Carapace::register_tool` assigned into a map, so a second registration under an
+existing name silently replaced the first. 95 registration sites yielded 91
+distinct names, and the only symptom was a count that did not add up.
+
+None of the four shadowed handlers was dead code. `spire` lost its read-only
+view of the abstraction tower to the action that drives the tower upward;
+`cascade` lost a chain of collisions to a recursive contemplation; `contemplate`
+lost a whole-mind answer to a question to a parallel-modes pass over a concept.
+The worst was `learn`: a working tool that feeds a token into the cortex sat
+unreachable behind an EXPERIMENTAL predictive trainer which refuses to run
+without `confirm` and documents itself as degrading held-out prediction from
+0.0102 to 0.0076.
+
+The four are restored as `tower`, `ferment_chain`, `engage` and `feed` -- the
+last two named from their own descriptions. The SHADOWED registration was
+renamed in each case, so every name a user can type today keeps doing exactly
+what it does today.
+
+`register_tool` now returns bool, keeps the FIRST registration, asserts in debug
+and warns on stderr in release. Verified in a Release build with the assert
+compiled out: the duplicate is refused and the first handler retained.
+
+Measured: 91 -> 95 distinct names, 0 duplicated, and `khora.exe help` lists 95
+tools with each restored name appearing exactly once.
 
 ### The graph, measured against real nervous systems
 

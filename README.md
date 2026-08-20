@@ -37,7 +37,7 @@ has been true of the Synapse Bus for 115 releases.
 | **Temporal Memory** (`cortex`) | 16,384 minicolumns x 32 cells. Distal segments PRIME rather than fire; unprimed columns burst, and the bursting fraction is a novelty signal | working, tested, benched | **no** |
 | **Maelstrom** (`maelstrom`) | D3D11 DirectCompute k-NN over glyphs, with a used CPU fallback | working, untested | yes |
 | **Soma Nexus** (`soma`) | 5 scalar drives decaying toward setpoints; dot-product arbitration | working, tested | yes |
-| **Carapace** (`carapace`) | Command registry. 95 registration sites, 4 names registered twice, so **91 tools reachable and 4 handlers silently shadowed** | partial, tested | yes |
+| **Carapace** (`carapace`) | Command registry dispatching 95 operator tools; duplicate names are now refused rather than silently overwriting | working, tested | yes |
 | **Bulwark** (`bulwark`) | Job Object + low-integrity non-admin token cage, verified at tier 2 elevated and not | working, tested | yes |
 | **Crucible** (`crucible`) | Role-filler binding, structured unbind, analogy | working, tested | yes |
 | **Whetstone** (`whetstone`) | Self-escalating faculties: relational capacity, sequence induction, transitive reasoning | working, tested | yes |
