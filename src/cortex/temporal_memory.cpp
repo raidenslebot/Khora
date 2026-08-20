@@ -54,25 +54,26 @@ void TemporalMemory::compute_segment_activity(const std::vector<std::uint32_t>& 
     active_segments_.clear();
     matching_segments_.clear();
 
-    std::unordered_map<std::uint32_t, std::pair<std::uint16_t, std::uint16_t>> hits;
+    if (hit_scratch_.size() < segments_.size())
+        hit_scratch_.resize(segments_.size(), {std::uint16_t{0}, std::uint16_t{0}});
+    hit_touched_.clear();
+
     for (const std::uint32_t c : active) {
         const auto it = presyn_segments_.find(c);
         if (it == presyn_segments_.end()) continue;
-        for (const std::uint32_t sid : it->second) {
+        for (const auto& [sid, k] : it->second) {
             const Segment& s = segments_[sid];
             if (s.dead || cell_dead_[s.owner]) continue;
-            // Find this presynaptic cell's permanence on the segment.
-            for (std::size_t k = 0; k < s.count; ++k) {
-                if (s.presyn[k] != c) continue;
-                auto& h = hits[sid];
-                ++h.second;                                        // potential
-                if (s.perm[k] >= cfg_.permanence_connected) ++h.first;  // connected
-                break;
-            }
+            auto& h = hit_scratch_[sid];
+            if (h.second == 0) hit_touched_.push_back(sid);
+            ++h.second;                                            // potential
+            if (s.perm[k] >= cfg_.permanence_connected) ++h.first;  // connected
         }
     }
 
-    for (const auto& [sid, h] : hits) {
+    for (const std::uint32_t sid : hit_touched_) {
+        const auto h = hit_scratch_[sid];
+        hit_scratch_[sid] = {std::uint16_t{0}, std::uint16_t{0}};
         if (h.first >= cfg_.activation_threshold) {
             active_segments_.push_back({sid, h.first, h.second});
         } else if (h.second >= cfg_.min_threshold) {
@@ -153,9 +154,12 @@ std::uint32_t TemporalMemory::grow_segment(std::uint32_t cell, std::uint32_t sou
             auto it = presyn_segments_.find(s.presyn[k]);
             if (it != presyn_segments_.end()) {
                 auto& v = it->second;
-                v.erase(std::remove(v.begin(), v.end(), victim), v.end());
+                v.erase(std::remove_if(v.begin(), v.end(),
+                                       [victim](const auto& e) { return e.first == victim; }),
+                        v.end());
             }
         }
+        total_synapses_ -= s.count;
         s.count = 0;
         s.source = source;
         return victim;
@@ -219,8 +223,9 @@ void TemporalMemory::grow_synapses(std::uint32_t seg,
         std::swap(pool[i], pool[j]);
         s.presyn[s.count] = pool[i];
         s.perm[s.count]   = cfg_.permanence_initial;
-        presyn_segments_[pool[i]].push_back(seg);
+        presyn_segments_[pool[i]].emplace_back(seg, s.count);
         ++s.count;
+        ++total_synapses_;
     }
 }
 
@@ -367,7 +372,7 @@ TemporalMemoryStats TemporalMemory::compute(const Sdr& input, bool learn,
 
     st.active_cells = active_cells_.size();
     st.segments     = segments_.size();
-    for (const auto& s : segments_) st.synapses += s.count;
+    st.synapses = total_synapses_;
     st.anomaly = st.active_columns
                      ? static_cast<double>(st.bursting_columns) /
                            static_cast<double>(st.active_columns)
@@ -405,7 +410,9 @@ std::size_t TemporalMemory::forget(std::uint32_t source) {
             auto it = presyn_segments_.find(s.presyn[k]);
             if (it != presyn_segments_.end()) {
                 auto& v = it->second;
-                v.erase(std::remove(v.begin(), v.end(), static_cast<std::uint32_t>(sid)),
+                const auto dead_id = static_cast<std::uint32_t>(sid);
+                v.erase(std::remove_if(v.begin(), v.end(),
+                                       [dead_id](const auto& e) { return e.first == dead_id; }),
                         v.end());
             }
         }
@@ -414,6 +421,7 @@ std::size_t TemporalMemory::forget(std::uint32_t source) {
             auto& v = oit->second;
             v.erase(std::remove(v.begin(), v.end(), static_cast<std::uint32_t>(sid)), v.end());
         }
+        total_synapses_ -= s.count;
         s.dead  = true;
         s.count = 0;
         ++removed;

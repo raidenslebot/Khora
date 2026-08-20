@@ -225,8 +225,28 @@ private:
     TemporalMemoryConfig cfg_;
 
     std::vector<Segment>                                       segments_;
+    // Maintained incrementally. Summing s.count over every segment once per
+    // step was the whole of the measured O(N) cost: at 409,600 segments that
+    // is ~82 MB of memory traffic per compute() call, purely to fill in a
+    // statistic nothing depends on.
+    std::size_t                                                total_synapses_ = 0;
     std::unordered_map<std::uint32_t, std::vector<std::uint32_t>> cell_segments_;   // cell -> segments it owns
-    std::unordered_map<std::uint32_t, std::vector<std::uint32_t>> presyn_segments_; // cell -> segments listening to it
+    // cell -> (segment, WHICH SYNAPSE on that segment listens to this cell).
+    //
+    // Storing the synapse index is what removes the inner scan. Without it,
+    // every (active cell, listening segment) pair had to walk the segment's
+    // synapse array to find the one entry that matched -- a 40x multiplier on
+    // a loop that already grows with the number of stored facts. Measured at
+    // 1600 facts: 59,028 candidate segments per call, each scanned, which was
+    // 32 of the 37 seconds the whole benchmark took.
+    std::unordered_map<std::uint32_t, std::vector<std::pair<std::uint32_t, std::uint8_t>>>
+        presyn_segments_;
+
+    // Scratch for compute_segment_activity: a flat array indexed by segment id
+    // rather than a hash map, with a touched-list so only what changed is
+    // cleared. Kept as members to avoid reallocating every step.
+    mutable std::vector<std::pair<std::uint16_t, std::uint16_t>> hit_scratch_;
+    mutable std::vector<std::uint32_t>                           hit_touched_;
     std::vector<bool>                                          cell_dead_;
 
     std::vector<std::uint32_t> active_cells_;
