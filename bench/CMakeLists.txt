@@ -21,3 +21,9 @@ target_link_libraries(knowledge_bench PRIVATE khora::ligature)
 
 add_executable(extraction_bench extraction_bench.cpp)
 target_link_libraries(extraction_bench PRIVATE khora::ligature khora::lexicon khora::reservoir)
+
+add_executable(corpus_bench corpus_bench.cpp)
+target_link_libraries(corpus_bench PRIVATE khora::ligature khora::lexicon khora::reservoir)
+
+add_executable(hypernym_bench hypernym_bench.cpp)
+target_link_libraries(hypernym_bench PRIVATE khora::plexus)
