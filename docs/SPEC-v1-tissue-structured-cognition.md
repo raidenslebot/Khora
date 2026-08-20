@@ -523,3 +523,62 @@ Mod:  recurrent=0.78 afferent=1.00 downstream=1.69 resting=0.68
 Crit: m_target in [0.96, 0.99]        Wilting & Priesemann 2018
       DCC < 0.2                       Ma et al. 2019
 ```
+---
+
+## APPENDIX C — Approaches tried and rejected, with the measurement
+
+Added as they are attempted. A rejection is only worth recording if it comes
+with the number that produced it, so nobody re-attempts it on intuition.
+
+### C.1 Synaptic pruning as a route to sub-linear matching — REJECTED
+
+**The idea.** Matching costs (active cells) × (listeners per cell). Sparsity
+fixes the first term; the second grows without bound as facts accumulate, which
+is the measured O(N). Capping listeners per cell makes the product constant.
+Biology leans on this hard — cortex over-produces synapses and eliminates
+40–50% of them, with losers chosen by competition.
+
+**Implemented** as `max_listeners_per_cell`, evicting the weakest listener by
+permanence when a cell's list is full.
+
+**Measured.** 1600 facts. `recall` is the fraction of streamed facts still
+recognised at the natural 0.5 threshold.
+
+| cap | AUC | recall | learn ms | probe ms |
+|---|---|---|---|---|
+| none | 1.0000 | 1.000 | 2.48 | 6.91 |
+| 32 | 1.0000 | 0.908 | 2.97 | 9.77 |
+| 16 | 0.9685 | 0.375 | 2.77 | 7.33 |
+| 8 | 0.9499 | 0.000 | 2.14 | 6.99 |
+
+And with a slow store at 6 exposures each, where permanence has had time to
+differentiate:
+
+| cap | AUC | recall | learn ms |
+|---|---|---|---|
+| none | 1.0000 | 1.000 | 4.16 |
+| 16 | 1.0000 | 0.617 | 5.07 |
+| 8 | 0.9992 | 0.000 | 4.83 |
+
+**It does not pay, in either regime.** At every cap that saves meaningful time,
+recall is already destroyed — and at the caps that preserve recall, learning
+gets *slower*, because the eviction scan costs more than the shorter lists save.
+
+**Why, and this is the useful part.** Competitive elimination presupposes
+competitors for a shared resource. In tissue that is real: inputs to the same
+postsynaptic cell compete for that cell's response and for limited trophic
+support, so the loser genuinely is surplus. Khora's listener list is an *index*,
+not a resource. Each listener serves a different memory. They are not
+competing — they are merely co-located, and there is no weak one to remove.
+
+Note also what AUC alone would have concealed. At cap=8 it still reads 0.9499
+while recall is 0.000: pruning preserved the *ranking* of novel above familiar
+while destroying the *calibration* that makes the 0.5 threshold meaningful.
+A single headline metric would have called this a success.
+
+**The lesson generalises.** The mechanism was adopted because it is what
+development does, which is exactly the reasoning §1.2 rejects. Sub-linear
+matching needs an indexing change — something selective enough that a segment
+requiring 13 hits is not visited on the strength of one — not a biological
+analogy applied to a data structure that does not share the biology's
+constraint.
