@@ -18,44 +18,54 @@ transparent, runs on commodity hardware, and is yours alone.
 
 ## Current state
 
-**v0.114.0 — 23 modules, ~17k lines of C++20, 13 test binaries under ctest,
-11 of them green.** The table below was rebuilt from a module-by-module read
-of the source on 2026-08-19; see [docs/AUDIT-2026-08-19.md](docs/AUDIT-2026-08-19.md)
-for the evidence behind every row.
+**v0.115.0 — 23 modules, 16,877 lines of C++20 (22,503 with tests and benches),
+20 test binaries under ctest, all green.** Rebuilt from a module-by-module read
+of the source; see [docs/AUDIT-2026-08-19.md](docs/AUDIT-2026-08-19.md) for the
+evidence and [CHANGELOG.md](CHANGELOG.md) for what changed and what failed.
 
-| Subsystem | What it actually is | Status |
-|---|---|---|
-| **Morphic Lattice** (`lattice`) | 10,000-bit binary hypervectors; bind/bundle/permute algebra; labelled store with linear-scan Hamming query; binary persistence | working, tested, benched |
-| **Maelstrom** (`maelstrom`) | D3D11 DirectCompute k-NN over glyphs, with a used CPU fallback | working, untested |
-| **Soma Nexus** (`soma`) | 5 scalar drives decaying toward setpoints; dot-product arbitration | working, tested |
-| **Carapace** (`carapace`) | Command registry dispatching 71 operator tools | working, tested |
-| **Hand** (`hand`) | Win32 process execution with pipe capture | working, untested |
-| **Reservoir** (`reservoir`) | Hand-rolled LZSS codec, text distillation, byte-capped tiered store | partial, tested |
-| **Lexicon** (`lexicon`) | Char-trigram glyphs + random-indexing co-occurrence | partial, tested |
-| **Plexus** (`plexus`) | Weighted co-occurrence graph scored by smoothed PPMI | partial, tested |
-| **Ligature** (`ligature`) | Pattern extraction of is-a / causes / has-part + forward chaining | partial, **untested** |
-| **Stratiform Cortex** (`cortex`) | Next-glyph lookup by exact-context memorization — *not* predictive coding | partial, tested |
-| **Reverie Loom** (`reverie`) | Background thread perturbing and consolidating glyphs | partial, tested |
-| **Cogitator** (`cogitator`) | ~2.5k-line cognitive facade: cascade, transmute, abstraction tower, infer | partial, **untested** |
-| **Crucible / Whetstone** | Capability measurement + self-tuning of encoder genes | partial, **untested** |
-| **Curator / Lodestone / Ballast / Volition** | Self-education scheduling, resource governance, saturation gates | partial, mostly **untested** |
-| **Bulwark** (`bulwark`) | Job Object + low-integrity non-admin token cage | partial, **test red** |
-| **Maw** (`maw`) | Contained chaos exploration — gated off while Bulwark reports tier 0 | partial, tested |
-| **Crystallize** (`crystallize`) | Votes new is-a relations out of Plexus kin | **broken**, test red |
-| **Synapse Bus** (`synapse`) | Topic pub/sub with backpressure — **implemented, tested, and used by nothing** | dead |
-| **Sigilline** (DSL), **Vellum** (WPF UI) | — | not started |
+**BUILT is not the same as WIRED, and the table below says which.** The sparse
+`Sdr` substrate and the `TemporalMemory` are built, tested and benchmarked —
+and `khora_main.cpp` does not reference either of them. The running binary is
+still entirely on the dense `Glyph` path and still uses `PredictiveColumn` for
+sequences. They are organs that have not been put in the animal yet. The same
+has been true of the Synapse Bus for 115 releases.
 
-Two tests are red on `main`:
+| Subsystem | What it actually is | Status | In `khora.exe`? |
+|---|---|---|---|
+| **Morphic Lattice** (`lattice`) | 10,000-bit DENSE binary hypervectors; bind/bundle/permute; labelled store with linear-scan Hamming query | working, tested, benched | yes |
+| **Sdr** (`lattice/sdr`) | SPARSE block code: 256 blocks of 64, one active per block (1.5625%). Subsampled `Segment` matching, `SdrUnion` for simultaneity, one-way projection from `Glyph` | working, tested, benched | **no** |
+| **Temporal Memory** (`cortex`) | 16,384 minicolumns x 32 cells. Distal segments PRIME rather than fire; unprimed columns burst, and the bursting fraction is a novelty signal | working, tested, benched | **no** |
+| **Maelstrom** (`maelstrom`) | D3D11 DirectCompute k-NN over glyphs, with a used CPU fallback | working, untested | yes |
+| **Soma Nexus** (`soma`) | 5 scalar drives decaying toward setpoints; dot-product arbitration | working, tested | yes |
+| **Carapace** (`carapace`) | Command registry. 95 registration sites, 4 names registered twice, so **91 tools reachable and 4 handlers silently shadowed** | partial, tested | yes |
+| **Bulwark** (`bulwark`) | Job Object + low-integrity non-admin token cage, verified at tier 2 elevated and not | working, tested | yes |
+| **Crucible** (`crucible`) | Role-filler binding, structured unbind, analogy | working, tested | yes |
+| **Whetstone** (`whetstone`) | Self-escalating faculties: relational capacity, sequence induction, transitive reasoning | working, tested | yes |
+| **Reservoir** (`reservoir`) | Hand-rolled LZSS codec, text distillation, byte-capped tiered store, 22 MB of real books | partial, tested | yes |
+| **Lexicon / Plexus** | Char-trigram glyphs; weighted co-occurrence graph scored by smoothed PPMI | partial, tested | yes |
+| **Ligature** (`ligature`) | Pattern-extracted is-a / causes / has-part. **Extracted relations measured to be mostly false** | partial, tested | yes |
+| **Cogitator** (`cogitator`) | ~2.5k-line cognitive facade: cascade, transmute, abstraction tower, inference | partial, **untested** | yes |
+| **Crystallize** (`crystallize`) | Votes new is-a relations out of Plexus kin | working, tested | yes |
+| **Predictive Column** (`cortex`) | Next-glyph lookup by exact-context memorisation. Superseded by Temporal Memory on the bench, but still what the binary runs | partial, tested | yes |
+| **Reverie / Curator / Lodestone / Ballast / Volition** | Consolidation, self-education, resource governance, saturation gates | partial, mostly **untested** | yes |
+| **Maw** (`maw`) | Contained chaos exploration | partial, tested | yes |
+| **Synapse Bus** (`synapse`) | Topic pub/sub — **implemented, tested, and used by nothing** | dead | **no** |
+| **Sigilline** (DSL), **Vellum** (WPF UI) | — | not started | — |
 
-- `CrystallizeTest` — 6 of 9 assertions. Root cause is upstream in `Plexus::ppmi_`,
-  not in `crystallize`.
-- `BulwarkTest` — the runaway-kill assertion. The cage itself works (launch,
-  capture and integrity all pass); the canary command `ping` is shadowed on this
-  host by a Python `ping.py` on PATH, so the "runaway" exits instantly and the
-  timeout never fires. This caps `self_check()` at tier 0, which gates off the Maw.
+### What has been measured
 
-Where a row says **untested** it means no test binary exists for it — not that it
-fails. Roughly the largest and most-advertised modules are the untested ones.
+The project rule is that nothing is claimed unless it has been built, run and
+observed. These are the numbers, including the ones that went the wrong way.
+
+| Claim | Measurement |
+|---|---|
+| Sparsity, not dimensionality, makes subsampled matching work | False-match rate at s=24/theta=12: **dense 0.5764**, **sparse 0 in 400,000** |
+| Per-cell context solves sequences a pair-encoding cannot | Sequences sharing a middle: **temporal memory 100%** at N=2,3,4,6; dense chain **50.0 / 33.3 / 25.0 / 16.7**, exactly chance |
+| Categories can be overlap rather than stored edges | 207 WordNet categories, frequency-matched negatives: **code 0.6168** vs affinity 0.5298, frequency 0.5199, random 0.4947; paired **161-42, z = 8.35** |
+| **For exact recall, a trigram table wins** | Real books: **trigram AUC 1.0000**, temporal memory 0.9981. The machinery only wins past ~25% input corruption |
+| **Greedy novelty-seeking is a trap** | Scores **1.0000 surprise-remaining** at every signal-to-noise ratio — learns nothing, spends 92-98% of attention on static. This was Khora's stated Soma design |
+| **Synaptic pruning did not pay** | Measured in two regimes, reverted |
+| **The extracted taxonomy is mostly false** | Ligature is-a relations, measured |
 
 ## Build
 

@@ -3,6 +3,192 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.115.0 — A sparse substrate, sequence memory, and five things that turned out not to work
+
+**Author:** Claude Opus 5 — taking the project over; measuring first, and reporting the losses
+
+The largest single release since v0.90, and roughly half of it is negative results.
+That ratio is the point. Five mechanisms were built, measured, and either reverted
+or left disconnected because the measurement did not support them.
+
+### The foundation was wrong, in four places
+
+Every capability number in this changelog before today was measured *through*
+these, so they were fixed before anything new was built.
+
+- **`bundle()` was not a majority vote.** The threshold was `(n+1)/2`, which on
+  even arity means "at least half", so ties resolved toward SET — and at n=2 that
+  degenerates to a bitwise OR. Measured density climbed with arity: 0.751 at n=2,
+  0.689 at n=4, 0.634 at n=8. Superposition could only ever add bits. Now a true
+  majority, with an even-arity tie broken by a glyph derived from the operands
+  themselves: deterministic, commutative, decorrelated across operand sets.
+  Density 0.500 at every arity. The generic path also stopped counting
+  bit-at-a-time into a 20 KB heap array and now uses vertical bit-planes.
+
+- **`Plexus::ppmi_` normalised the smoothed context term by `N^alpha` rather than
+  by the partition function.** For a vocabulary of V words that overstates P(b) by
+  roughly `V^(1-alpha)`, subtracting a constant from every score — and since PPMI
+  clamps at zero, a constant subtraction does not reorder anything, it DELETES
+  every pair beneath it. Measured 2.13 bits at V=2011. `CrystallizeTest` went from
+  3/9 to 9/9: it was never unfinished, it was being handed an empty graph.
+
+- **The containment cage lied about what ran.** Three fail-open holes: the shell
+  was `cmd.exe` resolved through PATH, `AssignProcessToJobObject`'s result was
+  discarded, and the restricted token's default DACL was left unrepaired so
+  children died in the loader at `0xC0000142` while the cage still reported tier 2.
+  The runaway canary was also `ping`, which on this host resolves to a Python
+  `ping.py` and exits in milliseconds — so the timeout never fired, `self_check()`
+  capped at tier 0, and the Maw was gated off by a PATH collision rather than by
+  any failure of containment. Verified tier 2 both elevated and non-elevated.
+
+- **Chains were undirected.** `bind` is XOR, which is commutative, so a chain of
+  `bind(item_i, item_{i+1})` is a set of undirected edges. Traversal was a coin
+  flip: measured 1-hop 51.7%, with 48.3% of steps walking BACKWARDS, and 3-hop
+  2.1%. Permuting the source first breaks the symmetry — 100% at 1-hop and 3-hop
+  for chains to length 100, never backwards. The whetstone frontier faculty went
+  from difficulty 2 at 66.67% to difficulty 32 at 100%.
+
+Suite 11/13 → 20/20.
+
+### Two substrates, on purpose
+
+Subsampled matching — storing a small sample of a pattern and recognising it from
+that sample, which is what a dendritic segment physically does — has false-match
+probability `P(Binomial(s, density) >= theta)`. At s=24, theta=12 and Khora's 50%
+density that is **0.58, at every dimension from 2,000 bits to 65,536**. Widening
+the vector cannot help: a coin-flip bit meets a half-threshold by chance.
+
+Measured over 400,000 unrelated probes each: **dense 0.5764, sparse 0 in 400,000**
+(model 4.8e-16), with the model validated against the thresholds where the sparse
+rate is large enough to measure.
+
+So `Sdr` joins `Glyph` rather than replacing it: 256 blocks of 64 with exactly one
+active position per block, so sparsity is structural and cannot drift. Bind is
+per-block modular addition, 3.4x faster than dense XOR; a 24-synapse subsampled
+match is 6x faster than a full Hamming. `Glyph::sparse()` was DELETED — XOR maps
+density p to 2p(1−p), whose attracting fixed point is 0.5, so a sparse glyph went
+0.02 → 0.50 within eight binds. Sparsity could not survive the algebra it was
+being fed to.
+
+Two corrections found by measuring rather than by reasoning: block binding is also
+COMMUTATIVE (a separate unbind does not make it directional), and a block code
+**cannot represent a union as a bundle** — one winner per block keeps only ~1/M of
+each member, and a segment found its own pattern in a bundle of 4 in 1 trial out
+of 400. Simultaneity is a set, so `SdrUnion` carries one uint64 mask per block.
+
+### Sequence memory with per-cell context
+
+16,384 minicolumns of 32 cells. Feedforward input decides *whether* a cell fires;
+distal segments only PRIME it. A driven-and-primed column fires only its primed
+cells; a driven column with nothing primed BURSTS, which means "this input, in no
+context I recognise" — and the bursting fraction is a novelty signal for free.
+
+Trained on interleaved A B C D and X B C Y, where the shared middle is
+bit-identical: after A B C it predicts D at 1.00 and Y at 0.01; after X B C the
+reverse. `PredictiveColumn` structurally cannot do this — it bundles the last K
+inputs, so once the window slides past the disambiguating element the two contexts
+are the same glyph.
+
+Head to head against the dense chain Khora already had, on sequences sharing a
+common middle: **temporal memory 100% at N = 2, 3, 4, 6; the dense chain 50.0 /
+33.3 / 25.0 / 16.7**. That is exactly 1/N, and it is chance for a structural
+reason — a transition is a PAIR, so B→C is one edge no matter which sequence
+owns it.
+
+Three things only measurement found, each of which destroyed the capability while
+every other test passed: the least-used-cell tie-break must be RANDOM; synapse
+growth must be capped by what already matches; and punishment must reach
+sub-threshold matching segments, not only firing ones.
+
+Cell loss degrades it gracefully to 30% and then falls off a cliff at 40% — and
+the cliff is arithmetic, not biology: 20 synapses against threshold 13 leaves 12
+after a 40% loss, one short.
+
+### Categories are overlap, not stored edges
+
+Given five members of a WordNet category, Khora ranks the remaining members above
+frequency-matched strangers, with no is-a relation stored anywhere. A word's code
+is the SET of its strongest associates; a category is what its members' codes have
+in common.
+
+**207 WordNet 3.1 categories, external answer key, frequency-matched negatives:**
+
+    CATEGORY CODE   0.6168
+    raw affinity    0.5298
+    corpus freq     0.5199
+    random floor    0.4947
+
+    paired: 161 wins, 42 losses, 4 ties, median +0.0867, sign-test z = 8.35
+
+Modest in size, overwhelming in consistency, and robust across a thirty-setting
+parameter sweep. Two earlier versions of this measurement were wrong and are worth
+recording: a hand-picked six-category version reported a win that VANISHED at
+scale (0.4964, chance), and a uniform-negatives version was won by CORPUS
+FREQUENCY at 0.6566, because WordNet's well-populated categories are full of
+common words.
+
+It works for coherent concrete categories (cloth_covering 1.000, common_fraction
+0.960, gregorian_calendar_month 0.898) and fails for abstractions and specialist
+taxonomies (information 0.340, tree 0.407, herb 0.444) — which is the right kind
+of wrong for a distributional method.
+
+### What was measured and NOT adopted
+
+- **Synaptic pruning.** Built, measured in two regimes, did not pay. Reverted.
+- **Greedy novelty-seeking.** Scores 1.0000 surprise-remaining at every
+  signal-to-noise ratio tested — it learns literally NOTHING, spending 92–98% of
+  its attention on unlearnable static. This is Khora's own stated Soma design
+  ("Curiosity, novelty-seeking; spike on unfamiliar input"). The header now says
+  it is a trap. Chasing learning PROGRESS instead also lost to uniform coverage,
+  because a constant-but-noisy region manufactures apparent progress out of
+  measurement variance. Nothing is wired in.
+- **Exact recall on real books.** A 30-line trigram table BEATS the temporal
+  memory outright, AUC 1.0000 to 0.9981, because "have I seen this exact
+  sequence" is an exact-match membership query and a hash set is the correct data
+  structure for one. The machinery only wins past ~25% input corruption, where its
+  novelty score rises less than half as fast. For exact recall, use a hash table.
+- **Ligature's extracted is-a relations were measured to be mostly false**, so the
+  symbolic layer was standing on knowledge that mostly is not true.
+- **Three curiosity-benchmark bugs** are recorded in the bench itself as a
+  warning: it gave three different answers across three of its own defects, and
+  moving one array index took a policy from 10% wasted budget to 92%. A benchmark
+  that sensitive measures the harness, not the system.
+
+### What is NOT wired in
+
+The honest qualifier on everything above: **`Sdr` and `TemporalMemory` are not
+called by `khora.exe`.** They are built, tested and benchmarked, and
+`khora_main.cpp` references neither — grep returns zero. The running binary is
+still entirely on the dense `Glyph` path and still uses `PredictiveColumn` for
+sequences, which the bench shows scoring chance on any sequence sharing a
+subsequence with another.
+
+So every capability measured in this release was measured on a bench, not in the
+system. That is the difference between a result and a capability, and closing it
+is the first item in the backlog. The Synapse Bus has been in exactly this state
+for 115 releases, which is the argument for not letting these two settle into it.
+
+Also found while auditing and not yet fixed: `Carapace::register_tool` assigns
+into a map, and four tool names are registered twice across 95 registration
+sites, so 91 tools are reachable and four handlers are silently shadowed.
+
+### Build and instrumentation
+
+The build was unreproducible. The Visual Studio Installer had been removed while
+the Build Tools payload survived, so CMake's VS generator could not resolve the
+instance, and `vcvars64.bat` left the Windows SDK unwired so `cl.exe` compiled and
+`link.exe` then found no CRT. `tools\khora.ps1` fixes all three and drives
+configure / build / test / bench / tidy / format / run / clean. Ninja,
+`compile_commands.json`, a `.clang-tidy` carrying bug-finding checks only,
+timeouts on every test, and `bulwark_probe` registered with ctest after its exit
+code was un-inverted — it returned the TIER, so full containment exited as failure.
+
+New documents: `docs/SPEC-v1-tissue-structured-cognition.md` (the design
+direction, a proposal, with kill criteria written before implementation),
+`docs/AUDIT-2026-08-19.md` (a line-by-line audit with per-claim confidence marks),
+`docs/DEVELOPMENT.md`, and `tools/fetch_wordnet_categories.py` so the external
+answer key is reproducible rather than a number that was typed.
+
 ## v0.114.0 — Autonomous reverie, and the saturation gate that truly kills the runaway
 
 **Author:** Morphus — preparing a second overnight run; the prep caught what v0.113 only half-fixed

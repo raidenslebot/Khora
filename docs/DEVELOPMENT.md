@@ -70,18 +70,28 @@ C/C++ extension at it for accurate completion and diagnostics.
 
 ## Baseline (2026-08-19, verified)
 
-- Clean Ninja build: **96/96 targets**, no errors.
-- `ctest`: **11 / 13 pass**. Two are red and were red before the toolchain change
-  — identical failures under both the old VS build and the new Ninja build:
-  - `CrystallizeTest` — 6 assertion failures. Root cause is upstream, in
-    `Plexus::ppmi_`, not in `crystallize`.
-  - `BulwarkTest` — `runaway not killed by the job`. The cage itself passes launch,
-    capture and integrity; the canary `ping` is shadowed on this host by
-    `C:\Program Files\Python312\Scripts\ping.py`.
-- `lattice_bench`: popcount ~21 Mops/s, hamming ~22 Mops/s, bind ~31-40 Mops/s,
-  lattice query ~14k qps over 1000 glyphs.
+- Clean Ninja build, no errors.
+- `ctest`: **20 / 20 pass.** The suite opened this cycle at 11/13; the two red
+  tests, plus two more defects found while fixing them, are described in
+  `CHANGELOG.md` under v0.115.0.
+- `lattice_bench`: popcount ~21 Mops/s, hamming ~22 Mops/s, bind ~43 Mops/s,
+  bundle x2 ~6.8 Mops/s (density 0.500 at every arity), sdr bind ~146 Mops/s,
+  sdr segment match ~124 Mops/s, lattice query ~13k qps over 1000 glyphs.
+- `temporal_memory_bench`: ~1300 learning steps/s.
 
-See [AUDIT-2026-08-19.md](AUDIT-2026-08-19.md) for both root causes with evidence.
+Benches are not registered with ctest and have no stored baseline to compare
+against — a regression in any of these numbers would currently be invisible.
+That is tracked in `KHORA_BACKLOG.md`.
 
-Note: `KHORA_BACKLOG.md` recorded this as "12/14 pass" and attributed the Bulwark
-failure to lost output; both were stale and have been corrected there.
+## Tasks that need real data
+
+`invivo_bench` and `category_eval` read Khora's accumulated state under `data/`,
+which is gitignored. `category_eval` also needs an external answer key:
+
+```bash
+python tools/fetch_wordnet_categories.py
+```
+
+That downloads WordNet 3.1 and writes `data/eval/wn_categories.tsv`. WordNet is
+used ONLY as an answer key — nothing from it enters any code, graph or
+representation.
