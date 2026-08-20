@@ -155,6 +155,18 @@ std::size_t Plexus::observe(const std::vector<std::string>& tokens,
     return events;
 }
 
+std::vector<std::pair<std::uint32_t, std::uint32_t>>
+Plexus::neighbours(std::size_t id) const {
+    std::vector<std::pair<std::uint32_t, std::uint32_t>> out;
+    if (id >= adj_.size()) return out;
+    out.reserve(adj_[id].size());
+    for (const auto& [nb, c] : adj_[id]) out.emplace_back(nb, c);
+    // Sorted so a walk over the graph is reproducible; adjacency is an
+    // unordered_map and its iteration order is not a basis for anything.
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
 double Plexus::affinity(std::string_view a, std::string_view b) const {
     const std::int64_t ia = lookup_(a);
     const std::int64_t ib = lookup_(b);

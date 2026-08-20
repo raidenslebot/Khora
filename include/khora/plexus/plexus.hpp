@@ -80,6 +80,15 @@ public:
                             std::uint32_t add);
     std::uint64_t reinforcements() const noexcept { return reinforcements_; }
 
+    // Topology access. The Plexus is a learned graph, and the only way to know
+    // whether its STRUCTURE resembles a real neural network -- clustering, path
+    // length, degree distribution, hubs -- is to be able to walk it. Node ids
+    // are dense in [0, vocabulary_size).
+    std::string_view node_name(std::size_t id) const { return word_[id]; }
+    // (neighbour id, co-occurrence count) for one node.
+    std::vector<std::pair<std::uint32_t, std::uint32_t>> neighbours(std::size_t id) const;
+    std::size_t   degree(std::size_t id) const { return adj_[id].size(); }
+
     // Inspectors.
     std::size_t   vocabulary_size() const noexcept { return word_.size(); }
     std::uint64_t total_tokens()    const noexcept { return total_tokens_; }
