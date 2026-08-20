@@ -115,8 +115,24 @@ std::size_t Ligature::extract(const std::vector<std::string>& t) {
             const std::string Y = head_after(t, ys);
             if (is_content(X) && !Y.empty()) { add(Relation::Causes, X, Y); ++added; }
         }
-        // HAS-PART:  X has/have/contains/...  [det] ... Y
-        else if (w == "has" || w == "have" || w == "contains" || w == "contain" ||
+        // HAS-PART:  X has/have  DET ... Y      |  X contains/includes/... ... Y
+        //
+        // has/have/had REQUIRE a determiner, exactly as is/are do above. Without
+        // that, English's perfect tense is read as possession: "the time has
+        // come" becomes HAS-PART(time, come), "man has got" becomes
+        // HAS-PART(man, got). Those are not edge cases -- they were the single
+        // largest source of nonsense in the learned relations, with "time has
+        // come" asserted ten times and "mind has life/eyes/arms" alongside it.
+        // "the cell has a nucleus" still passes; "the time has come" no longer
+        // does. The unambiguous verbs need no determiner, since "water contains
+        // oxygen" is a real part-whole claim.
+        else if (w == "has" || w == "have" || w == "had") {
+            if (i + 1 < t.size() && is_det(t[i + 1])) {
+                const std::string Y = head_after(t, i + 2);
+                if (is_content(X) && !Y.empty()) { add(Relation::HasPart, X, Y); ++added; }
+            }
+        }
+        else if (w == "contains" || w == "contain" ||
                  w == "comprises" || w == "comprise" || w == "includes" ||
                  w == "possesses" || w == "possess" || w == "carries" || w == "carry") {
             const std::string Y = head_after(t, i + 1);

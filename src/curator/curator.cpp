@@ -52,10 +52,19 @@ StudyOutcome study_tome(Reservoir& pool, khora::lexicon::Lexicon& lex,
     // glyph and the explicit associative graph.
     if (plexus) plexus->observe(tokens, 3);
 
-    // The same token stream feeds the Ligature, which extracts TYPED relations
-    // (is-a, causes, has) by syntactic pattern — so studying a tome yields
-    // STRUCTURE, not only association. Acquired knowledge becomes understanding.
-    if (ligature) ligature->extract(tokens);
+    // The Ligature extracts TYPED relations (is-a, causes, has) by syntactic
+    // pattern, and unlike the two memories above it reads a WINDOW FORWARD --
+    // up to five words past a verb, looking for the head of its object. It must
+    // therefore see sentence boundaries, which tokenize() discards.
+    //
+    // Fed the flat stream it walks straight past the full stop into the next
+    // sentence. That is where "man is-a weber" and "woman is-a adler" came from:
+    // proper nouns from the following sentence, asserted as taxonomy.
+    if (ligature) {
+        for (const auto& sentence : khora::lexicon::tokenize_sentences(*text)) {
+            ligature->extract(sentence);
+        }
+    }
 
     o.tokens      = tokens.size();
     o.acc_after   = cortex.recent_accuracy();

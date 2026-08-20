@@ -15,3 +15,9 @@ target_link_libraries(curiosity_bench PRIVATE khora::cortex)
 
 add_executable(invivo_bench invivo_bench.cpp)
 target_link_libraries(invivo_bench PRIVATE khora::cortex khora::reservoir)
+
+add_executable(knowledge_bench knowledge_bench.cpp)
+target_link_libraries(knowledge_bench PRIVATE khora::ligature)
+
+add_executable(extraction_bench extraction_bench.cpp)
+target_link_libraries(extraction_bench PRIVATE khora::ligature khora::lexicon khora::reservoir)

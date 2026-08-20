@@ -79,6 +79,43 @@ Glyph encode_token(std::string_view raw) {
     return bundle(std::span<const Glyph>{primitives.data(), primitives.size()});
 }
 
+std::vector<std::vector<std::string>> tokenize_sentences(std::string_view text) {
+    std::vector<std::vector<std::string>> out;
+    std::vector<std::string> sentence;
+    std::string current;
+    int newlines = 0;
+
+    const auto end_word = [&]() {
+        if (!current.empty()) { sentence.push_back(std::move(current)); current.clear(); }
+    };
+    const auto end_sentence = [&]() {
+        end_word();
+        if (!sentence.empty()) { out.push_back(std::move(sentence)); sentence.clear(); }
+    };
+
+    for (const char c : text) {
+        if (std::isalnum(static_cast<unsigned char>(c))) {
+            current.push_back(to_lower(c));
+            newlines = 0;
+        } else {
+            end_word();
+            if (c == '.' || c == '!' || c == '?' || c == ';' || c == ':') {
+                end_sentence();
+                newlines = 0;
+            } else if (c == '\n') {
+                // A blank line is a paragraph break, and prose that ends a
+                // paragraph without punctuation is common in these texts --
+                // headings, verse, list items.
+                if (++newlines >= 2) { end_sentence(); newlines = 0; }
+            } else if (c != '\r' && c != ' ' && c != '\t') {
+                newlines = 0;
+            }
+        }
+    }
+    end_sentence();
+    return out;
+}
+
 std::vector<std::string> tokenize(std::string_view text) {
     std::vector<std::string> out;
     std::string current;

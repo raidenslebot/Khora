@@ -40,6 +40,21 @@ khora::lattice::Glyph encode_token(std::string_view token);
 // Lowercase + alnum tokenizer.
 std::vector<std::string> tokenize(std::string_view text);
 
+// The same tokenizer, but keeping sentence boundaries.
+//
+// tokenize() discards punctuation entirely, which is right for co-occurrence
+// statistics and wrong for anything that reads a window forward. The relation
+// extractor scans up to five words past a verb looking for the head of its
+// object, and with no boundary to stop at it walks straight into the next
+// sentence: "a sparrow is a small bird. friction causes heat" yields
+// IS-A(sparrow, heat). That is not hypothetical -- Khora's own learned
+// relations contain "man is-a weber" and "woman is-a adler", proper nouns
+// picked up from the following sentence, and "body is-a row" asserted sixteen
+// times.
+//
+// Splits on . ! ? ; : and on a blank line, which is a paragraph break.
+std::vector<std::vector<std::string>> tokenize_sentences(std::string_view text);
+
 class Lexicon {
 public:
     Lexicon();
