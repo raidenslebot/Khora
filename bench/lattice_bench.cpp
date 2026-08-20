@@ -3,7 +3,9 @@
 #include "khora/lattice/lattice.hpp"
 
 #include <chrono>
+#include <cstddef>
 #include <cstdio>
+#include <span>
 #include <vector>
 
 using clock_t_ = std::chrono::high_resolution_clock;
@@ -43,6 +45,25 @@ int main() {
         const double ms = time_ms([&](int){ c = bind(a, b); }, n);
         std::printf("  bind (xor)      : %8.2f Mops/s  (%.2f ms / %d iters)\n",
                     n / ms / 1000.0, ms, n);
+    }
+    // Bundle is the substrate's hottest primitive after bind — the cortex,
+    // lexicon and cogitator all call it several times per cycle, at arities
+    // that hit three different code paths (the n==2 and n==3 word-parallel
+    // cases, and the generic bit-plane vote). All three are measured.
+    {
+        std::vector<Glyph> pool;
+        pool.reserve(16);
+        for (int i = 0; i < 16; ++i) pool.push_back(Glyph::random(0x900 + i));
+
+        for (const std::size_t arity : {std::size_t{2}, std::size_t{3},
+                                        std::size_t{8}, std::size_t{16}}) {
+            const int n = (arity <= 3) ? 200'000 : 50'000;
+            const std::span<const Glyph> xs{pool.data(), arity};
+            Glyph c;
+            const double ms = time_ms([&](int){ c = bundle(xs); }, n);
+            std::printf("  bundle x%-2zu      : %8.2f Mops/s  (%.2f ms / %d iters)  density %.3f\n",
+                        arity, n / ms / 1000.0, ms, n, c.density());
+        }
     }
     {
         Lattice L;

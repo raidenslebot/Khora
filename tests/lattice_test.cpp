@@ -4,7 +4,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <cstdio>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -87,6 +89,61 @@ int main() {
 
         const Glyph stranger = Glyph::random(44);
         EXPECT(bun.similarity(stranger) < 0.1, "bundle dissimilar to stranger");
+    }
+
+    // Bundle is a MAJORITY vote at every arity, not a union. The old threshold
+    // (n+1)/2 tied toward SET on even n, which made bundle-of-two a bitwise OR:
+    // superposition that could only ever add bits. Density had to be checked at
+    // even arities specifically, because odd arities hid the bug.
+    {
+        // Density must stay near 0.5 for every arity, not climb with each input.
+        for (std::size_t n : {2u, 3u, 4u, 5u, 6u, 8u, 16u}) {
+            std::vector<Glyph> xs;
+            xs.reserve(n);
+            for (std::size_t i = 0; i < n; ++i) xs.push_back(Glyph::random(9000 + i));
+            const Glyph bun = bundle(std::span<const Glyph>{xs.data(), xs.size()});
+
+            char msg[96];
+            std::snprintf(msg, sizeof msg, "bundle of %zu keeps density near 0.5", n);
+            EXPECT_NEAR(bun.density(), 0.5, 0.03, msg);
+        }
+
+        // The specific regression: bundle of two must not be OR.
+        const Glyph a = Glyph::random(7001);
+        const Glyph b = Glyph::random(7002);
+        Glyph or_ab = a;
+        or_ab.or_with(b);
+        EXPECT(bundle({a, b}) != or_ab, "bundle of two is not bitwise OR");
+
+        // Where the inputs agree, a majority must agree with them. Only the
+        // disagreements are free for the tie rule to decide.
+        {
+            const Glyph bun = bundle({a, b});
+            std::size_t agreed = 0, honoured = 0;
+            for (std::size_t i = 0; i < kGlyphBits; ++i) {
+                if (a.bit(i) != b.bit(i)) continue;
+                ++agreed;
+                if (bun.bit(i) == a.bit(i)) ++honoured;
+            }
+            EXPECT(agreed > 0 && honoured == agreed, "bundle honours unanimous bits");
+        }
+
+        // Deterministic: the tie rule may not be a coin flip at runtime, or
+        // nothing built on the substrate is reproducible.
+        EXPECT(bundle({a, b}) == bundle({a, b}), "bundle is deterministic");
+
+        // Commutative: a superposition has no argument order.
+        EXPECT(bundle({a, b}) == bundle({b, a}), "bundle is commutative");
+
+        // And it must still do the job superposition exists for.
+        {
+            const Glyph c = Glyph::random(7003);
+            const Glyph d = Glyph::random(7004);
+            const Glyph bun = bundle({a, b, c, d});
+            EXPECT(bun.similarity(a) > 0.2, "even bundle similar to constituent a");
+            EXPECT(bun.similarity(d) > 0.2, "even bundle similar to constituent d");
+            EXPECT(bun.similarity(Glyph::random(7005)) < 0.1, "even bundle rejects stranger");
+        }
     }
 
     // from_hash is deterministic and distinguishes inputs.
