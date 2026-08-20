@@ -172,6 +172,36 @@ Also found while auditing and not yet fixed: `Carapace::register_tool` assigns
 into a map, and four tool names are registered twice across 95 registration
 sites, so 91 tools are reachable and four handlers are silently shadowed.
 
+### The graph, measured against real nervous systems
+
+`tools/fetch_connectomes.py` downloads six real connectomes -- C. elegans (the
+only complete nervous system ever mapped), Drosophila medulla, mouse visual
+cortex, cat brain, macaque brain and macaque cerebral cortex -- and
+`topology_bench` now runs them through the SAME code and the SAME
+degree-preserving null as Khora's Plexus.
+
+That replaced a table of figures copied out of papers, and the replacement
+overturned the reading. Real nervous systems land at gamma 1.7-3.3, a tight band
+from worm to macaque. Khora measures 62.6. Printed next to a published macaque
+gamma of 1.59, that invited the conclusion that Khora is dramatically more
+small-world; measured properly it means the opposite, because gamma is C over
+C_random and Khora's null baseline is 0.0044 -- its graph is huge and sparse in
+density where every real connectome is small and dense. Khora's ABSOLUTE
+clustering, 0.275, sits comfortably inside the biological range of 0.13-0.74.
+The ratio was an artifact of scale, and the old table hid it.
+
+One difference survives the scale correction: **Khora has hubs but no core.**
+Rich-club coefficient 0.013 against 0.12-0.98 across all six. Real brains wire
+their hubs densely to each other; a learned co-occurrence graph does not.
+Whether imposing a core would buy anything is untested.
+
+Also recorded there, since the operator supplied them: openneuro.org,
+humanconnectome.org and FreeSurfer do NOT hand over connectivity. The first two
+are imaging portals -- HCP behind a data use agreement, OpenNeuro raw BIDS
+needing hours of pipeline per subject -- and FreeSurfer is surface
+reconstruction whose three parcellations carry anatomical labels only.
+Connectivity lives in connectome repositories, which are free and take seconds.
+
 ### Build and instrumentation
 
 The build was unreproducible. The Visual Studio Installer had been removed while

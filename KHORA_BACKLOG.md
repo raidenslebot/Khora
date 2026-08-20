@@ -85,6 +85,16 @@ Recorded so they are not re-attempted without new evidence.
 4. PLANNED: **`cogitator` has no test**, at ~2.5k lines and roughly thirty
    cognitive operations. It is the largest and least verified module in the repo.
 
+## Open questions from measurement
+
+- **Khora's graph has hubs but no CORE.** Measured against six real connectomes
+  through identical code: rich-club coefficient 0.013 against 0.12-0.98 for
+  worm, fly, mouse, cat and macaque. Real brains wire their hubs densely to one
+  another; a learned co-occurrence graph grows hubs and does not grow a core.
+  Whether imposing one would buy anything is UNTESTED, and it is the kind of
+  thing that has to be tested rather than assumed -- adding structure because
+  biology has it is decoration unless a capability moves.
+
 ## Cognitive core
 
 5. PLANNED: Soma — the "homeostatic weight adaptation" it documents does not

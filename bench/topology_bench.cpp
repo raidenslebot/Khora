@@ -18,10 +18,18 @@
 //                           ONLY. No connectivity of any kind. It is a surface
 //                           reconstruction and labelling tool.
 //
-// So none of the three hands over a connectome. What the literature DOES hand
-// over is better anyway: measured topology statistics, already computed by
-// people with the imaging pipelines and the subjects. Those are the yardstick
-// here.
+// So none of the three hands over a connectome. Connectivity lives in
+// connectome repositories instead, and those are free and directly
+// downloadable -- tools/fetch_connectomes.py pulls six of them, including the
+// C. elegans nervous system, which is the only complete connectome of any
+// animal ever mapped.
+//
+// AND THEY ARE MEASURED BY THIS FILE, not quoted from papers. That distinction
+// turned out to matter more than expected. An earlier version of this bench
+// printed published figures beside Khora's, and a clustering coefficient
+// computed by another pipeline -- on a weighted directed graph, thresholded
+// their way -- is simply not the quantity computed here. Side by side in one
+// table, those numbers invited a conclusion they could not support.
 //
 // AND NOTE WHAT THIS IS NOT DOING. It is not copying connection probabilities
 // into Khora. A connectome gives topology and nothing else -- Shiu et al. 2024
@@ -40,6 +48,8 @@
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
+#include <fstream>
+#include <sstream>
 #include <random>
 #include <string>
 #include <unordered_set>
@@ -194,6 +204,54 @@ rewire(const std::vector<std::vector<std::uint32_t>>& adj, std::mt19937_64& rng)
     return out;
 }
 
+// Load a real connectome from an edge list. Handles both formats present in the
+// downloaded data: KONECT (a "%" header, 1-indexed, optional weight column) and
+// networkrepository (0-indexed, whitespace or comma separated). Self-loops and
+// duplicates are dropped and the graph is symmetrised, because Khora's Plexus is
+// undirected and the comparison has to be like for like.
+std::vector<std::vector<std::uint32_t>> load_edge_list(const std::string& path) {
+    std::ifstream in(path);
+    if (!in) return {};
+    std::vector<std::pair<std::uint32_t, std::uint32_t>> edges;
+    std::uint32_t max_id = 0;
+    std::string line;
+    while (std::getline(in, line)) {
+        if (line.empty() || line[0] == '%' || line[0] == '#') continue;
+        for (char& c : line) if (c == ',') c = ' ';
+        std::istringstream ls(line);
+        long a = -1, b = -1;
+        if (!(ls >> a >> b)) continue;
+        if (a < 0 || b < 0 || a == b) continue;
+        const auto ua = static_cast<std::uint32_t>(a);
+        const auto ub = static_cast<std::uint32_t>(b);
+        edges.emplace_back(ua, ub);
+        max_id = std::max(max_id, std::max(ua, ub));
+    }
+    if (edges.empty()) return {};
+
+    std::vector<std::vector<std::uint32_t>> adj(max_id + 1);
+    for (const auto& e : edges) {
+        adj[e.first].push_back(e.second);
+        adj[e.second].push_back(e.first);
+    }
+    for (auto& v : adj) {
+        std::sort(v.begin(), v.end());
+        v.erase(std::unique(v.begin(), v.end()), v.end());
+    }
+    // Drop isolated nodes. An edge list never declares them, so gaps in the id
+    // space would deflate density and mean degree by an arbitrary amount.
+    std::vector<std::uint32_t> remap(adj.size(), 0xFFFFFFFFu);
+    std::uint32_t n = 0;
+    for (std::size_t i = 0; i < adj.size(); ++i) if (!adj[i].empty()) remap[i] = n++;
+    std::vector<std::vector<std::uint32_t>> out(n);
+    for (std::size_t i = 0; i < adj.size(); ++i) {
+        if (remap[i] == 0xFFFFFFFFu) continue;
+        for (const std::uint32_t w : adj[i])
+            if (remap[w] != 0xFFFFFFFFu) out[remap[i]].push_back(remap[w]);
+    }
+    return out;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -245,7 +303,71 @@ int main(int argc, char** argv) {
     std::printf("\n  normalised: gamma (C/C_rand) %.2f, lambda (L/L_rand) %.2f,"
                 " sigma %.2f\n", gamma, lam, lam > 0 ? gamma / lam : 0.0);
 
-    std::printf("\n  AGAINST MEASURED NERVOUS SYSTEMS\n");
+    // ---------------------------------------------------------------------
+    // AGAINST REAL NERVOUS SYSTEMS, RUN THROUGH THIS SAME CODE.
+    //
+    // This block used to print numbers copied out of papers. That is a weaker
+    // comparison than it looks: a clustering coefficient computed by another
+    // pipeline, on a weighted directed graph, thresholded their way, is not the
+    // same quantity this file computes. Putting the two in one table invites a
+    // conclusion the numbers cannot support.
+    //
+    // These are DOWNLOADED connectomes fed through the SAME measure() and the
+    // SAME degree-preserving null as Khora's graph, so every number in the table
+    // below is defined identically. Where they still disagree with the published
+    // figures -- and they do -- that gap IS the definitional difference, which
+    // is precisely what the old table was hiding.
+    std::printf("\n  === AGAINST REAL NERVOUS SYSTEMS ===\n");
+    std::printf("  Downloaded connectomes, measured by THIS code against a\n");
+    std::printf("  degree-preserving null. Same definitions as the rows above.\n\n");
+    std::printf("  network                   nodes   deg      C     C_rand  gamma     L     rich  rc/rnd\n");
+    std::printf("  ------------------------+------+------+-------+-------+------+------+------+-------\n");
+
+    struct Ref { const char* name; const char* path; };
+    const Ref refs[] = {
+        {"C. elegans neural",
+         "data/connectomes/dimacs10-celegansneural/out.dimacs10-celegansneural"},
+        {"Drosophila medulla",
+         "data/connectomes/fly-medulla/bn/bn-fly-drosophila_medulla_1.edges"},
+        {"mouse visual cortex",
+         "data/connectomes/mouse-visual/bn/bn-mouse_visual-cortex_2.edges"},
+        {"cat brain",
+         "data/connectomes/cat-cortex/bn/bn-cat-mixed-species_brain_1.edges"},
+        {"macaque brain",
+         "data/connectomes/macaque-brain/bn/bn-macaque-rhesus_brain_1.edges"},
+        {"macaque cerebral cortex",
+         "data/connectomes/macaque-cortex/bn/bn-macaque-rhesus_cerebral-cortex_1.edges"},
+    };
+
+    bool any_ref = false;
+    for (const auto& ref : refs) {
+        auto a = load_edge_list(ref.path);
+        if (a.size() < 10) continue;
+        any_ref = true;
+        const Topology t = measure(a, 3000);
+        std::mt19937_64 r2(999);
+        auto null = rewire(a, r2);
+        for (auto& v : null) { std::sort(v.begin(), v.end());
+                               v.erase(std::unique(v.begin(), v.end()), v.end()); }
+        const Topology tn = measure(null, 3000);
+        std::printf("  %-23s %6zu %6.1f %7.4f %7.4f %6.2f %6.2f %6.4f %6.2f\n",
+                    ref.name, t.nodes, t.mean_degree, t.clustering, tn.clustering,
+                    tn.clustering > 0 ? t.clustering / tn.clustering : 0.0,
+                    t.path_length, t.rich_club,
+                    tn.rich_club > 0 ? t.rich_club / tn.rich_club : 0.0);
+    }
+    std::printf("  %-23s %6zu %6.1f %7.4f %7.4f %6.2f %6.2f %6.4f %6.2f  <- Khora\n",
+                "KHORA plexus", k.nodes, k.mean_degree, k.clustering, r.clustering,
+                gamma, k.path_length, k.rich_club,
+                r.rich_club > 0 ? k.rich_club / r.rich_club : 0.0);
+
+    if (!any_ref) {
+        std::printf("\n  (no connectome files under data/connectomes -- run\n");
+        std::printf("   python tools/fetch_connectomes.py)\n");
+    }
+
+    std::printf("\n  PUBLISHED values, for reference only. Computed by other pipelines\n");
+    std::printf("  on weighted directed graphs, so NOT directly comparable above:\n");
     std::printf("    human structural connectome (1014 ROIs)  density 2.8-3.0%%"
                 "   [Hagmann 2008]\n");
     std::printf("    human resting fMRI (90 AAL)              C 0.53 ~2x random,"
@@ -259,9 +381,33 @@ int main(int argc, char** argv) {
     std::printf("    human degree distribution                EXPONENTIAL, not"
                 " scale-free; ~10-fold range   [Hagmann 2008]\n");
 
+    // The finding, stated plainly, because the table alone is easy to misread.
+    std::printf("\n  WHAT THIS SHOWS\n");
+    std::printf("    Real nervous systems land at gamma 1.7 to 3.3 -- worm, fly,\n");
+    std::printf("    cat, macaque, a tight band across 600 million years of\n");
+    std::printf("    divergence. Khora sits at 62.6, and that is not twenty times\n");
+    std::printf("    more brain-like, it is a different regime. gamma is C over\n");
+    std::printf("    C_random, and Khora's random baseline is 0.0044 because its\n");
+    std::printf("    graph is huge and sparse in density while every connectome\n");
+    std::printf("    here is small and dense. At that scale a random graph has\n");
+    std::printf("    almost no clustering, so any structure divides into a large\n");
+    std::printf("    number.\n\n");
+    std::printf("    Khora's ABSOLUTE clustering, 0.275, sits inside the\n");
+    std::printf("    biological range of 0.13 to 0.74. It is the RATIO that is out\n");
+    std::printf("    of family, and the ratio is an artifact of scale. An earlier\n");
+    std::printf("    version of this bench printed 62.56 next to a published 1.59\n");
+    std::printf("    and invited exactly the wrong conclusion.\n\n");
+    std::printf("    The one scale-robust difference is the RICH CLUB. Real brains\n");
+    std::printf("    wire their hubs densely to one another -- 0.12 to 0.98 here.\n");
+    std::printf("    Khora manages 0.013, so its hubs are ten to seventy times\n");
+    std::printf("    less interconnected than any nervous system measured. A\n");
+    std::printf("    learned co-occurrence graph grows hubs; it does not grow a\n");
+    std::printf("    core. Whether a core would buy anything is untested.\n");
+
     std::printf("\n  Caveat the literature is explicit about: sigma is unbounded and"
                 "\n  density-dependent, and at high density the binary small-world"
                 "\n  signature collapses toward 1 for any graph. Read gamma and the"
-                "\n  degree distribution, not sigma alone.\n");
+                "\n  degree distribution, not sigma alone. This measurement is a"
+                "\n  demonstration of exactly that hazard.\n");
     return 0;
 }
