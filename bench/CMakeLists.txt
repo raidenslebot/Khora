@@ -12,3 +12,6 @@ target_link_libraries(topology_bench PRIVATE khora::plexus)
 
 add_executable(curiosity_bench curiosity_bench.cpp)
 target_link_libraries(curiosity_bench PRIVATE khora::cortex)
+
+add_executable(invivo_bench invivo_bench.cpp)
+target_link_libraries(invivo_bench PRIVATE khora::cortex khora::reservoir)
