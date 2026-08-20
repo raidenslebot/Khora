@@ -5,7 +5,9 @@
 
 #include "khora/plexus/plexus.hpp"
 
+#include <algorithm>
 #include <cassert>
+#include <cmath>
 #include <cstdio>
 #include <filesystem>
 #include <string>
@@ -35,6 +37,15 @@ std::vector<std::string> corpus() {
         sentence({"the", "moon", "and", "the", "sun", "set"});
     }
     return c;
+}
+
+// The distinct words of a token stream, so a test can recompute what the
+// Plexus should have derived from the same stream.
+std::vector<std::string> vocabulary_of(const std::vector<std::string>& tokens) {
+    std::vector<std::string> v(tokens);
+    std::sort(v.begin(), v.end());
+    v.erase(std::unique(v.begin(), v.end()), v.end());
+    return v;
 }
 
 } // namespace
@@ -77,6 +88,67 @@ int main() {
     const double cat_dog = plex.affinity("cat", "dog");
     const double the_cat = plex.affinity("the", "cat");
     check(cat_dog > the_cat, "specific pair outscores hub pair");
+
+    // Association strength must not decay as the VOCABULARY grows.
+    //
+    // PMI's smoothed context term needs a normalised P(b) = c_b^a / sum(c^a).
+    // Normalising by N^a instead costs roughly log2(V^0.25) bits on every pair
+    // — invisible at V=8, fatal at scale, because PPMI clamps at zero and so
+    // deletes rather than merely shifts. Padding the vocabulary with words that
+    // never meet cat or dog leaves their co-occurrence statistics untouched, so
+    // a correct PMI must still find them kin.
+    {
+        Plexus wide;
+        auto padded = corpus();
+        char buf[32];
+
+        // Bulk vocabulary, to drive the smoothed-context partition function up.
+        for (int w = 0; w < 2000; ++w) {
+            std::snprintf(buf, sizeof buf, "filler%d", w);
+            padded.emplace_back(buf);
+            padded.emplace_back("nonce");
+        }
+        wide.observe(padded, 3);
+
+        check(wide.vocabulary_size() > 2000, "wide corpus has a large vocabulary");
+
+        // THE decisive check. The smoothed context term must be divided by the
+        // partition function Z = sum of occ^alpha over the whole vocabulary, so
+        // that P(context) is a distribution. Dividing by N^alpha instead -- as
+        // this did -- overstates P(b) by about V^(1-alpha), subtracting a
+        // constant log2(V^0.25) from every score. PPMI clamps at zero, so that
+        // constant does not reorder anything, it DELETES every pair beneath it:
+        // silent, and worse the larger the vocabulary grows.
+        //
+        // The test knows every word it put in, so it can compute Z itself.
+        const double alpha = Plexus::context_smoothing_exponent();
+        double expect_z = 0.0;
+        for (const auto& w : vocabulary_of(padded)) {
+            const std::uint32_t c = wide.occurrences(w);
+            expect_z += std::pow(static_cast<double>(c ? c : 1), alpha);
+        }
+        const double got_z    = wide.smoothed_context_z();
+        const double n_to_a   = std::pow(static_cast<double>(wide.total_tokens()), alpha);
+        std::printf("  V=%zu  Z=%.1f (expected %.1f)  N^a=%.1f  offset if wrong: %.2f bits\n",
+                    wide.vocabulary_size(), got_z, expect_z, n_to_a,
+                    std::log2(got_z / n_to_a));
+
+        check(std::fabs(got_z - expect_z) < 1e-6 * expect_z,
+              "normaliser is the partition function sum(occ^a), not N^a");
+        check(got_z > 2.0 * n_to_a,
+              "Z and N^a are far enough apart here that the two would differ");
+
+        // The affinity itself survives the larger vocabulary.
+        check(wide.affinity("cat", "dog") > 0.0, "cat~dog survives a large vocabulary");
+
+        // associates() is deliberately NOT asserted here. It applies a
+        // stop-word filter -- any word above kStopFraction (0.6%) of all tokens
+        // is treated as a function word -- and that threshold is relative to
+        // corpus size, so padding the vocabulary with 2000 singletons pushes the
+        // base corpus's content words above it and filters 'dog' out. That is a
+        // real fragility in the filter, not a property of the normaliser, and it
+        // is tracked separately. See KHORA_BACKLOG.md.
+    }
 
     // Persistence round-trip.
     namespace fs = std::filesystem;

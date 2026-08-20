@@ -87,6 +87,14 @@ public:
     std::uint32_t occurrences(std::string_view word) const;
     bool          has(std::string_view word) const;
 
+    // Z — the partition function of the smoothed context distribution: the sum
+    // of occ^alpha over the whole vocabulary. PMI divides the smoothed context
+    // term by this so that P(context) is an actual distribution. Exposed
+    // because it is the one quantity whose definition, if it drifts, silently
+    // rescales every affinity in the graph.
+    double        smoothed_context_z() const noexcept { return smoothed_ctx_z_; }
+    static double context_smoothing_exponent() noexcept;
+
     // Memory bound: maximum associates stored per node. Lowering it sheds
     // edges on the next prune; raising it lets nodes keep more kin.
     void        set_max_degree(std::size_t d) { max_degree_ = (d ? d : 1); }
@@ -111,6 +119,7 @@ private:
     double        ppmi_(std::uint32_t a, std::uint32_t b,
                         std::uint32_t cab) const;
     void          prune_(std::uint32_t node);
+    void          recompute_smoothed_context_();     // after any change to occ_
 
     std::unordered_map<std::string, std::uint32_t>              ids_;   // word -> id
     std::vector<std::string>                                    word_;  // id -> word
@@ -118,6 +127,10 @@ private:
     std::vector<std::unordered_map<std::uint32_t, std::uint32_t>> adj_; // id -> (id -> cooc)
     std::uint64_t total_tokens_   = 0;   // N — corpus length
     std::uint64_t total_cooc_     = 0;   // W — total co-occurrence weight
+    // Z — the partition function of the smoothed context distribution,
+    // sum over all words of occ^alpha. PMI needs a normalised P(context);
+    // without this the smoothing subtracts a constant from every score.
+    double        smoothed_ctx_z_ = 0.0;
     std::uint64_t reinforcements_ = 0;   // verified discoveries written back (autopoiesis)
     std::size_t   max_degree_     = 160;
 };

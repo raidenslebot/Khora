@@ -60,11 +60,40 @@ double Plexus::ppmi_(std::uint32_t a, std::uint32_t b, std::uint32_t cab) const 
     // P(a,b) measured against the chance they would meet at random, P(a)*P(b),
     // with the context term b smoothed. The hub's loudness lives in ca/cb and
     // divides straight out.
+    // P(b) is smoothed and must still be a probability, so it is normalised by
+    // Z = sum over all words of occ^alpha (Levy & Goldberg 2014, eq. for
+    // SPPMI). Normalising by N^alpha instead — as this did — is not a
+    // distribution: for a vocabulary of V words it overstates P(b) by roughly
+    // V^(1-alpha), which subtracts a constant log2(V^0.25) from every score.
+    // PPMI clamps at zero, so that constant does not shift the ranking, it
+    // DELETES every pair beneath it. At V=12 (the crystallize corpus) the loss
+    // is ~0.9 bits and associates() comes back empty; at V=100k it is ~4.2 bits
+    // and the graph is silent.
+    //
+    // P(a) stays in token space: over a uniform window each token takes part in
+    // ~2w co-occurrence events, so the 2w cancels between ca/N and cab/W. That
+    // is exact apart from edge effects at document boundaries.
+    const double Z    = (smoothed_ctx_z_ > 0.0) ? smoothed_ctx_z_
+                                                : std::pow(N, kContextSmoothing);
     const double p_ab = static_cast<double>(cab) / W;
     const double p_a  = ca / N;
-    const double p_b  = std::pow(cb, kContextSmoothing) / std::pow(N, kContextSmoothing);
+    const double p_b  = std::pow(cb, kContextSmoothing) / Z;
     const double pmi  = std::log2(p_ab / (p_a * p_b));
     return pmi > 0.0 ? pmi : 0.0;
+}
+
+double Plexus::context_smoothing_exponent() noexcept { return kContextSmoothing; }
+
+// O(V) and called once per observe/absorb/load, never per query. Kept eager
+// rather than lazily cached because queries run under a shared lock, where a
+// mutable cache would be a data race.
+void Plexus::recompute_smoothed_context_() {
+    double z = 0.0;
+    for (const std::uint32_t c : occ_) {
+        // Matches ppmi_'s zero guard exactly, so the P(b) it computes sums to 1.
+        z += std::pow(static_cast<double>(c ? c : 1), kContextSmoothing);
+    }
+    smoothed_ctx_z_ = z;
 }
 
 void Plexus::prune_(std::uint32_t node) {
@@ -103,6 +132,7 @@ std::size_t Plexus::observe(const std::vector<std::string>& tokens,
         ids.push_back(id);
     }
     total_tokens_ += tokens.size();
+    recompute_smoothed_context_();
 
     // Tally co-occurrence within the window. Edges are accrued in both
     // directions over the corpus, so the graph is effectively symmetric.
@@ -189,6 +219,7 @@ void Plexus::absorb(const Plexus& other) {
     }
     total_tokens_ += other.total_tokens_;
     total_cooc_   += other.total_cooc_;
+    recompute_smoothed_context_();
 }
 
 void Plexus::prune_all() {
@@ -307,6 +338,9 @@ void Plexus::load(const std::filesystem::path& prefix) {
             if (is) edges.emplace(nb, c);
         }
     }
+    // Derived from occ_, so it is recomputed rather than serialised — which
+    // also keeps the on-disk format unchanged.
+    recompute_smoothed_context_();
 }
 
 } // namespace khora::plexus
