@@ -968,8 +968,12 @@ int main(int argc, char** argv) {
         }
     });
     shell.register_tool({
-        "spire",
-        "the rising tower of Khora's abstractions  (usage: spire [n])",
+        // Renamed from "spire". A later registration under that name -- the one
+        // that DRIVES the tower upward -- was overwriting this one, and since
+        // register_tool assigned into a map it did so silently. This is the
+        // read-only view; "spire" is the action.
+        "tower",
+        "the rising tower of Khora's abstractions, listed  (usage: tower [n])",
         [&mind](const carapace::Intent& i) -> carapace::ToolResult {
             std::size_t n = 14;
             if (!i.args.empty()) { try { n = static_cast<std::size_t>(std::stoul(i.args[0])); } catch (...) {} }
@@ -1053,8 +1057,13 @@ int main(int argc, char** argv) {
         }
     });
     shell.register_tool({
-        "cascade",
-        "recursive chaos: a chain of collisions, each forged concept feeding the next  (usage: cascade [seed] [depth])",
+        // Renamed from "cascade", which a later registration was silently
+        // overwriting. That one is a recursive CONTEMPLATION collapsing to an
+        // attractor (mind.cascade); this is a chain of COLLISIONS
+        // (mind.synthesize), so it is named for the single-collision tool it
+        // repeats -- ferment.
+        "ferment_chain",
+        "recursive chaos: a chain of collisions, each forged concept feeding the next  (usage: ferment_chain [seed] [depth])",
         [&mind, &ferment_seed](const carapace::Intent& i) -> carapace::ToolResult {
             std::string cur = (i.args.size() >= 1) ? i.args[0] : std::string{};
             std::size_t depth = 6;
@@ -1413,8 +1422,13 @@ int main(int argc, char** argv) {
         }
     });
     shell.register_tool({
-        "contemplate",
-        "engage a question with Khora's whole mind: sources, thought, connection  (usage: contemplate <query>)",
+        // Renamed from "contemplate", which a later registration was silently
+        // overwriting. That one runs parallel modes of thought over a CONCEPT
+        // and reports what converges; this answers a QUESTION from sources,
+        // thought and connection together. The name is taken from this tool's
+        // own description.
+        "engage",
+        "engage a question with Khora's whole mind: sources, thought, connection  (usage: engage <query>)",
         [&mind, &lex, consult_passages](const carapace::Intent& in) -> carapace::ToolResult {
             if (in.args.empty()) return {false, "", "usage: contemplate <query>"};
             std::string query;

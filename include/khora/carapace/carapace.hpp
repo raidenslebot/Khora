@@ -39,7 +39,15 @@ class Carapace {
 public:
     Carapace();
 
-    void register_tool(Tool t);
+    // Register a tool. Returns false and keeps the EXISTING tool if the name is
+    // already taken; asserts in debug builds.
+    //
+    // This used to assign into the map, so a second registration under the same
+    // name silently replaced the first and the earlier handler became
+    // unreachable with no warning. Four tools were lost that way -- spire,
+    // cascade, contemplate and learn -- across 95 registration sites, and the
+    // only reason it was ever noticed was a count that did not add up.
+    bool register_tool(Tool t);
     bool has_tool(const std::string& name) const;
     std::vector<std::string> list_tools() const;
     const Tool* find_tool(const std::string& name) const;

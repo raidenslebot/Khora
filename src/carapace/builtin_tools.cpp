@@ -246,10 +246,16 @@ void register_cortex_tools(Carapace& c,
     };
 
     c.register_tool({
-        "learn",
-        "feed a text token into the cortex  (usage: learn <text>)",
+        // Renamed from "learn". register_cortex_tools runs before khora_main's
+        // inline registrations, so a later "learn" -- an EXPERIMENTAL predictive
+        // trainer that refuses to run without 'confirm' and documents itself as
+        // degrading generalisation -- was silently overwriting this one. A
+        // working tool was unreachable behind a gated one. The name is taken
+        // from this tool's own description.
+        "feed",
+        "feed a text token into the cortex  (usage: feed <text>)",
         [&cortex, encode](const Intent& i) -> ToolResult {
-            if (i.args.empty()) return make_err("usage: learn <text>");
+            if (i.args.empty()) return make_err("usage: feed <text>");
             const auto r = cortex.step(encode(i.args[0]));
             std::ostringstream os;
             os << "fed \"" << i.args[0] << "\"  sim=" << r.similarity

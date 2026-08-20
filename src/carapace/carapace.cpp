@@ -1,6 +1,8 @@
 #include "khora/carapace/carapace.hpp"
 
 #include <algorithm>
+#include <cassert>
+#include <cstdio>
 #include <cctype>
 #include <utility>
 
@@ -8,8 +10,20 @@ namespace khora::carapace {
 
 Carapace::Carapace() = default;
 
-void Carapace::register_tool(Tool t) {
-    tools_[t.name] = std::move(t);
+bool Carapace::register_tool(Tool t) {
+    // First registration wins, and a collision is loud. Silently overwriting is
+    // what made four tools unreachable; a name clash is a programming error, not
+    // a runtime condition, so it fails the build's assertions rather than
+    // degrading quietly at runtime.
+    if (tools_.find(t.name) != tools_.end()) {
+        assert(false && "carapace: duplicate tool name -- the earlier tool is kept");
+        std::fprintf(stderr,
+                     "carapace: DUPLICATE TOOL NAME \"%s\" ignored; the existing "
+                     "tool is kept\n", t.name.c_str());
+        return false;
+    }
+    tools_.emplace(t.name, std::move(t));
+    return true;
 }
 
 bool Carapace::has_tool(const std::string& name) const {
