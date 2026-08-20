@@ -6,6 +6,10 @@ add_executable(sdr_test sdr_test.cpp)
 target_link_libraries(sdr_test PRIVATE khora::lattice)
 add_test(NAME SdrTest COMMAND sdr_test)
 
+add_executable(temporal_memory_test temporal_memory_test.cpp)
+target_link_libraries(temporal_memory_test PRIVATE khora::cortex)
+add_test(NAME TemporalMemoryTest COMMAND temporal_memory_test)
+
 add_executable(persistence_test persistence_test.cpp)
 target_link_libraries(persistence_test PRIVATE khora::lattice)
 add_test(NAME PersistenceTest COMMAND persistence_test)

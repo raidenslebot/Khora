@@ -192,6 +192,10 @@ void SdrUnion::add(const Sdr& s) noexcept {
     ++members_;
 }
 
+void SdrUnion::add_position(std::size_t block, std::uint8_t index) noexcept {
+    mask_[block] |= (1ULL << (index & (kSdrBlockSize - 1)));
+}
+
 void SdrUnion::clear() noexcept {
     mask_.fill(0);
     members_ = 0;

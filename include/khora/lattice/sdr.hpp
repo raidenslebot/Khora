@@ -174,6 +174,10 @@ public:
     SdrUnion() noexcept = default;
 
     void add(const Sdr& s) noexcept;
+    // Set ONE position. Adding a whole Sdr sets a bit in every block, so a
+    // union assembled from individual positions -- a set of predicted columns,
+    // say -- has to be built this way instead.
+    void add_position(std::size_t block, std::uint8_t index) noexcept;
     void clear() noexcept;
 
     bool contains(std::size_t block, std::uint8_t index) const noexcept {
