@@ -355,24 +355,33 @@ public:
         }
         AttemptOutcome o;
         o.score  = total ? static_cast<double>(correct) / static_cast<double>(total) : 1.0;
-        o.detail = "chain length " + std::to_string(L) + ", redundancy " +
-                   std::to_string(redundancy_);
+        o.detail = "chain length " + std::to_string(L);
         return o;
     }
 
-    bool evolve() override {
-        if (redundancy_ >= 9) return false;
-        prev_redundancy_ = redundancy_;
-        redundancy_ += 2;
-        return true;
-    }
-    bool revert() override {
-        if (prev_redundancy_ == 0) return false;
-        redundancy_ = prev_redundancy_;
-        prev_redundancy_ = 0;
-        return true;
-    }
-    int evolution_level() const override { return redundancy_; }
+    // No evolution lever. The one this faculty had -- escalating a redundant
+    // encoding -- was armed and backwards: encode_transition permuted each copy
+    // by r*173 while follow() never undid that shift, so only copy 0 cancelled
+    // and copies 1..R-1 were pure noise bundled into the chain. It never fired,
+    // because the asymmetric encoding scores 100%, but evolve() raises
+    // redundancy on shortfall and would have misfired at the first difficulty
+    // the faculty could not clear.
+    //
+    // It is deleted rather than repaired, because the Crucible measured the
+    // same mechanism with CORRECT algebra and it still bought nothing: bundling
+    // R permuted copies into one fixed-width glyph spends the same bits to
+    // carry the same information, and permuted copies are near-orthogonal, so
+    // the superposition is weaker than the single bind rather than stronger.
+    // Redundancy is not a capability axis.
+    //
+    // The real ceiling here is crosstalk from superposing ~200+ transitions
+    // into one 10,000-bit glyph, and the real answer to it is a substrate with
+    // room for unions -- khora::lattice::Sdr -- not more copies of the same
+    // vector. Returning false makes the engine mark the faculty maxed at its
+    // true frontier, which is honest.
+    bool evolve() override { return false; }
+    bool revert() override { return false; }
+    int evolution_level() const override { return 1; }
     // Was 32 (chains of 35), which the faculty now clears perfectly, so the
     // cap and not the capability was setting the frontier. Measured ceiling
     // for this encoding, averaged over 8 seeds: 100% 1-hop AND 3-hop up to
@@ -387,16 +396,7 @@ private:
                                             const khora::lattice::Glyph& b) const {
         // perm(a) XOR b, not a XOR b — see the class note. This is what makes
         // the edge point from a to b instead of merely joining them.
-        const khora::lattice::Glyph base =
-            khora::lattice::bind(khora::lattice::permute(a, kSourceShift), b);
-        if (redundancy_ <= 1) return base;
-        std::vector<khora::lattice::Glyph> copies;
-        copies.reserve(static_cast<std::size_t>(redundancy_));
-        for (int r = 0; r < redundancy_; ++r)
-            copies.push_back(khora::lattice::permute(base, r * 173));
-        // Note: redundancy here mainly stabilises cleanup under crosstalk.
-        return khora::lattice::bundle(std::span<const khora::lattice::Glyph>{
-            copies.data(), copies.size()});
+        return khora::lattice::bind(khora::lattice::permute(a, kSourceShift), b);
     }
 
     // One bit is enough to break the symmetry; permute is distance-preserving,
@@ -404,8 +404,6 @@ private:
     static constexpr int kSourceShift = 1;
 
     std::uint64_t seed_;
-    int           redundancy_      = 1;
-    int           prev_redundancy_ = 0;
 };
 
 } // namespace
