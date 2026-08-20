@@ -14,6 +14,10 @@ add_executable(novelty_test novelty_test.cpp)
 target_link_libraries(novelty_test PRIVATE khora::cortex)
 add_test(NAME NoveltyTest COMMAND novelty_test)
 
+add_executable(provenance_test provenance_test.cpp)
+target_link_libraries(provenance_test PRIVATE khora::cortex)
+add_test(NAME ProvenanceTest COMMAND provenance_test)
+
 add_executable(persistence_test persistence_test.cpp)
 target_link_libraries(persistence_test PRIVATE khora::lattice)
 add_test(NAME PersistenceTest COMMAND persistence_test)

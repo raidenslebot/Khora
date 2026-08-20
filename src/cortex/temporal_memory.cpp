@@ -139,7 +139,7 @@ std::uint32_t TemporalMemory::least_used_cell(std::size_t column) {
     return tied[static_cast<std::size_t>(next_rand() % n_tied)];
 }
 
-std::uint32_t TemporalMemory::grow_segment(std::uint32_t cell) {
+std::uint32_t TemporalMemory::grow_segment(std::uint32_t cell, std::uint32_t source) {
     auto& owned = cell_segments_[cell];
     if (owned.size() >= cfg_.max_segments_per_cell) {
         // Recycle the least-populated segment rather than growing without bound.
@@ -157,10 +157,12 @@ std::uint32_t TemporalMemory::grow_segment(std::uint32_t cell) {
             }
         }
         s.count = 0;
+        s.source = source;
         return victim;
     }
     Segment s;
-    s.owner = cell;
+    s.owner  = cell;
+    s.source = source;
     segments_.push_back(s);
     const std::uint32_t id = static_cast<std::uint32_t>(segments_.size() - 1);
     owned.push_back(id);
@@ -222,7 +224,8 @@ void TemporalMemory::grow_synapses(std::uint32_t seg,
     }
 }
 
-TemporalMemoryStats TemporalMemory::compute(const Sdr& input, bool learn) {
+TemporalMemoryStats TemporalMemory::compute(const Sdr& input, bool learn,
+                                           std::uint32_t source) {
     prev_active_cells_ = active_cells_;
     prev_winner_cells_ = winner_cells_;
     std::sort(prev_active_cells_.begin(), prev_active_cells_.end());
@@ -314,7 +317,7 @@ TemporalMemoryStats TemporalMemory::compute(const Sdr& input, bool learn) {
         // Bursts: teach the chosen cell this context.
         for (const auto& [winner, seg, already] : bursts) {
             std::uint32_t sid = seg;
-            if (sid == std::numeric_limits<std::uint32_t>::max()) sid = grow_segment(winner);
+            if (sid == std::numeric_limits<std::uint32_t>::max()) sid = grow_segment(winner, source);
             else                                                  adapt_segment(sid, prev_active_cells_, true);
             grow_synapses(sid, prev_winner_cells_, room_to_grow(already));
         }
@@ -371,6 +374,51 @@ TemporalMemoryStats TemporalMemory::compute(const Sdr& input, bool learn) {
                      : 0.0;
     last_ = st;
     return st;
+}
+
+// The evidence for the prediction currently being made: the episodes that grew
+// the segments now firing. Not a reconstruction and not a rationalisation --
+// these are the segments whose connected synapses actually crossed threshold,
+// and the tag on each was written at the moment it was learned.
+std::vector<std::uint32_t> TemporalMemory::explain() const {
+    std::vector<std::uint32_t> out;
+    out.reserve(active_segments_.size());
+    for (const auto& a : active_segments_) {
+        const Segment& s = segments_[a.id];
+        if (s.dead || s.source == kNoSource) continue;
+        out.push_back(s.source);
+    }
+    std::sort(out.begin(), out.end());
+    out.erase(std::unique(out.begin(), out.end()), out.end());
+    return out;
+}
+
+// Erase one episode. Every segment it taught is removed from the presynaptic
+// index and marked dead, so nothing it contributed survives -- which is what
+// makes the provenance claim testable rather than decorative.
+std::size_t TemporalMemory::forget(std::uint32_t source) {
+    std::size_t removed = 0;
+    for (std::size_t sid = 0; sid < segments_.size(); ++sid) {
+        Segment& s = segments_[sid];
+        if (s.dead || s.source != source) continue;
+        for (std::size_t k = 0; k < s.count; ++k) {
+            auto it = presyn_segments_.find(s.presyn[k]);
+            if (it != presyn_segments_.end()) {
+                auto& v = it->second;
+                v.erase(std::remove(v.begin(), v.end(), static_cast<std::uint32_t>(sid)),
+                        v.end());
+            }
+        }
+        auto oit = cell_segments_.find(s.owner);
+        if (oit != cell_segments_.end()) {
+            auto& v = oit->second;
+            v.erase(std::remove(v.begin(), v.end(), static_cast<std::uint32_t>(sid)), v.end());
+        }
+        s.dead  = true;
+        s.count = 0;
+        ++removed;
+    }
+    return removed;
 }
 
 void TemporalMemory::lesion(double fraction, std::uint64_t seed) {

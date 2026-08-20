@@ -152,7 +152,33 @@ public:
 
     // Present one input. `learn` false runs inference without changing state
     // other than the activation and priming that inference needs.
-    TemporalMemoryStats compute(const khora::lattice::Sdr& input, bool learn = true);
+    //
+    // `source` tags whatever is learned on this step with the id of the episode
+    // that taught it, so a later prediction can name its evidence. Free: one
+    // uint32 per segment, written once.
+    TemporalMemoryStats compute(const khora::lattice::Sdr& input, bool learn = true,
+                                std::uint32_t source = kNoSource);
+
+    static constexpr std::uint32_t kNoSource = 0xFFFFFFFFu;
+
+    // PROVENANCE. Which stored episodes are responsible for the prediction the
+    // system is currently making.
+    //
+    // Neither tissue nor a language model can answer this. A brain has no
+    // introspective access to which memories produced a thought. A language
+    // model's chain-of-thought is not causally load-bearing -- delete the source
+    // it cites and the answer does not change, because the citation was
+    // generated alongside the answer rather than consulted to produce it.
+    //
+    // Here the answer IS the mechanism: a cell is primed because specific
+    // segments matched, each segment was grown during one specific episode, and
+    // the tag was written at that moment. The claim is falsifiable in the
+    // strongest way available -- forget exactly these ids and the prediction
+    // must change; forget the same number of others and it must not.
+    std::vector<std::uint32_t> explain() const;
+
+    // Erase everything learned from one episode. Returns segments removed.
+    std::size_t forget(std::uint32_t source);
 
     // Clear the temporal context without forgetting anything learned -- the
     // start of a new sequence, not a new life.
@@ -181,7 +207,8 @@ public:
 
 private:
     struct Segment {
-        std::uint32_t owner = 0;                                  // cell id
+        std::uint32_t owner  = 0;                                 // cell id
+        std::uint32_t source = kNoSource;                         // episode that taught it
         std::uint8_t  count = 0;
         std::array<std::uint32_t, kMaxSynapsesPerSegment> presyn{};
         std::array<std::uint8_t,  kMaxSynapsesPerSegment> perm{};
@@ -220,7 +247,7 @@ private:
     std::uint32_t best_matching_cell(std::size_t column, std::uint32_t* seg_out,
                                      std::uint16_t* hits_out);
     std::uint32_t least_used_cell(std::size_t column);
-    std::uint32_t grow_segment(std::uint32_t cell);
+    std::uint32_t grow_segment(std::uint32_t cell, std::uint32_t source);
     void          adapt_segment(std::uint32_t seg, const std::vector<std::uint32_t>& prev_active,
                                 bool reinforce);
     void          grow_synapses(std::uint32_t seg, const std::vector<std::uint32_t>& candidates,
