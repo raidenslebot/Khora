@@ -261,12 +261,36 @@ private:
 
 // ---------------- transitive (multi-hop) reasoning faculty ----------------
 
-// Encode a chain A->B->C->... as a bundle of transition bindings
-// bind(item_i, item_{i+1}). "What follows X" = cleanup(chain XOR X).
-// Multi-hop traversal repeats the follow. Difficulty grows the chain
-// length (more transitions superimposed = more crosstalk) and demands
-// recovery at 1, 2, and 3 hops — genuine compositional reasoning, not
-// single-step lookup. Evolution: redundant transition encoding.
+// Encode a chain A->B->C->... as a bundle of transition bindings, and answer
+// "what follows X" by unbinding X from the chain. Difficulty grows the chain
+// length (more transitions superimposed = more crosstalk) and demands recovery
+// at 1, 2 and 3 hops — genuine compositional reasoning, not single-step lookup.
+//
+// THE TRANSITION MUST BE ASYMMETRIC. bind is XOR, which is commutative, so
+// bind(a,b) == bind(b,a): a chain of plain bindings is a set of UNDIRECTED
+// edges. Unbinding item_i then has two equally strong claimants — the
+// transition into i and the transition out of it — and cleanup picks between
+// its successor and its predecessor by coin flip. Measured with the symmetric
+// encoding, averaged over 16 seeds:
+//
+//     L=5   1-hop 60.9%  3-hop 15.6%   walked backwards 39.1%
+//     L=12  1-hop 51.7%  3-hop  2.1%   walked backwards 48.3%
+//     L=35  1-hop 51.8%  3-hop  5.5%   walked backwards 48.2%
+//
+// Permuting the source before binding breaks the symmetry, because permute is
+// not self-inverse: bind(perm(a), b) != bind(perm(b), a). Same measurement with
+// the asymmetric encoding: 100% at 1-hop AND 3-hop for every length up to 35,
+// never once backwards.
+//
+// This is the algebra catching up with the biology it is modelled on. A
+// sequence is not a set of pairs, and neural tissue does not encode order with
+// a symmetric operation either — direction comes from temporal asymmetry
+// (theta phase precession ordering place cells within a cycle, and
+// spike-timing-dependent plasticity strengthening A->B differently from B->A).
+// Permutation is that asymmetry in vector-symbolic form; it is Kanerva's own
+// prescription for sequences.
+//
+// Evolution: redundant transition encoding.
 class TransitiveFaculty final : public Faculty {
 public:
     explicit TransitiveFaculty(std::uint64_t seed) : seed_(seed) {}
@@ -296,8 +320,12 @@ public:
             khora::lattice::bundle(std::span<const khora::lattice::Glyph>{
                 transitions.data(), transitions.size()});
 
+        // Mirror of encode_transition's asymmetry: the source is permuted on
+        // the way in, so it must be permuted on the way out too.
         auto follow = [&](const khora::lattice::Glyph& from) -> std::string {
-            const auto m = codebook.query(khora::lattice::bind(chain, from), 1);
+            const auto probe = khora::lattice::bind(
+                chain, khora::lattice::permute(from, kSourceShift));
+            const auto m = codebook.query(probe, 1);
             return m.empty() ? std::string{} : m.front().label;
         };
 
@@ -345,12 +373,22 @@ public:
         return true;
     }
     int evolution_level() const override { return redundancy_; }
-    int max_difficulty()  const override { return 32; }   // chains up to length 35
+    // Was 32 (chains of 35), which the faculty now clears perfectly, so the
+    // cap and not the capability was setting the frontier. Measured ceiling
+    // for this encoding, averaged over 8 seeds: 100% 1-hop AND 3-hop up to
+    // L=100, 99.9%/99.6% at L=200, 94.4%/84.0% at L=300, then it falls away --
+    // the crosstalk limit of superposing that many transitions in one
+    // 10,000-bit glyph. Direction survives throughout (never above 0.1%
+    // backwards even at L=800); only capacity degrades.
+    int max_difficulty()  const override { return 256; }  // chains up to length 259
 
 private:
     khora::lattice::Glyph encode_transition(const khora::lattice::Glyph& a,
                                             const khora::lattice::Glyph& b) const {
-        const khora::lattice::Glyph base = khora::lattice::bind(a, b);
+        // perm(a) XOR b, not a XOR b — see the class note. This is what makes
+        // the edge point from a to b instead of merely joining them.
+        const khora::lattice::Glyph base =
+            khora::lattice::bind(khora::lattice::permute(a, kSourceShift), b);
         if (redundancy_ <= 1) return base;
         std::vector<khora::lattice::Glyph> copies;
         copies.reserve(static_cast<std::size_t>(redundancy_));
@@ -360,6 +398,10 @@ private:
         return khora::lattice::bundle(std::span<const khora::lattice::Glyph>{
             copies.data(), copies.size()});
     }
+
+    // One bit is enough to break the symmetry; permute is distance-preserving,
+    // so the shift size does not affect capacity, only that it is non-zero.
+    static constexpr int kSourceShift = 1;
 
     std::uint64_t seed_;
     int           redundancy_      = 1;
