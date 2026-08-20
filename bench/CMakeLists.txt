@@ -33,3 +33,6 @@ target_link_libraries(category_bench PRIVATE khora::plexus khora::lattice)
 
 add_executable(category_eval category_eval.cpp)
 target_link_libraries(category_eval PRIVATE khora::plexus khora::lattice)
+
+add_executable(richclub_bench richclub_bench.cpp)
+target_link_libraries(richclub_bench PRIVATE khora::plexus khora::lexicon khora::reservoir)

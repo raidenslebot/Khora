@@ -213,10 +213,23 @@ density where every real connectome is small and dense. Khora's ABSOLUTE
 clustering, 0.275, sits comfortably inside the biological range of 0.13-0.74.
 The ratio was an artifact of scale, and the old table hid it.
 
-One difference survives the scale correction: **Khora has hubs but no core.**
-Rich-club coefficient 0.013 against 0.12-0.98 across all six. Real brains wire
-their hubs densely to each other; a learned co-occurrence graph does not.
-Whether imposing a core would buy anything is untested.
+One difference LOOKED like it survived the scale correction -- rich club 0.013
+against 0.12-0.98 -- and it did not. Tested in `richclub_bench` and the claim
+was wrong, in exactly the same way and one measurement later. Every real
+connectome sits at only 0.72-1.23 times its own degree-preserving null, so
+their high absolute rich club is mostly degree sequence and density rather than
+hubs being specially wired to one another. Khora is at 1.39, above all six:
+relative to what its own degrees predict, its hubs are MORE interconnected than
+any of these nervous systems. Imposing a core would have been decoration built
+on a measurement mistake.
+
+The same bench also refuted a mechanistic hypothesis worth recording. Pruning
+does cost absolute rich club -- 0.072 unpruned down to 0.023 at the shipped cap
+of 160 -- but PPMI is not the culprit, despite structurally penalising hub-hub
+pairs by dividing out exactly the loudness that makes a hub a hub. Ranking by
+ppmi*log(1+c) gives 0.0231 and ranking by raw co-occurrence gives 0.0239, which
+is no difference at all. The cap does the work, and across caps from 40 to
+unpruned the vs-null ratio never leaves a 1.12-1.35 band.
 
 Also recorded there, since the operator supplied them: openneuro.org,
 humanconnectome.org and FreeSurfer do NOT hand over connectivity. The first two

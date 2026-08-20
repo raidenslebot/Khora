@@ -87,13 +87,22 @@ Recorded so they are not re-attempted without new evidence.
 
 ## Open questions from measurement
 
-- **Khora's graph has hubs but no CORE.** Measured against six real connectomes
-  through identical code: rich-club coefficient 0.013 against 0.12-0.98 for
-  worm, fly, mouse, cat and macaque. Real brains wire their hubs densely to one
-  another; a learned co-occurrence graph grows hubs and does not grow a core.
-  Whether imposing one would buy anything is UNTESTED, and it is the kind of
-  thing that has to be tested rather than assumed -- adding structure because
-  biology has it is decoration unless a capability moves.
+- ~~Khora's graph has hubs but no CORE~~ **CLOSED, and the claim was WRONG.**
+  Absolute rich club 0.013 against 0.12-0.98 does read as hubs-but-no-core, but
+  every real connectome sits at only 0.72-1.23 times its OWN degree-preserving
+  null -- their high absolute figure is mostly degree sequence and density, not
+  hubs specially wired to each other. Khora is at 1.39, above all six. Relative
+  to what its own degrees predict its hubs are MORE interconnected, not less.
+  Same error as the gamma reading one measurement earlier: an absolute figure
+  compared across graphs of wildly different density, twice in a row. Imposing
+  a core would have been decoration built on a measurement mistake. See
+  `bench/richclub_bench.cpp`.
+- Also measured there and worth keeping: pruning costs a real amount of absolute
+  rich club (0.072 unpruned to 0.023 at the shipped cap of 160), but the
+  RANKING is not the cause -- ppmi*log(1+c) and raw co-occurrence give 0.0231
+  and 0.0239, indistinguishable. The cap does the work, and across caps from 40
+  to unpruned the vs-null ratio stays in a narrow 1.12-1.35 band. Absolute rich
+  club is a density readout, not a structural property.
 
 ## Cognitive core
 

@@ -397,12 +397,17 @@ int main(int argc, char** argv) {
     std::printf("    of family, and the ratio is an artifact of scale. An earlier\n");
     std::printf("    version of this bench printed 62.56 next to a published 1.59\n");
     std::printf("    and invited exactly the wrong conclusion.\n\n");
-    std::printf("    The one scale-robust difference is the RICH CLUB. Real brains\n");
-    std::printf("    wire their hubs densely to one another -- 0.12 to 0.98 here.\n");
-    std::printf("    Khora manages 0.013, so its hubs are ten to seventy times\n");
-    std::printf("    less interconnected than any nervous system measured. A\n");
-    std::printf("    learned co-occurrence graph grows hubs; it does not grow a\n");
-    std::printf("    core. Whether a core would buy anything is untested.\n");
+    std::printf("    THE RICH CLUB COLUMN IS THE SAME TRAP, and I fell into it once\n");
+    std::printf("    already. Khora's absolute rich club is 0.013 against 0.12 to\n");
+    std::printf("    0.98 for these connectomes, which reads as hubs-but-no-core.\n");
+    std::printf("    It is not. Read rc/rnd instead: every real connectome here\n");
+    std::printf("    sits between 0.72 and 1.23 times its OWN degree-preserving\n");
+    std::printf("    null, so their high absolute figure is mostly explained by\n");
+    std::printf("    degree sequence and density rather than by hubs being wired\n");
+    std::printf("    specially to each other. Khora is at 1.39 -- above all six.\n");
+    std::printf("    Relative to what its own degrees predict, its hubs are MORE\n");
+    std::printf("    interconnected, not less. richclub_bench tested this and\n");
+    std::printf("    closed the question.\n");
 
     std::printf("\n  Caveat the literature is explicit about: sigma is unbounded and"
                 "\n  density-dependent, and at high density the binary small-world"
