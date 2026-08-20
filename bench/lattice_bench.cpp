@@ -1,6 +1,7 @@
 // Throughput benchmark for Morphic Lattice primitives.
 
 #include "khora/lattice/lattice.hpp"
+#include "khora/lattice/sdr.hpp"
 
 #include <chrono>
 #include <cstddef>
@@ -63,6 +64,55 @@ int main() {
             const double ms = time_ms([&](int){ c = bundle(xs); }, n);
             std::printf("  bundle x%-2zu      : %8.2f Mops/s  (%.2f ms / %d iters)  density %.3f\n",
                         arity, n / ms / 1000.0, ms, n, c.density());
+        }
+    }
+    // The sparse substrate, against the dense one it sits beside. Sdr::overlap
+    // is 256 byte compares; Glyph::hamming is 157 XOR+POPCNT. The sparse path
+    // has to be competitive or the substrate decision costs throughput to buy
+    // selectivity, and that trade has to be visible rather than assumed.
+    {
+        const Sdr sa = Sdr::random(1), sb = Sdr::random(2);
+        {
+            const int n = 1'000'000;
+            volatile std::size_t sink = 0;
+            const double ms = time_ms([&](int){ sink += sa.overlap(sb); }, n);
+            std::printf("  sdr overlap     : %8.2f Mops/s  (%.2f ms / %d iters)\n",
+                        n / ms / 1000.0, ms, n);
+        }
+        {
+            const int n = 1'000'000;
+            Sdr c;
+            const double ms = time_ms([&](int){ c = bind(sa, sb); }, n);
+            std::printf("  sdr bind        : %8.2f Mops/s  (%.2f ms / %d iters)\n",
+                        n / ms / 1000.0, ms, n);
+        }
+        {
+            // The operation the whole sparse substrate exists for: a 24-synapse
+            // subsampled match. It touches 24 bytes, not 16,384 bits.
+            const Segment seg = Segment::learn(sa, 0x2468);
+            const int n = 1'000'000;
+            volatile std::size_t sink = 0;
+            const double ms = time_ms([&](int){ sink += seg.agreement(sb); }, n);
+            std::printf("  sdr segment     : %8.2f Mops/s  (%.2f ms / %d iters)\n",
+                        n / ms / 1000.0, ms, n);
+        }
+        {
+            SdrUnion u;
+            for (int i = 0; i < 8; ++i) u.add(Sdr::random(0x700 + i));
+            const Segment seg = Segment::learn(sa, 0x2468);
+            const int n = 1'000'000;
+            volatile std::size_t sink = 0;
+            const double ms = time_ms([&](int){ sink += seg.agreement(u); }, n);
+            std::printf("  sdr seg v union : %8.2f Mops/s  (%.2f ms / %d iters)\n",
+                        n / ms / 1000.0, ms, n);
+        }
+        {
+            const Glyph g = Glyph::random(3);
+            const int n = 100'000;
+            Sdr c;
+            const double ms = time_ms([&](int){ c = project(g); }, n);
+            std::printf("  glyph->sdr proj : %8.2f Kops/s  (%.2f ms / %d iters)\n",
+                        n / ms, ms, n);
         }
     }
     {

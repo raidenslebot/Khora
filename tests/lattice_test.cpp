@@ -45,10 +45,18 @@ int main() {
         EXPECT_NEAR(g.density(), 0.5, 0.05, "random glyph density ~ 0.5");
     }
 
-    // Sparse glyph respects active_bits exactly.
+    // Glyph::sparse() was DELETED, and this is why: XOR maps density p to
+    // 2p(1-p), whose attracting fixed point is 0.5. A sparse glyph therefore
+    // becomes dense after a handful of binds -- 0.02 -> 0.039 -> 0.075 -> 0.139
+    // -> 0.240 -> 0.365 -> 0.463 -> 0.497 -- so sparsity could not survive the
+    // very algebra it was being fed to. Sparsity lives in khora::lattice::Sdr,
+    // where the block structure makes it invariant. This pins the reason.
     {
-        const Glyph s = Glyph::sparse(99, 1000);
-        EXPECT(s.popcount() == 1000, "sparse glyph popcount matches request");
+        Glyph g = Glyph::random(4242);
+        for (std::size_t i = 0; i < kGlyphBits; ++i) if (i % 50) g.clear_bit(i);
+        EXPECT_NEAR(g.density(), 0.01, 0.005, "hand-built sparse glyph starts sparse");
+        for (int i = 0; i < 8; ++i) g = bind(g, Glyph::random(700 + i));
+        EXPECT(g.density() > 0.45, "and XOR drives it dense within 8 binds");
     }
 
     // Two independent random glyphs should be nearly orthogonal (sim ~ 0).

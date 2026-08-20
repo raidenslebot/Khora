@@ -1,5 +1,6 @@
 add_library(khora_lattice STATIC
     glyph.cpp
+    sdr.cpp
     lattice.cpp
     persistence.cpp
 )

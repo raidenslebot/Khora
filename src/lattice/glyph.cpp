@@ -45,24 +45,6 @@ Glyph Glyph::random(std::uint64_t seed) noexcept {
     return g;
 }
 
-Glyph Glyph::sparse(std::uint64_t seed, std::size_t active_bits) noexcept {
-    Glyph g;
-    if (active_bits == 0) return g;
-    if (active_bits > kGlyphBits) active_bits = kGlyphBits;
-
-    std::uint64_t s = (seed != 0) ? seed : 0xCAFEBABEDEADBEEFULL;
-    std::size_t placed = 0;
-    while (placed < active_bits) {
-        const std::uint64_t r = splitmix64(s);
-        const std::size_t i = static_cast<std::size_t>(r % kGlyphBits);
-        if (!g.bit(i)) {
-            g.set_bit(i);
-            ++placed;
-        }
-    }
-    return g;
-}
-
 Glyph Glyph::from_hash(std::string_view sv) noexcept {
     // FNV-1a → 64-bit seed → splitmix expansion.
     std::uint64_t h = 0xCBF29CE484222325ULL;

@@ -1,7 +1,12 @@
 #pragma once
 
 // The Glyph — atomic unit of the Morphic Lattice.
-// A sparse binary hypervector representing a unit of meaning.
+//
+// A DENSE binary hypervector, ~50% of bits set, representing a unit of meaning.
+// It is dense on purpose: XOR binding is exact and its inverse is noiseless,
+// which is what makes the relational algebra work. For anything needing
+// subsampled matching, unions, or pattern separation, see khora/lattice/sdr.hpp
+// -- a dense code cannot do those at any dimension.
 //
 // Closed under the algebra { bind (XOR), bundle (majority sum), permute (cyclic shift) }.
 
@@ -29,7 +34,6 @@ public:
     // Factories
     static Glyph zero() noexcept;
     static Glyph random(std::uint64_t seed) noexcept;
-    static Glyph sparse(std::uint64_t seed, std::size_t active_bits) noexcept;
     static Glyph from_hash(std::string_view s) noexcept;
 
     // Mutating operations
