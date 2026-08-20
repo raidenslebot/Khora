@@ -20,6 +20,58 @@ constexpr unsigned long long kReserveBytes  = 8ull << 30;   // always leave 8 Gi
 constexpr unsigned long long kDiskFloorBytes = 5ull << 30;  // refuse to run if < 5 GiB free
 constexpr std::size_t        kOutputCap     = 1u << 20;     // 1 MiB
 
+// Grant the token's OWN user SID full access in its default DACL.
+//
+// Every kernel object a process creates without an explicit descriptor gets its
+// token's default DACL. Ours grants only SYSTEM and BUILTIN\Administrators — and
+// when Khora runs ELEVATED, Administrators is the token's group owner and the
+// only non-SYSTEM grant there is. CreateRestrictedToken then marks that SID
+// deny-only, so the child cannot open the objects it creates for itself: ntdll's
+// loader fails and the process dies with STATUS_DLL_INIT_FAILED (0xC0000142)
+// before reaching main. CreateProcessAsUser still returns TRUE, so the cage
+// happily reported "ran, tier 2" for a process that executed nothing.
+//
+// Adding the user's own SID is what Chromium's sandbox does (AddUserToDefaultDacl)
+// for exactly this reason. It does not weaken containment: the integrity level,
+// not this DACL, is what governs access to anything outside the child itself.
+bool grant_self_in_default_dacl(HANDLE tok) {
+    DWORD n = 0;
+    GetTokenInformation(tok, TokenUser, nullptr, 0, &n);
+    if (n == 0) return false;
+    std::vector<BYTE> ub(n);
+    if (!GetTokenInformation(tok, TokenUser, ub.data(), n, &n)) return false;
+    PSID user = reinterpret_cast<TOKEN_USER*>(ub.data())->User.Sid;
+    if (!user || !IsValidSid(user)) return false;
+
+    n = 0;
+    GetTokenInformation(tok, TokenDefaultDacl, nullptr, 0, &n);
+    if (n == 0) return false;
+    std::vector<BYTE> db(n);
+    if (!GetTokenInformation(tok, TokenDefaultDacl, db.data(), n, &n)) return false;
+    const ACL* old = reinterpret_cast<TOKEN_DEFAULT_DACL*>(db.data())->DefaultDacl;
+
+    const DWORD sz = (old ? old->AclSize : static_cast<DWORD>(sizeof(ACL))) +
+                     static_cast<DWORD>(sizeof(ACCESS_ALLOWED_ACE)) + GetLengthSid(user);
+    std::vector<BYTE> nb(sz);
+    ACL* acl = reinterpret_cast<ACL*>(nb.data());
+    if (!InitializeAcl(acl, sz, ACL_REVISION)) return false;
+    if (old) {
+        for (DWORD i = 0; i < old->AceCount; ++i) {
+            LPVOID ace = nullptr;
+            if (GetAce(const_cast<ACL*>(old), i, &ace)) {
+                if (!AddAce(acl, ACL_REVISION, MAXDWORD, ace,
+                            reinterpret_cast<ACE_HEADER*>(ace)->AceSize))
+                    return false;
+            }
+        }
+    }
+    if (!AddAccessAllowedAce(acl, ACL_REVISION, GENERIC_ALL, user)) return false;
+
+    TOKEN_DEFAULT_DACL tdd{};
+    tdd.DefaultDacl = acl;
+    return SetTokenInformation(tok, TokenDefaultDacl, &tdd, sizeof(tdd)) != FALSE;
+}
+
 // Build a LOW-INTEGRITY, NON-ADMIN restricted token derived from our own primary token.
 // Returns nullptr if it cannot (caller then runs at the resource-only tier).
 HANDLE make_low_il_nonadmin_token() {
@@ -48,6 +100,14 @@ HANDLE make_low_il_nonadmin_token() {
     if (adminSid) FreeSid(adminSid);
     CloseHandle(self);
     if (!ok || !restricted) return nullptr;
+
+    // Without this the restricted token is worse than no token: children die in
+    // the loader while the cage reports full containment. Degrade honestly to the
+    // resource-only tier rather than hand back a token that silently kills.
+    if (!grant_self_in_default_dacl(restricted)) {
+        CloseHandle(restricted);
+        return nullptr;
+    }
 
     // Lower the token's integrity to LOW (S-1-16-4096) — blocks writes to medium+ objects.
     SID_IDENTIFIER_AUTHORITY mlAuth = SECURITY_MANDATORY_LABEL_AUTHORITY;
@@ -159,8 +219,20 @@ ContainedResult execute_contained(const std::string& command, int timeout_ms) {
     si.hStdError  = wr;
     si.hStdInput  = nullptr;
 
+    // FAIL-CLOSED gate 4: the shell is named by ABSOLUTE path. With a bare
+    // "cmd.exe" and no lpApplicationName, CreateProcess searches PATH — so any
+    // writable directory ahead of System32 could substitute the interpreter that
+    // runs every contained command. A cage whose shell can be swapped from
+    // outside is not a cage.
     PROCESS_INFORMATION pi{};
-    std::string cmdline = "cmd.exe /c " + command;
+    char sysdir[MAX_PATH]{};
+    const UINT sysdir_len = GetSystemDirectoryA(sysdir, MAX_PATH);
+    if (sysdir_len == 0 || sysdir_len >= MAX_PATH) {
+        CloseHandle(rd); CloseHandle(wr); CloseHandle(job);
+        r.error = "containment: cannot resolve the system directory — refusing";
+        return r;
+    }
+    std::string cmdline = std::string("\"") + sysdir + "\\cmd.exe\" /c " + command;
     std::vector<char> mutable_cmd(cmdline.begin(), cmdline.end());
     mutable_cmd.push_back('\0');
 
@@ -198,8 +270,20 @@ ContainedResult execute_contained(const std::string& command, int timeout_ms) {
         return r;
     }
 
-    // Assign to the job BEFORE resuming — nothing escapes.
-    AssignProcessToJobObject(job, pi.hProcess);
+    // FAIL-CLOSED gate 5: assign to the job BEFORE resuming, and only resume if
+    // the assignment took. Ignoring this return value meant a failed assignment
+    // still reported tier 2 while the process ran entirely outside the cage —
+    // the one outcome containment exists to prevent. The child is still
+    // suspended here, so it has executed nothing and can be killed cleanly.
+    if (!AssignProcessToJobObject(job, pi.hProcess)) {
+        const DWORD err = GetLastError();
+        TerminateProcess(pi.hProcess, 1);
+        CloseHandle(pi.hThread); CloseHandle(pi.hProcess);
+        CloseHandle(rd); CloseHandle(job);
+        r.error = "containment: could not assign the process to the job (error " +
+                  std::to_string(static_cast<unsigned long>(err)) + ") — refusing";
+        return r;
+    }
     ResumeThread(pi.hThread);
 
     r.ran  = true;
@@ -242,6 +326,14 @@ ContainedResult execute_contained(const std::string& command, int timeout_ms) {
     r.exit_code = static_cast<int>(code);
     r.output    = std::move(out);
 
+    // A loader failure means the process never reached its entry point, so its
+    // silence is not a result. Say so, rather than letting a caller read "ran,
+    // tier 2, no output" as a command that succeeded quietly.
+    if (code == 0xC0000142u /* STATUS_DLL_INIT_FAILED */ && r.output.empty()) {
+        r.error = "containment: the contained process died in the loader "
+                  "(STATUS_DLL_INIT_FAILED) — it executed nothing";
+    }
+
     CloseHandle(rd);
     CloseHandle(pi.hProcess);
     CloseHandle(pi.hThread);
@@ -278,7 +370,7 @@ int self_check(std::string& report) {
     }
 
     // Canary (c): a runaway is killed by the job on timeout.
-    const auto runaway = execute_contained("ping -n 30 127.0.0.1", 2000);
+    const auto runaway = execute_contained(kRunawayCanary, 2000);
     const bool killed = runaway.timed_out && runaway.killed_by_job;
     rep += killed ? "[ok] runaway process killed by the job on timeout\n"
                   : "[FAIL] runaway not killed by the job\n";

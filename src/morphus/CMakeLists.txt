@@ -60,6 +60,12 @@ target_link_libraries(plexus_forge PRIVATE
 # containment must be proven before any autonomous driver can use it).
 add_executable(bulwark_probe bulwark_probe.cpp)
 target_link_libraries(bulwark_probe PRIVATE khora::bulwark)
+# The stated precondition for autonomy was a binary nothing ever ran. Now that
+# its exit code gates the right way round, ctest runs it like any other check.
+if(KHORA_BUILD_TESTS)
+    add_test(NAME BulwarkProbe COMMAND bulwark_probe)
+    set_tests_properties(BulwarkProbe PROPERTIES TIMEOUT 120)
+endif()
 
 # reforge_eval — successor-evaluator for the self-rewriting loop. A SEPARATE binary
 # (khora.exe locks itself while running, so it cannot relink itself): Khora rewrites

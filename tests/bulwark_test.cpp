@@ -16,7 +16,7 @@ int main() {
     if (!echo.ran)                                                    return fail("contained command did not launch");
     if (echo.output.find("bulwark_unit_ok") == std::string::npos)    return fail("contained output not captured");
 
-    auto runaway = khora::bulwark::execute_contained("ping -n 30 127.0.0.1", 1500);
+    auto runaway = khora::bulwark::execute_contained(khora::bulwark::kRunawayCanary, 1500);
     if (!(runaway.timed_out && runaway.killed_by_job))               return fail("runaway not killed by the job");
 
     std::string rep;

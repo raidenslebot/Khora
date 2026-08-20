@@ -49,3 +49,11 @@ add_test(NAME BulwarkTest COMMAND bulwark_test)
 add_executable(maw_test maw_test.cpp)
 target_link_libraries(maw_test PRIVATE khora::maw)
 add_test(NAME MawTest COMMAND maw_test)
+
+# Every test gets a wall-clock ceiling. Without one a hung test blocks the dev
+# loop forever with no signal -- and several of these drive background threads,
+# spawn contained processes, or wait on pipes, all of which can hang rather than
+# fail. Bulwark is given more room: it deliberately runs a runaway to timeout.
+get_property(_khora_tests DIRECTORY PROPERTY TESTS)
+set_tests_properties(${_khora_tests} PROPERTIES TIMEOUT 60)
+set_tests_properties(BulwarkTest PROPERTIES TIMEOUT 120)

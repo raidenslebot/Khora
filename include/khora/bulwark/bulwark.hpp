@@ -37,6 +37,23 @@ struct ContainedResult {
     std::string error;                   // why it refused / failed, if it did not run
 };
 
+// The canary used to prove the timeout tree-kill, shared by self_check() and the
+// test so the two cannot drift.
+//
+// It must be a runaway that NOTHING on the host can turn into a fast exit. The
+// previous canary was `ping -n 30 127.0.0.1`, and on a machine with Python's
+// Scripts directory ahead of System32 on PATH — plus .PY in PATHEXT — `ping`
+// resolved to impacket's ping.py, which died in milliseconds on an inet_aton
+// error. The timeout never fired, the tree-kill was never exercised, and
+// self_check() reported tier 0: containment "unproven" and the Maw gated off,
+// by a PATH collision rather than by any failure of the cage.
+//
+// So: a shell builtin, resolving no external binary, spun inside a GRANDCHILD
+// named by absolute path — the grandchild is what makes killing it prove the
+// job reaps the whole tree rather than just the direct child.
+inline constexpr const char* kRunawayCanary =
+    "\"%SystemRoot%\\system32\\cmd.exe\" /c for /l %i in (0,0,1) do @rem";
+
 // Create the disposable cell directory. FAIL-CLOSED: returns false if it cannot be
 // created on a present, writable volume.
 bool ensure_cell(const std::filesystem::path& cell_root);
