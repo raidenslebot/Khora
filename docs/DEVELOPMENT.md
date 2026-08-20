@@ -73,11 +73,15 @@ C/C++ extension at it for accurate completion and diagnostics.
 - Clean Ninja build: **96/96 targets**, no errors.
 - `ctest`: **11 / 13 pass**. Two are red and were red before the toolchain change
   — identical failures under both the old VS build and the new Ninja build:
-  - `CrystallizeTest` — 6 assertion failures in the consensus → candidate → commit path.
-  - `BulwarkTest` — `runaway not killed by the job`.
+  - `CrystallizeTest` — 6 assertion failures. Root cause is upstream, in
+    `Plexus::ppmi_`, not in `crystallize`.
+  - `BulwarkTest` — `runaway not killed by the job`. The cage itself passes launch,
+    capture and integrity; the canary `ping` is shadowed on this host by
+    `C:\Program Files\Python312\Scripts\ping.py`.
 - `lattice_bench`: popcount ~21 Mops/s, hamming ~22 Mops/s, bind ~31-40 Mops/s,
   lattice query ~14k qps over 1000 glyphs.
 
-Note: `KHORA_BACKLOG.md` records this as "12/14 pass" and describes the Bulwark
-failure as lost output. Both are stale — there are 13 tests, and the failing
-Bulwark assertion is the timeout tree-kill.
+See [AUDIT-2026-08-19.md](AUDIT-2026-08-19.md) for both root causes with evidence.
+
+Note: `KHORA_BACKLOG.md` recorded this as "12/14 pass" and attributed the Bulwark
+failure to lost output; both were stale and have been corrected there.

@@ -161,9 +161,16 @@ function Task-Bench {
 # PATH. They need the same MSVC+SDK environment as the compiler, because in
 # cl driver-mode clang reads system headers from INCLUDE.
 function Get-LlvmTool([string]$Name) {
-    $p = "C:\BuildTools\VC\Tools\Llvm\x64\bin\$Name.exe"
-    if (-not (Test-Path $p)) { throw "$Name not found at $p." }
-    return $p
+    $candidates = @(
+        "C:\BuildTools\VC\Tools\Llvm\x64\bin\$Name.exe",
+        "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\Llvm\x64\bin\$Name.exe",
+        "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Tools\Llvm\x64\bin\$Name.exe",
+        "C:\Program Files\LLVM\bin\$Name.exe"
+    )
+    foreach ($c in $candidates) { if (Test-Path $c) { return $c } }
+    $onPath = Get-Command $Name -ErrorAction SilentlyContinue
+    if ($onPath) { return $onPath.Source }
+    throw "Could not locate $Name. Tried:`n  $($candidates -join "`n  ")`nand PATH."
 }
 
 function Task-Tidy {

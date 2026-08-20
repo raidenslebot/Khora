@@ -12,42 +12,70 @@ features. Rank: (a) cognitive core (Lattice, Cortex, Nexus, Loom, Bus),
 (b) agentic shell (Carapace), (c) quality machinery (tests, benchmarks,
 regression detection), only then (d) UI (Vellum).
 
-## Baseline state (2026-08-15, after relocation to C:\Khora)
-- Repo relocated C:\PC Backup\Ai\Khora -> C:\Khora; CMake reconfigured.
-- Build: Release build OK. ctest: 12/14 pass.
-- RED: CrystallizeTest (6 assertion failures — the consensus/candidate
-  commit path is unfinished WIP from before the move), BulwarkTest
-  ("contained output not captured" — execute_contained launches the
-  process but loses its output).
+## Baseline state (2026-08-19, verified — supersedes the 2026-08-15 entry)
+- Repo relocated C:\PC Backup\Ai\Khora -> C:\Khora.
+- BUILD ENVIRONMENT REPAIRED. The VS Installer was removed from this host, so
+  the `Visual Studio 17 2022` generator can no longer resolve C:\BuildTools, and
+  vcvars64 leaves the Windows SDK unwired. Everything now goes through
+  `tools\khora.ps1` (MSVC + hand-wired SDK + Ninja). See docs/DEVELOPMENT.md.
+- Build: clean Ninja build, 96/96 targets. ctest: **11/13 pass** (not 12/14 —
+  there are 13 tests).
+- RED, with root causes now established (see docs/AUDIT-2026-08-19.md):
+  - CrystallizeTest — 6 assertions. NOT unfinished WIP in crystallize.cpp. The
+    cause is `Plexus::ppmi_` normalising the smoothed context term by N^0.75
+    instead of the sum of c^0.75, deflating every score ~0.901 bits; PPMI clamps
+    at zero, so `associates()` returns EMPTY and crystallize is starved of input.
+  - BulwarkTest — "runaway not killed by the job". The cage works (launch,
+    capture and integrity all pass, token tier 2). The canary `ping` is shadowed
+    on this host by C:\Program Files\Python312\Scripts\ping.py, so it exits in
+    milliseconds and the timeout never fires. self_check() therefore reports
+    tier 0, which hard-gates the Maw off at runtime.
 - GitHub remote wired: https://github.com/raidenslebot/Khora (main).
-  .gitignore now excludes /data/ (multi-GB runtime archives).
+  .gitignore excludes /data/ (multi-GB runtime archives).
 
-## TOP PRIORITY — baseline repair
-1. PLANNED: Fix BulwarkTest — execute_contained captures no output
-   (src/bulwark/bulwark.cpp). The Job-Object cage must still capture
-   stdout/stderr while keeping the timeout tree-kill intact.
-2. PLANNED: Finish Crystallize consensus commit path
-   (src/crystallize/crystallize.cpp) so all 9 crystallize assertions pass:
-   association consensus -> candidate -> commit writes one relation with
-   witnesses. Use ARCHITECTURE.md §4 and the lattice module as reference.
+## TOP PRIORITY — foundational repair
+0. PLANNED: Fix `bundle()`'s tie rule (src/lattice/glyph.cpp:194). Threshold
+   (n+1)/2 ties toward SET on even n, so bundle-of-2 is a bitwise OR, not a
+   majority vote — contradicting ARCHITECTURE.md §4.2. It corrupts lexicon
+   context glyphs, pins reverie's familiarity near zero (100% dream retention),
+   and drives cogitator's retry probe to ~99.6% density. Everything measured
+   downstream is measured through this, so it comes first. Add tests for even n;
+   lattice_test.cpp:82 only ever bundles 3.
+1. PLANNED: Fix `Plexus::ppmi_` normalisation (src/plexus/plexus.cpp:53-68).
+   Turns CrystallizeTest green and un-starves the whole symbolic layer.
+2. PLANNED: Fix the Bulwark canary — replace the PATH-shadowable `ping` at
+   tests/bulwark_test.cpp:19 and src/bulwark/bulwark.cpp:281 with a shell-builtin
+   spin in a grandchild cmd, which still proves tree-kill. Also fix
+   bulwark_probe's exit code: it returns the tier, so full containment (2) exits
+   as failure and no containment (0) exits as success.
+3. PLANNED: Verify or refute the crucible/whetstone encode/decode inversion
+   (permute-then-bind at encode vs bind-then-permute at decode). If real, the
+   self-improvement loop has been running backwards. Neither module has a test.
 
 ## Cognitive core (foundational)
-3. PLANNED: Soma Nexus v0.1 — drive arbitration per ARCHITECTURE.md §6:
-   curiosity/preservation/mastery/efficiency/operator-affinity scalar
-   drives + homeostatic weight adaptation. Tests: drive weighing picks the
-   dominant drive; weights adapt to outcomes (bounded, never negative).
-4. PLANNED: Stratiform Cortex v0.1 — predictive column per §5: glyph
-   stream in, next-glyph model, upward prediction, downward error signal,
-   bitwise model update (no dense matrices). Tests: prediction improves on
-   a repeating sequence; error signal shrinks as the model converges.
-5. PLANNED: Synapse Bus — typed async message fabric per §8: lock-free
-   ring buffers per subsystem pair + journaled replay. Tests: pub/sub
-   delivery, backpressure bound, replay restores state after restart.
-6. PLANNED: Reverie Loom v0.1 — offline simulation per §7: sample recent
-   lattice experience, perturb glyphs, run through cortex models, promote
-   drive-satisfying outcomes. Tests: perturbation is bounded; promoted
-   associations are reachable via lattice query.
-7. PLANNED: Lattice persistence tiering — hot/cold split (in-RAM working
+Items 3-6 of the original list are SHIPPED, not planned — Soma, Cortex, Synapse
+and Reverie have all been built and are under ctest. What remains is the gap
+between what each one is and what ARCHITECTURE.md says it is:
+
+4. PLANNED: Cortex — make it actually predictive. What ships is exact-context
+   memorisation: one fresh key appended per observation, retrieved by linear
+   Hamming scan, with no hierarchy, no downward error signal and no model update
+   of any kind (§5 describes all three). Memory grows linearly with tokens to a
+   hardcoded 200k cap. Largest gap in the repo between stated model and code.
+   Also: predict_candidates() returns k duplicates of one context rather than k
+   alternatives, which silently makes `compose`'s topic-steering a no-op.
+5. PLANNED: Soma — the "homeostatic weight adaptation" of §6 does not exist;
+   setpoints and decay rates are constants fixed at construction. Add outcome-
+   driven adaptation, bounds-check the Drive index (Drive::_Count indexes out of
+   bounds today), and persist the nexus — personality resets on every restart.
+6. PLANNED: Synapse — decide its fate. It is built, tested, and used by NOTHING;
+   khora_main wires 20+ subsystems by direct reference behind one process-wide
+   shared_mutex instead. Either make it the decoupling it was designed to be
+   (that global mutex is the throughput ceiling) or delete it.
+7. PLANNED: Reverie — the satisfaction gate is a no-op at shipped defaults, so
+   100% of dreams are retained forever into an uncapped lattice that Ballast does
+   not know about. Blocked on item 0: it is a consequence of bundle-of-2 = OR.
+8. PLANNED: Lattice persistence tiering — hot/cold split (in-RAM working
    set vs data/ archive) with atomic flush; inspired by the episodic-memory
    design of the old Raijin project (keep the idea, drop the grandeur).
 
