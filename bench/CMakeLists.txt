@@ -27,3 +27,6 @@ target_link_libraries(corpus_bench PRIVATE khora::ligature khora::lexicon khora:
 
 add_executable(hypernym_bench hypernym_bench.cpp)
 target_link_libraries(hypernym_bench PRIVATE khora::plexus)
+
+add_executable(category_bench category_bench.cpp)
+target_link_libraries(category_bench PRIVATE khora::plexus khora::lattice)
