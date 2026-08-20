@@ -9,3 +9,6 @@ target_link_libraries(scaling_bench PRIVATE khora::cortex)
 
 add_executable(topology_bench topology_bench.cpp)
 target_link_libraries(topology_bench PRIVATE khora::plexus)
+
+add_executable(curiosity_bench curiosity_bench.cpp)
+target_link_libraries(curiosity_bench PRIVATE khora::cortex)

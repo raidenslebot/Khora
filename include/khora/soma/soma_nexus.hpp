@@ -20,7 +20,20 @@
 namespace khora::soma {
 
 enum class Drive : std::uint8_t {
-    Curiosity,         // novelty-seeking; spike on unfamiliar input
+    // MEASURED AS A TRAP, and not yet replaced. Novelty-seeking means going
+    // wherever surprise is highest -- and the most surprising thing in any
+    // world is the thing that cannot be learned, so an agent driven this way
+    // stares at static. bench/curiosity_bench.cpp: greedy novelty scores 1.0000
+    // surprise-remaining at every signal-to-noise ratio tested, learning
+    // NOTHING, while spending 92-98% of its attention on an unlearnable source.
+    // Uniform coverage beats it outright.
+    //
+    // Chasing learning PROGRESS instead -- how fast surprise is falling rather
+    // than how high it is -- avoids starvation but was also measured to lose to
+    // coverage, because a constant-but-noisy region manufactures apparent
+    // progress out of measurement variance. Neither policy is wired in. This
+    // drive is currently stimulated by callers and consumed by nothing.
+    Curiosity,         // novelty-seeking -- see above, this is not yet right
     Preservation,      // self-maintenance; spike on errors or resource pressure
     Mastery,           // improve predictive competence; spike on resolved surprises
     Efficiency,        // conserve energy/time; spike on long/expensive ops
