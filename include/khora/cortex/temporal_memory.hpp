@@ -93,6 +93,43 @@ struct TemporalMemoryConfig {
     // A distal plateau outlasts a single step (50-100 ms against a much
     // shorter tick), so the primed state is a countdown rather than a flag.
     std::uint8_t predictive_lifetime = 2;
+
+    // TWO RATES FROM ONE MECHANISM.
+    //
+    // Whether a new synapse is born already connected is the whole difference
+    // between one-shot and statistical learning, and it is one number.
+    //
+    // With permanence_initial below permanence_connected, a synapse contributes
+    // nothing until reinforcement has carried it over the line -- 54 -> 80 ->
+    // 106 -> 132 at the default increment, so roughly three exposures. That is
+    // the SLOW store: it learns what recurs and ignores what happened once,
+    // which is what a semantic memory should do.
+    //
+    // With permanence_initial at or above permanence_connected, a single
+    // exposure creates connected synapses and the sequence is known after one
+    // presentation. That is the FAST store, and it is the reason the
+    // hippocampus exists as separate tissue: dentate gyrus and CA3 encode in
+    // one shot, sparsely and with high efficacy, precisely so that a single
+    // episode can be laid down without waiting for it to repeat.
+    //
+    // McClelland, McNaughton & O'Reilly 1995 (Psych Rev 102:419) is the
+    // argument that a system needs BOTH, and that the two cannot be the same
+    // store at the same rate: fast learning of arbitrary new material
+    // necessarily interferes with slow-learned structure. Here they are one
+    // implementation with two configurations, and the boundary is explicit.
+
+    // One-shot: a single presentation is enough to be recognised afterwards.
+    static TemporalMemoryConfig episodic() {
+        TemporalMemoryConfig c;
+        c.permanence_initial   = 140;   // already above `connected`
+        c.permanence_increment = 20;
+        c.permanence_decrement = 10;    // gentler: one exposure is all there was
+        c.predicted_decrement  = 2;
+        return c;
+    }
+
+    // Statistical: learns what recurs, ignores what happened once. The default.
+    static TemporalMemoryConfig semantic() { return TemporalMemoryConfig{}; }
 };
 
 struct TemporalMemoryStats {
