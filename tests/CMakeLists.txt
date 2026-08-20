@@ -50,6 +50,10 @@ add_executable(maw_test maw_test.cpp)
 target_link_libraries(maw_test PRIVATE khora::maw)
 add_test(NAME MawTest COMMAND maw_test)
 
+add_executable(crucible_test crucible_test.cpp)
+target_link_libraries(crucible_test PRIVATE khora::crucible)
+add_test(NAME CrucibleTest COMMAND crucible_test)
+
 # Every test gets a wall-clock ceiling. Without one a hung test blocks the dev
 # loop forever with no signal -- and several of these drive background threads,
 # spawn contained processes, or wait on pipes, all of which can hang rather than

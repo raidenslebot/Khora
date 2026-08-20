@@ -104,6 +104,10 @@ private:
     khora::lattice::Glyph bind_pair_(const khora::lattice::Glyph& role,
                                      const khora::lattice::Glyph& filler) const;
     khora::lattice::Glyph encode_record_(const Record& r) const;
+    // Inverse of bind_pair_'s redundant encoding. Every decode path goes
+    // through this; see the note on the definition for why the order matters.
+    khora::lattice::Glyph unbind_redundant_(const khora::lattice::Glyph& record,
+                                            const khora::lattice::Glyph& key) const;
     std::string cleanup_(const khora::lattice::Glyph& noisy) const;       // against fillers
     std::string cleanup_role_(const khora::lattice::Glyph& noisy) const;  // against roles
     void rebuild_records_();

@@ -100,24 +100,39 @@ std::string RelationalCrucible::cleanup_role_(const Glyph& noisy) const {
     return matches.empty() ? std::string{} : matches.front().label;
 }
 
+// The inverse of bind_pair_'s redundant encoding: UNDO THE PERMUTATION FIRST,
+// then unbind, then vote across the copies.
+//
+// Order matters, and having it backwards inverted the whole mechanism. Encoding
+// stores copy r as perm_r(role XOR filler) = perm_r(role) XOR perm_r(filler).
+// Unbinding with the UNPERMUTED role and permuting afterwards yields
+// perm_-r(record) XOR perm_-r(role), which cancels only at r = 0 -- every other
+// copy carries perm_r(role), not role. Copies 1..R-1 contributed pure noise, so
+// each extra level of "redundancy" made recovery worse. Measured before the fix,
+// structured unbind over 512 records: R=1 100.00%, R=4 97.02%, R=6 61.47%,
+// R=8 28.66%. The mechanism the Crucible calls evolution -- escalate redundancy
+// on shortfall -- was driving accuracy down every time it engaged.
+//
+// One function, used by every decode path, because the two that existed had
+// already drifted: query_holographic never applied the vote at all.
+Glyph RelationalCrucible::unbind_redundant_(const Glyph& record,
+                                            const Glyph& key) const {
+    if (redundancy_ <= 1) return bind(record, key);
+    std::vector<Glyph> votes;
+    votes.reserve(static_cast<std::size_t>(redundancy_));
+    for (int r = 0; r < redundancy_; ++r) {
+        votes.push_back(bind(permute(record, -(r * 211)), key));
+    }
+    return bundle(std::span<const Glyph>{votes.data(), votes.size()});
+}
+
 std::string RelationalCrucible::query_field(const std::string& subject,
                                             const std::string& role) const {
     auto rec = record_glyphs_.recall(subject);
     if (!rec) return {};
     const Glyph role_g = role_glyph_(role);
 
-    if (redundancy_ <= 1) {
-        // Single unbind: record XOR role  ~  filler (+ crosstalk)
-        return cleanup_(bind(*rec, role_g));
-    }
-    // Redundant unbind: undo each permuted copy, vote.
-    std::vector<Glyph> votes;
-    votes.reserve(static_cast<std::size_t>(redundancy_));
-    const Glyph unbound = bind(*rec, role_g);
-    for (int r = 0; r < redundancy_; ++r) {
-        votes.push_back(permute(unbound, -(r * 211)));
-    }
-    return cleanup_(bundle(std::span<const Glyph>{votes.data(), votes.size()}));
+    return cleanup_(unbind_redundant_(*rec, role_g));
 }
 
 std::string RelationalCrucible::analogy(const std::string& src_subject,
@@ -128,7 +143,7 @@ std::string RelationalCrucible::analogy(const std::string& src_subject,
     if (!src || !dst) return {};
     // Stage 1: recover which role binds src_filler in the source record.
     //   role* ~ src_record XOR filler_src   (noisy)
-    const Glyph role_star = bind(*src, filler_glyph_(src_filler));
+    const Glyph role_star = unbind_redundant_(*src, filler_glyph_(src_filler));
     // Stage 2: CLEAN UP role* against the role codebook. This is the key
     // step — collapsing the noisy role estimate onto the exact role glyph
     // removes the crosstalk that wrecked the naive one-shot analogy.
@@ -137,7 +152,7 @@ std::string RelationalCrucible::analogy(const std::string& src_subject,
     const Glyph clean_role = role_glyph_(role_name);
     // Stage 3: apply the clean role to the destination record.
     //   filler_dst ~ dst_record XOR clean_role
-    return cleanup_(bind(*dst, clean_role));
+    return cleanup_(unbind_redundant_(*dst, clean_role));
 }
 
 Glyph RelationalCrucible::build_world(std::size_t records_in_world) const {
@@ -162,8 +177,11 @@ std::string RelationalCrucible::query_holographic(const Glyph& world,
                                                   const std::string& role) const {
     // Stage 1: unbind the subject key -> approximate that subject's record.
     const Glyph rec_approx = bind(world, subject_glyph_(subject));
-    // Stage 2: unbind the role from the recovered record -> filler.
-    return cleanup_(bind(rec_approx, role_glyph_(role)));
+    // Stage 2: unbind the role from the recovered record -> filler. This must
+    // use the same redundant decode as query_field: the record glyphs inside
+    // `world` carry the redundant encoding, so a plain single unbind matches
+    // only copy 0 and reads the other R-1 copies as noise.
+    return cleanup_(unbind_redundant_(rec_approx, role_glyph_(role)));
 }
 
 TrialResult RelationalCrucible::trial_structured_unbind(double target) const {
