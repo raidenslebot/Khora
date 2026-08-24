@@ -42,3 +42,6 @@ target_link_libraries(growth_bench PRIVATE khora::cortex khora::plexus khora::re
 
 add_executable(population_bench population_bench.cpp)
 target_link_libraries(population_bench PRIVATE khora::cortex khora::reservoir)
+
+add_executable(vigilance_bench vigilance_bench.cpp)
+target_link_libraries(vigilance_bench PRIVATE khora::cortex khora::reservoir)

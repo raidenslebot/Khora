@@ -1,7 +1,68 @@
 # SPEC v2 — a population, not a mind
 
-**Status:** proposal. Nothing here is implemented, and the experiment that would
-justify it is defined below *before* the mechanism, deliberately.
+**Status: DEAD.** Built, measured, and rejected on the same day it was proposed.
+Every kill criterion below fired, and independently the prior art says the whole
+design is a rediscovery of a 1995 algorithm whose known failure modes it walked
+into. Kept as the record of why, because the reasoning was sound and the answer
+was still no.
+
+## VERDICT (measured before anything was wired in)
+
+24,000 tokens of real prose, one shared budget of 400,000 segments, N = 8:
+
+```
+arm            | train burst | held-out burst | segments (budget) |  time
+A monolithic   |       0.985 |          0.978 |  401476 / 400000  |  116 s
+B partition    |       1.000 |          0.992 |  408128 / 400000  |   38 s
+C competition  |       1.000 |          0.998 |  405065 / 400000  |  212 s
+D selection    |       0.993 |          0.985 |  401223 / 400000  |  260 s
+```
+
+**The monolith wins.** Every population arm predicts WORSE and costs 2–7× the
+time. Competition (C) is the worst of the four despite routing cleanly — claims
+were balanced 290/288/271/438/355/403/272/255, so this is not expert collapse,
+it is competition buying nothing because there is no signal to route on.
+Selection (D) fired no births at all: with every organism bursting at ~1.0 there
+was never a fitness gap wide enough to justify a death.
+
+Against the criteria written before the run: B ≈ C, so competition is deleted.
+C ≈ D, so selection is deleted. No arm bounds — every arm simply hit the
+imposed cap, which is a bound by fiat rather than a bound that was earned. And
+the fourth criterion applies to all of them: at burst ≈ 1.0 nothing here
+predicts anything, so none of it is a cognitive architecture.
+
+## WHY IT WAS ALWAYS GOING TO FAIL
+
+A survey of the prior art, run in parallel with the build, returned two things
+that between them close the question.
+
+**First, this is XCS.** Wilson 1995, Michigan-style learning classifier systems,
+item for item: accuracy-based fitness rather than payoff-based, covering on
+failure, a niche GA operating inside the match set, a fixed population with
+niche-balanced deletion. Thirty years of theory and failure data exist on it.
+Butz et al. 2004 identifies the *covering–deletion cycle* — classifiers created
+and immediately deleted, forever — as what happens when a hard budget meets
+inputs too specific to match, which is precisely this workload.
+
+**Second, and more damaging: the diagnosis was wrong.** The 93% burst is not a
+one-module failure. It is ART's *category proliferation*, a property of the
+MATCH CRITERION rather than of how many allocators there are. Splitting one
+allocator into eight changes how many things allocate; it does not change the
+probability that a given context matches something already stored. And
+splitting the stream makes it worse — c-BTM measured the crossover directly:
+past an optimal cluster count each expert is data-starved and performs worse.
+Their budgets ran to 168 billion tokens. This experiment had 24,000.
+
+The deepest version, and the one worth carrying forward: **a system that only
+specialises when it fails to predict is a ratchet with no pawl.** XCS bounds its
+population because the `#` wildcard plus accuracy-based fitness creates an
+opposing GENERALISATION pressure. This proposal had allocation-on-failure and
+nothing pushing the other way. Under a fixed budget that does not converge, it
+merely converts unbounded growth into unbounded churn.
+
+---
+
+*Original proposal follows, unedited.*
 
 ---
 
@@ -14,9 +75,9 @@ a chemical environment as the input, replication as the copy operation, and
 directed evolution — organisms that fail are starved, organisms that work
 divide — replacing gradient descent.
 
-Khora is a C++ program. It will not be synthesising anything biological, and
-that half of the sketch is set aside completely. What transfers is the
-*architecture*, and it transfers because it answers a failure this project has
+Khora is a C++ program, so the transfer is architectural: what a genome, an
+environment, replication and selection correspond to in software. That is the
+whole of it, and it transfers because it answers a failure this project has
 already measured rather than because it sounds impressive.
 
 ## 1. The measured failure it answers
