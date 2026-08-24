@@ -39,3 +39,6 @@ target_link_libraries(richclub_bench PRIVATE khora::plexus khora::lexicon khora:
 
 add_executable(growth_bench growth_bench.cpp)
 target_link_libraries(growth_bench PRIVATE khora::cortex khora::plexus khora::reservoir)
+
+add_executable(population_bench population_bench.cpp)
+target_link_libraries(population_bench PRIVATE khora::cortex khora::reservoir)
