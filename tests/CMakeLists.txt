@@ -10,6 +10,10 @@ add_executable(temporal_memory_test temporal_memory_test.cpp)
 target_link_libraries(temporal_memory_test PRIVATE khora::cortex)
 add_test(NAME TemporalMemoryTest COMMAND temporal_memory_test)
 
+add_executable(context_tree_test context_tree_test.cpp)
+target_link_libraries(context_tree_test PRIVATE khora::cortex)
+add_test(NAME ContextTreeTest COMMAND context_tree_test)
+
 add_executable(novelty_test novelty_test.cpp)
 target_link_libraries(novelty_test PRIVATE khora::cortex)
 add_test(NAME NoveltyTest COMMAND novelty_test)
