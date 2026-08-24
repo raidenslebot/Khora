@@ -154,6 +154,58 @@ of wrong for a distributional method.
   moving one array index took a policy from 10% wasted budget to 92%. A benchmark
   that sensitive measures the harness, not the system.
 
+### The sequence memory is not a language model, and the data says why
+
+The gate on wiring `TemporalMemory` into `khora.exe`: does it converge on prose?
+It does not, and chasing that produced the most useful measurement of the cycle
+-- along with two dead proposals, recorded because the reasoning was sound and
+the answer was still no.
+
+**The failure.** 24,000 tokens of real prose: burst fraction never leaves 0.93,
+2.9M segments, 571 MB, per-step cost up 48x. Linear growth in the corpus, which
+extrapolates to roughly 55 GB on Khora's real reservoir.
+
+**Two fixes proposed, both measured, both dead.** Encoding words as the set of
+their strongest associates so similar words overlap moved segments per token
+140.3 -> 135.7 and burst 0.938 -> 0.930 -- three percent. A population of small
+specialists competing for a fixed segment budget, with heritable context depth
+and birth-and-death, lost to the monolith on every measure: held-out burst 0.978
+monolithic against 0.992 partition, 0.998 competition, 0.985 selection, at 2-7x
+the runtime. Every kill criterion written before that run fired. A parallel
+survey found the design to be a rediscovery of Wilson's XCS (1995) item for
+item, and named the pathology it walks into.
+
+**Then the measurement that closes it.** The share of n-word contexts that ever
+recur, across the whole 7.66M-token reservoir:
+
+```
+   tokens |    n=1 |    n=2 |    n=3 |    n=4 |    n=5 |    n=8
+    24000 | 47.90% | 16.51% |  4.19% |  0.80% |  0.24% |  0.00%
+   384000 | 65.31% | 28.49% | 11.23% |  3.68% |  1.29% |  0.20%
+  7659950 | 66.90% | 30.68% | 13.46% |  4.92% |  1.76% |  0.32%
+```
+
+A 319-fold increase in data moves 8-gram recurrence from 0.00% to 0.32%. It
+saturates. The temporal memory keys on an 8-deep context, so the 93% burst was
+never an architecture failure, a threshold choice or an encoding problem --
+**there was no recurrence to detect.** Distinct contexts per token at n=8 is
+0.996: new contexts arrive as fast as tokens do, so no fixed memory holds them
+at any scale. That is Heaps' law with an exponent near one, and it is the shape
+of the data rather than a bug to be bounded.
+
+It also resolves a result recorded earlier as a puzzle. A thirty-line trigram
+table beat the temporal memory 1.0000 to 0.9981 on real books because **n=3 is
+one of the few depths where English repeats** -- 13.46% -- while the temporal
+memory was working at a depth where the figure is 0.32%.
+
+**What survives.** TemporalMemory keeps the scope it earns: structured
+sequences, where it beats the dense chain 100% to chance at every N tested. That
+is real and it should be wired in for that. It is not a language model and will
+not be described as one. For language the direction is variable order with
+backoff -- use the longest context actually seen, fall back when it has not
+been -- which harvests the 66.9 / 30.7 / 13.5% that genuinely exists at n<=3,
+and which D2-CTW achieves with bounded model size.
+
 ### What is NOT wired in
 
 The honest qualifier on everything above: **`Sdr` and `TemporalMemory` are not

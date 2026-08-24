@@ -44,6 +44,25 @@ nothing, because it is believed.
 
 Recorded so they are not re-attempted without new evidence.
 
+- **A population of specialists under resource selection.** Proposed, built and
+  killed in a day. Four arms sharing one 400k-segment budget over 24k tokens:
+  monolithic 0.978 held-out burst, partition 0.992, competition 0.998,
+  selection 0.985. **The monolith won**; every population arm predicted worse
+  and cost 2-7x the time. Independently, the design is a rediscovery of Wilson's
+  XCS (1995) item for item, and the failure it was meant to cure is ART's
+  category proliferation -- a property of the match criterion, not of how many
+  allocators exist. The keeper: a system that only specialises when it fails to
+  predict is a ratchet with no pawl. XCS bounds itself because its wildcard
+  creates an opposing GENERALISATION pressure; this had none.
+- **Similarity-preserving input codes for the temporal memory.** Encoding each
+  word as the set of its strongest associates -- the representation that beat
+  raw affinity 0.6168 to 0.5298 on WordNet -- moved segments per token only
+  140.3 -> 135.7 and burst 0.938 -> 0.930. The memory keys on exact winner-cell
+  conjunctions, so similar inputs do not make contexts recur.
+- **Tuning the match threshold.** Burst is flat at 0.96-0.996 across a vigilance
+  sweep from theta 2 to 8, while segments swing 105k to 951k. There is no
+  setting that trades the one for the other.
+
 - **Greedy novelty-seeking as the curiosity drive.** Scores 1.0000
   surprise-remaining at every signal-to-noise ratio tested: it learns nothing and
   spends 92-98% of its attention on unlearnable static. Chasing learning
@@ -58,15 +77,30 @@ Recorded so they are not re-attempted without new evidence.
 
 ## TOP PRIORITY
 
-0. PLANNED: **The new organs are not in the animal.** `Sdr` and `TemporalMemory`
-   are built, tested and benchmarked, and `khora_main.cpp` references NEITHER --
-   grep returns zero. The running binary is entirely on the dense `Glyph` path
-   and still uses `PredictiveColumn` for sequences, which the bench shows scoring
-   chance on any sequence that shares a subsequence with another. Everything
-   measured in v0.115.0 was measured on a bench, not in the system. Wiring them
-   in is the difference between a result and a capability, and it comes first.
-   (Synapse has been in exactly this state for 115 releases; do not let these
-   two join it.)
+0. **RESOLVED, and the answer is: do not wire TemporalMemory in for language.**
+   It was going to be item 0 -- the organs are built and `khora_main.cpp`
+   references neither -- but the gate measurement came back negative and the
+   reason is in the data rather than the design.
+
+   Across the whole 7.66M-token reservoir, the share of n-word contexts that
+   ever recur is 66.90% at n=1, 30.68% at n=2, 13.46% at n=3, 4.92% at n=4 and
+   **0.32% at n=8**. A 319-fold increase in corpus moved the n=8 figure from
+   0.00% to 0.32%: it saturates. The temporal memory keys on an 8-deep context,
+   so its 93% burst rate was never an architecture failure -- there was no
+   recurrence to find. Distinct contexts per token at n=8 is 0.996, meaning new
+   contexts arrive as fast as tokens do, so no fixed memory can hold them at any
+   scale.
+
+   TemporalMemory keeps its real scope, which it earns: STRUCTURED SEQUENCES,
+   where it beats the dense chain 100% to chance at every N. That is a genuine
+   capability and it should be wired in for that purpose. It is not a language
+   model and must not be described as one.
+
+   The direction for language is VARIABLE ORDER WITH BACKOFF -- use the longest
+   context actually seen, fall back when it has not been. That harvests the
+   66.9 / 30.7 / 13.5% that genuinely exists at n<=3. It is a solved problem
+   (Kneser-Ney, hierarchical Pitman-Yor, context-tree weighting) and D2-CTW
+   does it with BOUNDED model size. See `docs/SPEC-v2-population.md`.
 
 1. PLANNED: **Ligature's extracted is-a relations are mostly false.** Measured.
    Everything symbolic — `deduce`, BFS reachability, crystallize — stands on

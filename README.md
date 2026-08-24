@@ -34,7 +34,7 @@ has been true of the Synapse Bus for 115 releases.
 |---|---|---|---|
 | **Morphic Lattice** (`lattice`) | 10,000-bit DENSE binary hypervectors; bind/bundle/permute; labelled store with linear-scan Hamming query | working, tested, benched | yes |
 | **Sdr** (`lattice/sdr`) | SPARSE block code: 256 blocks of 64, one active per block (1.5625%). Subsampled `Segment` matching, `SdrUnion` for simultaneity, one-way projection from `Glyph` | working, tested, benched | **no** |
-| **Temporal Memory** (`cortex`) | 16,384 minicolumns x 32 cells. Distal segments PRIME rather than fire; unprimed columns burst, and the bursting fraction is a novelty signal | working, tested, benched | **no** |
+| **Temporal Memory** (`cortex`) | 16,384 minicolumns x 32 cells. Distal segments PRIME rather than fire; unprimed columns burst, and the bursting fraction is a novelty signal. Scope is STRUCTURED SEQUENCES — measured not to converge on prose, and the reason is in the data | working, tested, benched | **no** |
 | **Maelstrom** (`maelstrom`) | D3D11 DirectCompute k-NN over glyphs, with a used CPU fallback | working, untested | yes |
 | **Soma Nexus** (`soma`) | 5 scalar drives decaying toward setpoints; dot-product arbitration | working, tested | yes |
 | **Carapace** (`carapace`) | Command registry dispatching 95 operator tools; duplicate names are now refused rather than silently overwriting | working, tested | yes |
@@ -62,7 +62,9 @@ observed. These are the numbers, including the ones that went the wrong way.
 | Sparsity, not dimensionality, makes subsampled matching work | False-match rate at s=24/theta=12: **dense 0.5764**, **sparse 0 in 400,000** |
 | Per-cell context solves sequences a pair-encoding cannot | Sequences sharing a middle: **temporal memory 100%** at N=2,3,4,6; dense chain **50.0 / 33.3 / 25.0 / 16.7**, exactly chance |
 | Categories can be overlap rather than stored edges | 207 WordNet categories, frequency-matched negatives: **code 0.6168** vs affinity 0.5298, frequency 0.5199, random 0.4947; paired **161-42, z = 8.35** |
-| **For exact recall, a trigram table wins** | Real books: **trigram AUC 1.0000**, temporal memory 0.9981. The machinery only wins past ~25% input corruption |
+| **For exact recall, a trigram table wins** | Real books: **trigram AUC 1.0000**, temporal memory 0.9981. The machinery only wins past ~25% input corruption — and n=3 is one of the few depths where English repeats at all |
+| **Deep context is a dead end on prose** | Share of n-word contexts that ever recur, 7.66M tokens: n=1 **66.9%**, n=2 **30.7%**, n=3 **13.5%**, n=8 **0.32%**. A 319x increase in corpus moved n=8 from 0.00% to 0.32% — it saturates. Distinct contexts per token at n=8 is **0.996** |
+| **A population of specialists loses to one model** | Four arms, one budget: monolithic **0.978** held-out burst vs partition 0.992, competition 0.998, selection 0.985, at 2-7x the runtime |
 | **Greedy novelty-seeking is a trap** | Scores **1.0000 surprise-remaining** at every signal-to-noise ratio — learns nothing, spends 92-98% of attention on static. This was Khora's stated Soma design |
 | **Synaptic pruning did not pay** | Measured in two regimes, reverted |
 | **The extracted taxonomy is mostly false** | Ligature is-a relations, measured |

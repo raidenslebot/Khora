@@ -31,6 +31,65 @@ imposed cap, which is a bound by fiat rather than a bound that was earned. And
 the fourth criterion applies to all of them: at burst ≈ 1.0 nothing here
 predicts anything, so none of it is a cognitive architecture.
 
+## AND THE REASON IS IN THE DATA, NOT THE DESIGN
+
+The diagnostic that should have come first, run afterwards. Two measurements
+close the entire line of inquiry.
+
+**Every 8-word context in prose is unique, and scale does not fix it.**
+Recurring fraction -- the share of n-word contexts seen more than once -- across
+the whole 7.66-million-token reservoir, 58 books:
+
+```
+   tokens |    n=1 |    n=2 |    n=3 |    n=4 |    n=5 |    n=8
+    24000 | 47.90% | 16.51% |  4.19% |  0.80% |  0.24% |  0.00%
+    96000 | 59.65% | 24.02% |  7.70% |  1.71% |  0.43% |  0.04%
+   384000 | 65.31% | 28.49% | 11.23% |  3.68% |  1.29% |  0.20%
+  1536000 | 66.17% | 27.98% | 11.22% |  4.26% |  1.89% |  0.45%
+  7659950 | 66.90% | 30.68% | 13.46% |  4.92% |  1.76% |  0.32%
+```
+
+A 319-fold increase in data moves 8-gram recurrence from 0.00% to 0.32%. It
+saturates; it does not converge toward usable. The temporal memory keys on an
+8-deep context, so its 93% burst rate was never an architecture failure, a
+threshold choice, or an encoding problem. **There was no recurrence to detect.**
+
+**And no fixed memory can ever hold those contexts.** Distinct contexts against
+tokens, at full corpus:
+
+```
+ n | distinct  | distinct/token | max repeats
+ 1 |     80852 |      0.011     |     497941
+ 2 |   1883625 |      0.246     |      72304
+ 3 |   5126672 |      0.669     |       2342
+ 4 |   6927533 |      0.904     |        699
+ 5 |   7451213 |      0.973     |        205
+ 8 |   7631007 |      0.996     |         49
+```
+
+At n=8 the ratio is 0.996 -- new contexts arrive essentially as fast as tokens
+do. That is Heaps' law with an exponent near one, and it means the growth is not
+a bug to be bounded but the shape of the data. Storing them is impossible by
+counting, regardless of how the storage is organised.
+
+This single measurement retires, at once: the population proposal, the
+associate-code encoding change (measured at 3%), any threshold tuning (the
+vigilance sweep is flat at 0.96-0.996 from theta 2 to 8), and the plan to wire
+the temporal memory into khora.exe for language.
+
+It also explains a result from earlier in the project that had been recorded as
+a puzzle: a thirty-line trigram table beat the temporal memory 1.0000 to 0.9981
+on real books. The trigram won because **n=3 is one of the few depths where
+English repeats at all** -- 13.46% -- while the temporal memory was operating at
+a depth where the figure is 0.32%.
+
+**Where the signal actually is: n <= 3.** 66.90% at n=1, 30.68% at n=2, 13.46%
+at n=3, then it falls off a cliff. A model that uses the longest context it has
+actually seen and falls back when it has not would harvest all of that. This is
+the known answer -- Kneser-Ney, hierarchical Pitman-Yor, context-tree weighting
+-- and D2-CTW does it with bounded model size and an order of magnitude less
+memory than the alternatives. That is the direction, and it is not this one.
+
 ## WHY IT WAS ALWAYS GOING TO FAIL
 
 A survey of the prior art, run in parallel with the build, returned two things
