@@ -84,3 +84,6 @@ target_link_libraries(differential_bench PRIVATE khora::techne)
 
 add_executable(governor_bench governor_bench.cpp)
 target_link_libraries(governor_bench PRIVATE khora::governor)
+
+add_executable(ascent_bench ascent_bench.cpp)
+target_link_libraries(ascent_bench PRIVATE khora::techne khora::governor)
