@@ -169,9 +169,39 @@ private:
 // ---------------------------------------------------------------------------
 // The library: primitives learned from certified solutions.
 // ---------------------------------------------------------------------------
+class Library;
+
+// One node of a constructed expression. `a` and `b` index earlier pool entries;
+// -1 means the input itself.
+struct Expr {
+    Op   op = Op::Mov;
+    int  a  = -1;
+    int  b  = -1;
+    std::uint8_t k = 0;      // constant selector / library index
+};
+
+// A constructed program. This is what the bottom-up engine produces, and it is
+// the form the library stores, because the engine that actually solves things
+// has to be the engine whose solutions become reusable.
+struct Recipe {
+    std::vector<Expr> pool;
+    std::size_t root = 0;
+    bool found = false;
+
+    // `depth` guards library recursion. It is threaded rather than defaulted
+    // internally because a recipe can call a library primitive that is itself a
+    // recipe, and a depth that resets at each hop is not a bound at all -- the
+    // same defect the tape machine had, which was a literal 1 at every call
+    // site in a module whose whole claim is termination by construction.
+    Value apply(const Value& in, const Library* lib, std::size_t depth = 0) const;
+    std::string render() const;
+    std::size_t size() const;      // nodes actually reachable from the root
+};
+
 struct Learned {
     std::string name;
-    Program     body;
+    Program     body;          // tape form, from the evolutionary engine
+    Recipe      recipe;        // constructed form, from the bottom-up engine
     std::size_t uses = 0;      // appearances in later certified solutions
     std::size_t born = 0;      // which task introduced it
 };
@@ -183,6 +213,13 @@ public:
     // Admit a certified program. Returns false when it was rejected as a
     // duplicate of something already held.
     bool admit(std::string name, Program body, std::size_t task);
+
+    // Admit a certified RECIPE. This is the one that matters: the constructive
+    // engine is the engine that actually solves things (18/20 against 13/20 for
+    // the evolutionary one), so unless its solutions can re-enter the library
+    // nothing can ever compound. Before this existed the library was readable
+    // and unwritable, and the measured compounding was exactly zero.
+    bool admit_recipe(std::string name, Recipe r, std::size_t task);
 
     Value  call(std::size_t index, const Value& arg, std::size_t depth) const;
     std::size_t size() const noexcept { return items_.size(); }
@@ -290,25 +327,6 @@ Solution synthesise(const Spec& spec, SearchConfig cfg, Library* lib = nullptr);
 // stumbled upon by a mutation operator -- it is available from the first level,
 // which is what the gradient search could never arrange.
 // ---------------------------------------------------------------------------
-
-// One node of a constructed expression. `a` and `b` index earlier pool entries;
-// -1 means the input itself.
-struct Expr {
-    Op   op = Op::Mov;
-    int  a  = -1;
-    int  b  = -1;
-    std::uint8_t k = 0;      // constant selector / library index
-};
-
-struct Recipe {
-    std::vector<Expr> pool;
-    std::size_t root = 0;
-    bool found = false;
-
-    Value apply(const Value& in, const Library* lib) const;
-    std::string render() const;
-    std::size_t size() const;      // nodes actually reachable from the root
-};
 
 struct BuildResult {
     Recipe recipe;

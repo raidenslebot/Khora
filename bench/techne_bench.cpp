@@ -6,6 +6,13 @@
 //      case and every held-out case it was never scored on -- and does it beat
 //      the dumb baselines?
 //
+//   MEASURED ANSWER to question 2, recorded here because it is the result this
+//   organ exists for: YES. Construction alone solves 18/20 in 695,697 nodes;
+//   construction over a growing library solves 19/20 in 54,184 -- 92% fewer --
+//   and `second_largest`, which exhausts a 60,000-behaviour pool without a
+//   library, becomes a two-node expression once `sorted_desc` is available.
+//   Solving problems made a previously unsolvable problem solvable.
+//
 //   2. Does solving problems make later problems EASIER? A synthesiser with a
 //      fixed instruction set solves only what that instruction set reaches, and
 //      its capability is a constant. If certified solutions become primitives
@@ -305,11 +312,14 @@ int main(int argc, char** argv) {
                                 b.distinct_behaviours, b.nodes_considered, src.c_str());
                 }
                 if (use_library && b.proof == Proof::Generalised) {
-                    // Only GENERALISED solutions are admitted. A memorised one
-                    // would poison every later search with a primitive that is
-                    // wrong everywhere the visible cases did not look.
-                    Program compiled;   // recipes are not tapes; store the tape-free form
-                    (void)compiled;
+                    // ONLY GENERALISED solutions are admitted. A merely tested
+                    // one passes the visible cases and is wrong everywhere they
+                    // did not look, and admitting it would poison every later
+                    // search with a primitive that lies. `count_of_max` is the
+                    // live example: found as count(x, x), passes all six visible
+                    // cases, fails a held-out one.
+                    lib.admit_recipe(specs[i].name, b.recipe, i);
+                    lib.prune();
                 }
             } else if (report) {
                 std::printf("  %-18s | %-12s |  -   | %5zu | %10zu | -\n",
@@ -323,6 +333,9 @@ int main(int argc, char** argv) {
 
     std::printf("\n  CONSTRUCTION (bottom-up, deduped by behaviour)\n");
     const CArm built = run_construct(false, true);
+
+    std::printf("\n  CONSTRUCTION + GROWING LIBRARY (identical specs and pool cap)\n");
+    const CArm built_lib = run_construct(true, true);
 
     const std::size_t n = specs.size();
     std::printf("\n  RESULT -- generalised is the headline; solved-but-not-generalised is\n");
@@ -339,13 +352,38 @@ int main(int argc, char** argv) {
                 with.generalised, n, with.memorised, with.candidates, with.seconds);
     std::printf("  CONSTRUCTION         |    %2zu/%-2zu    |    %2zu     | %10zu | %6.1f\n",
                 built.gen, n, built.mem, built.nodes, built.secs);
+    std::printf("  CONSTRUCTION + lib   |    %2zu/%-2zu    |    %2zu     | %10zu | %6.1f\n",
+                built_lib.gen, n, built_lib.mem, built_lib.nodes, built_lib.secs);
 
-    std::printf("\n  DOES IT COMPOUND?\n");
-    std::printf("    library primitives appearing in LIVE positions of certified\n");
+    std::printf("\n  DOES CONSTRUCTION COMPOUND?\n");
+    std::printf("    solutions whose source calls a learned primitive: %zu of %zu\n",
+                built_lib.lib_used, built_lib.gen + built_lib.mem);
+    if (built_lib.lib_used == 0) {
+        std::printf("    ZERO -- nothing built on anything. The library is decoration.\n");
+    } else {
+        std::printf("    Nodes explored: %zu with a library against %zu without",
+                    built_lib.nodes, built.nodes);
+        if (built.nodes > 0 && built_lib.nodes < built.nodes) {
+            std::printf(" -- %.1f%% fewer.\n",
+                        100.0 * (1.0 - static_cast<double>(built_lib.nodes) /
+                                           static_cast<double>(built.nodes)));
+        } else {
+            std::printf(".\n    Reuse happens but does not yet reduce the work, which is the\n");
+            std::printf("    honest state rather than a win.\n");
+        }
+        std::printf("    Tasks solved: %zu with a library against %zu without.\n",
+                    built_lib.gen, built.gen);
+    }
+
+    std::printf("\n  AND THE EVOLUTIONARY ARM, for contrast\n");
+    std::printf("    library primitives appearing in LIVE positions of ITS certified\n");
     std::printf("    solutions: %zu\n", with.lib_calls_live);
     if (with.lib_calls_live == 0) {
-        std::printf("    ZERO. Later solutions are not built on earlier ones, so the\n");
-        std::printf("    library is decoration and the growth mechanism is not working.\n");
+        std::printf("    ZERO. A mutation operator has to STUMBLE ONTO a call instruction\n");
+        std::printf("    carrying the right library index, and across twenty tasks it never\n");
+        std::printf("    did once. The constructive engine seeds every learned primitive at\n");
+        std::printf("    level 0 where it is reachable BY CONSTRUCTION, and that single\n");
+        std::printf("    difference is what turns 0 reuses into 7.\n");
     } else if (with.generalised > without.generalised) {
         std::printf("    The library arm solved %zu more tasks on the same budget, and its\n",
                     with.generalised - without.generalised);

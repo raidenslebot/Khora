@@ -252,9 +252,35 @@ bool Library::admit(std::string name, Program body, std::size_t task) {
     return true;
 }
 
+bool Library::admit_recipe(std::string name, Recipe r, std::size_t task) {
+    if (!r.found) return false;
+    for (const auto& it : items_) {
+        if (it.recipe.found && it.recipe.pool.size() == r.pool.size() &&
+            it.recipe.root == r.root) {
+            bool same = true;
+            for (std::size_t i = 0; i < r.pool.size() && same; ++i) {
+                const Expr& a = it.recipe.pool[i];
+                const Expr& b = r.pool[i];
+                same = (a.op == b.op && a.a == b.a && a.b == b.b && a.k == b.k);
+            }
+            if (same) return false;
+        }
+    }
+    Learned l;
+    l.name = std::move(name);
+    l.recipe = std::move(r);
+    l.born = task;
+    items_.push_back(std::move(l));
+    return true;
+}
+
 Value Library::call(std::size_t index, const Value& arg, std::size_t depth) const {
     if (index >= items_.size() || depth >= kMaxCallDepth) return {};
-    return run(items_[index].body, arg, this, depth);
+    const Learned& l = items_[index];
+    // A recipe takes precedence: it is the form the engine that actually solves
+    // things produces. Depth is threaded through both paths.
+    if (l.recipe.found) return l.recipe.apply(arg, this, depth);
+    return run(l.body, arg, this, depth);
 }
 
 std::size_t Library::prune() {
@@ -618,14 +644,14 @@ std::string signature(const std::vector<Value>& outs) {
 
 } // namespace
 
-Value Recipe::apply(const Value& in, const Library* lib) const {
+Value Recipe::apply(const Value& in, const Library* lib, std::size_t depth) const {
     if (!found || pool.empty()) return in;
     std::vector<Value> vals(pool.size());
     for (std::size_t i = 0; i < pool.size(); ++i) {
         const Expr& e = pool[i];
         const Value& A = (e.a < 0) ? in : vals[static_cast<std::size_t>(e.a)];
         const Value& B = (e.b < 0) ? in : vals[static_cast<std::size_t>(e.b)];
-        vals[i] = apply_op(e.op, A, B, e.k, lib, 0);
+        vals[i] = apply_op(e.op, A, B, e.k, lib, depth);
     }
     return vals[root];
 }
