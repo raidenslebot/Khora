@@ -45,19 +45,27 @@ std::uint64_t rnd() {
     return z ^ (z >> 31);
 }
 
-// The real implementation, reached through the interpreter, so the target is
-// literally what the machine does rather than a restatement of it. A one-node
-// program applying the op to the input.
+// The real implementation, reached WITHOUT any byte encoding.
+//
+// The first version of this built a byte tape by hand, encoding an opcode as
+// (op * 256) / kCount to invert a decoder that computes (byte * kCount) >> 8.
+// Two floors do not compose to the identity, so the encoding was off by one and
+// real_op computed the WRONG OPERATION. The probes then compared each recipe
+// against that same wrong oracle and agreed with it 1000/1000, producing a
+// clean-looking table in which `len` was reconstructed as sub(x, x) -- a list of
+// zeros -- and every row was a neighbouring primitive.
+//
+// That is precisely the failure this bench exists to detect, built into the
+// detector. The fix is not a corrected encoding, it is having no encoding: a
+// Recipe names operations by enum, so there is no byte layer to get wrong.
 Value real_op(Op op, const Value& in, std::uint8_t b) {
-    std::vector<std::uint8_t> tape;
-    // Load the constant operand into r1, then apply op with a=r0, b=r1.
-    tape.push_back(static_cast<std::uint8_t>(
-        (static_cast<std::uint32_t>(Op::Const) * 256u) / static_cast<std::uint32_t>(Op::kCount)));
-    tape.push_back(1); tape.push_back(0); tape.push_back(b);
-    tape.push_back(static_cast<std::uint8_t>(
-        (static_cast<std::uint32_t>(op) * 256u) / static_cast<std::uint32_t>(Op::kCount)));
-    tape.push_back(2); tape.push_back(0); tape.push_back(1);
-    return run(Program(std::move(tape)), in, nullptr);
+    Recipe r;
+    r.pool.push_back(Expr{Op::Mov, -1, -1, 0});          // 0: the input
+    r.pool.push_back(Expr{Op::Const, -1, -1, b});        // 1: the constant operand
+    r.pool.push_back(Expr{op, 0, 1, b});                 // 2: op(input, constant)
+    r.root = 2;
+    r.found = true;
+    return r.apply(in, nullptr);
 }
 
 // Adversarial plus random. The adversarial ones are where a plausible-looking
@@ -89,9 +97,13 @@ std::vector<Target> targets() {
         {Op::Sort,  "sort",   0}, {Op::Sum,  "sum",    0},
         {Op::Max,   "max",    0}, {Op::Min,  "min",    0},
         {Op::Range, "range",  0},
-        {Op::Add,   "add",    0}, {Op::Sub,  "sub",    0},
-        {Op::Mul,   "mul",    0}, {Op::Div,  "div",    0},
-        {Op::Mod,   "mod",    0}, {Op::Append, "cat",  0},
+        // NON-DEGENERATE CONSTANTS. The first run used b=0 throughout, which
+        // makes add(x,0)=x, mul(x,0)=zeros and div(x,0)=zeros -- targets that
+        // are trivially reachable and prove nothing about the instruction set.
+        // The constant index selects from {0,1,2,3,...}, so 3 means the value 3.
+        {Op::Add,   "add_3",  3}, {Op::Sub,  "sub_2",  2},
+        {Op::Mul,   "mul_3",  3}, {Op::Div,  "div_2",  2},
+        {Op::Mod,   "mod_3",  3}, {Op::Append, "cat",  1},
         {Op::Take,  "take_3", 3}, {Op::Drop, "drop_2", 2},
         {Op::Index, "at_1",   1}, {Op::Filter, "filter_0", 0},
         {Op::MapAdd, "addk_5", 5}, {Op::MapMul, "mulk_2", 2},
