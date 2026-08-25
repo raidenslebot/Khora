@@ -72,6 +72,35 @@ the verified count almost exactly from tier 3 onward. Chained calls —
 **4 across an entire ascent** before compaction and are now routine (2, 6, 4, 3
 in the first tiers that admit them).
 
+### Khora rebuilds 13 of its own 22 primitives
+
+The goal names self-development as the benchmark, and this is the bench that
+measures it: remove a primitive, ask the system to rebuild it from the rest, then
+check the reconstruction against the REAL implementation on 1,000 probes. That
+last step is an external check, which is the only kind that catches a program
+that passed every case it was shown and is still wrong.
+
+**13 rebuilt, and all 13 agree on 1000/1000.** Among them:
+
+```
+len     = sum(member(x, x))      max     = fold[lib1](x)
+head    = index(x, 0)            min     = fold[lib2](x)
+tail    = drop(x, 1)             drop_2  = tail(lib5(x))
+mulk_2  = add(x, x)              at_1    = head(lib5(x))
+count_0 = sum(member(x, 0))      sub_2   = add(x, -2)
+```
+
+Several go through LEARNED library entries (`lib1`, `lib2`, `lib5`) rather than
+base operations — the system reusing what it taught itself in order to rebuild
+what it is made of.
+
+The 9 that resist — `rev sort sum range div_2 mod_3 cat take_3 filter_0` — carry
+information the rest of the set does not. That is a result about the instruction
+set rather than a failure: it is the minimal core, measured instead of assumed.
+
+Previously 10 of 22. This was never recorded in the README or the changelog,
+which for the benchmark the goal actually names was the wrong omission to have.
+
 ### The ceiling is the curriculum, not the solver
 
 The ascent stops at tier 15. Three attempts to push that from the solver side,
