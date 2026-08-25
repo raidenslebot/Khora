@@ -78,6 +78,10 @@ add_executable(whetstone_test whetstone_test.cpp)
 target_link_libraries(whetstone_test PRIVATE khora::whetstone)
 add_test(NAME WhetstoneTest COMMAND whetstone_test)
 
+add_executable(ribosome_test ribosome_test.cpp)
+target_link_libraries(ribosome_test PRIVATE khora::ribosome)
+add_test(NAME RibosomeTest COMMAND ribosome_test)
+
 # Every test gets a wall-clock ceiling. Without one a hung test blocks the dev
 # loop forever with no signal -- and several of these drive background threads,
 # spawn contained processes, or wait on pipes, all of which can hang rather than
