@@ -162,6 +162,29 @@ std::vector<BuildResult> solve_all(const std::vector<Spec>& specs,
                         b = std::move(d);
                     }
                 }
+                // AND WITHOUT THE LIBRARY, if both of those failed.
+                //
+                // A library is a vocabulary and a haystack at once: every entry
+                // is another level-0 candidate competing for a bounded pool.
+                // Measured on a fixed ninety-six task bar, that cost three tasks
+                // that were solvable with no library at all, and adding this
+                // fallback there turned eight-gained-three-lost into
+                // sixteen-gained-none-lost. It existed as construct_best and
+                // this -- the production solver, the one the throughput
+                // benchmark actually runs -- was not using it.
+                //
+                // The second search runs only for tasks that already failed both
+                // engines, which are the ones with budget to spare.
+                if (b.proof != Proof::Generalised && snap.get() != nullptr &&
+                    snap.get()->size() > 0) {
+                    BuildResult bare = construct(specs[i],
+                                                 static_cast<std::size_t>(pool_cap), nullptr);
+                    nodes.fetch_add(bare.nodes_considered, std::memory_order_relaxed);
+                    if (bare.proof == Proof::Generalised ||
+                        bare.cases_passed > b.cases_passed) {
+                        b = std::move(bare);
+                    }
+                }
                 nodes.fetch_add(b.nodes_considered, std::memory_order_relaxed);
 
                 if (b.proof == Proof::Generalised) {

@@ -287,6 +287,29 @@ widening the cases from 1-5 to 1-12 already removed them. A counterexample hunt
 finds nothing when the specification is already informative enough, which is the
 outcome you want from having fixed the specification.
 
+### The production solver was not using the fix
+
+`construct_best` — try with the library, fall back to without — was worth turning
+eight-gained-three-lost into sixteen-gained-none-lost on the fixed bar. It was
+written, committed, documented, and **`solve_all` did not call it.** The benches
+used it; the solver the throughput benchmark actually runs did not. Built and not
+wired, which is a category this project keeps a list of.
+
+Wired:
+
+| | before | after |
+|---|--------|-------|
+| certified at fixpoint | 1,646 of 2,000 (82.2%) | **1,700 of 2,000 (85.0%)** |
+| rounds to fixpoint | 6 | **5** |
+| fixpoint arm | 5.93 s | **3.90 s** |
+
+More certified **and** faster, because solving more per round means fewer rounds.
+
+The headline rate is unchanged within its noise: 8,190 / 9,139 / 8,508 lines per
+second across three runs, 24.6x to 27.4x the mandated 333. That rate varies by
+about six percent run to run while the certified count is identical every time,
+so the count is the number to read and the rate is quoted as a range.
+
 ### Taking the free axis: Eq and Lt
 
 If reach is free, take it. `Gt` existed on its own, which is an odd place for a
