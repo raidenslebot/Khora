@@ -6,6 +6,7 @@
 // interactive REPL.
 
 #include "khora/carapace/builtin_tools.hpp"
+#include "khora/carapace/techne_tools.hpp"
 #include "khora/carapace/carapace.hpp"
 #include "khora/cogitator/cogitator.hpp"
 #include "khora/crystallize/crystallize.hpp"
@@ -234,6 +235,10 @@ int main(int argc, char** argv) {
     // 4. Register tools (with lexicon wired into memory + cortex).
     carapace::Carapace shell;
     carapace::register_core_tools(shell);
+    // PROGRAM SYNTHESIS, reachable at last. Khora had ninety-four tools and none
+    // of them could write a program, while a synthesiser with fourteen language
+    // backends sat in this repository unmentioned by this file.
+    carapace::register_techne_tools(shell);
     carapace::register_memory_tools(shell, memory, &lex);
     carapace::register_cortex_tools(shell, column, &lex);
     carapace::register_soma_tools(shell, nexus);
