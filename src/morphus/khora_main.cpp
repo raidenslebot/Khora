@@ -1687,6 +1687,83 @@ int main(int argc, char** argv) {
             return {true, os.str(), ""};
         }
     });
+    // plan — GOAL DECOMPOSITION, the direction deduce cannot go. deduce asks what
+    // follows from a concept; this asks what would BRING ONE ABOUT, chaining
+    // backward over causes to a root. An audit of this tree found planning
+    // entirely absent as a capability -- Volition scores one step greedily and
+    // has no lookahead, no subgoals, no decomposition -- while nineteen thousand
+    // typed causal relations sat unused for it.
+    shell.register_tool({
+        "plan",
+        "Khora works backward from a GOAL to what would bring it about  (usage: plan <goal> [depth])",
+        [&lig](const carapace::Intent& i) -> carapace::ToolResult {
+            if (i.args.empty()) return {false, "", "usage: plan <goal> [depth]"};
+            const std::string goal = i.args[0];
+            int depth = 4;
+            if (i.args.size() > 1) { try { depth = std::stoi(i.args[1]); } catch (...) {} }
+            if (depth < 1) depth = 1;
+            if (depth > 8) depth = 8;
+
+            const auto plans = lig.plan_to(goal, depth, 6, 5);
+            std::ostringstream os;
+            if (plans.empty()) {
+                os << "  nothing Khora has read causes '" << goal << "'.\n"
+                   << "  a plan needs a causal road in; try a goal it has relations for.";
+                return {true, os.str(), ""};
+            }
+            os << "  to bring about '" << goal << "':\n";
+            for (const auto& p : plans) {
+                os << "   ";
+                for (std::size_t k = 0; k < p.steps.size(); ++k) {
+                    if (k) os << " -> ";
+                    os << p.steps[k];
+                }
+                os << "   [weakest link " << p.support << "]\n";
+            }
+            os << "  (" << plans.size() << " route"
+               << (plans.size() == 1 ? "" : "s")
+               << "; scored by the least-supported step, because a plan is worth"
+                  " no more than that)";
+            return {true, os.str(), ""};
+        }
+    });
+
+    // plan_yield — the planning faculty measured against itself, the same shape
+    // as the deduction benchmark. A capability nobody measures is one nobody can
+    // tell has regressed.
+    shell.register_tool({
+        "plan_yield",
+        "measure the planning faculty: what fraction of goals admit a multi-step route  (usage: plan_yield [n] [steps])",
+        [&lig](const carapace::Intent& i) -> carapace::ToolResult {
+            std::size_t n = 200; int steps = 2;
+            if (i.args.size() > 0) { try { n = std::stoul(i.args[0]); } catch (...) {} }
+            if (i.args.size() > 1) { try { steps = std::stoi(i.args[1]); } catch (...) {} }
+            std::ostringstream os;
+            for (int m = 1; m <= 3; ++m) {
+                const double r = lig.benchmark_planning(n, m, 0x5EED + m);
+                os << "  routes of >= " << m << " causal step" << (m == 1 ? " " : "s")
+                   << ": " << (r * 100.0) << "% of " << n << " goals\n";
+            }
+            (void)steps;
+            // AND THE SHAPE OF WHAT IT HAS TO PLAN OVER. The rate above collapses
+            // from 100% to single digits at a support floor of two, so the number
+            // that explains it belongs beside it.
+            const auto prof = lig.support_profile(khora::ligature::Relation::Causes);
+            const std::uint64_t tot = prof[0] + prof[1] + prof[2] + prof[3];
+            os << "  causal triples by support: " << prof[0] << " seen once, "
+               << prof[1] << " twice, " << prof[2] << " 3-9x, " << prof[3] << " 10x+";
+            if (tot > 0) {
+                os << "  (" << (100.0 * static_cast<double>(prof[0]) /
+                                static_cast<double>(tot))
+                   << "% are a single sighting)";
+            }
+            os << "\n";
+            os << "  goals are drawn from concepts something is known to cause, so this\n"
+                  "  measures the planner rather than the graph's coverage.";
+            return {true, os.str(), ""};
+        }
+    });
+
     // deduce — DEDUCTION over the structured layer. Khora derives facts it was
     // never told: inheriting properties down the is-a taxonomy and chaining
     // causes. New knowledge reasoned from old — what pure association cannot do.

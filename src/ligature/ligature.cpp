@@ -1,4 +1,5 @@
 #include "khora/ligature/ligature.hpp"
+#include <limits>
 
 #include <algorithm>
 #include <fstream>
@@ -220,6 +221,116 @@ bool Ligature::is_a(const std::string& x, const std::string& y, int max_depth) c
         frontier.swap(next);
     }
     return false;
+}
+
+std::array<std::uint64_t, 4> Ligature::support_profile(Relation r) const {
+    std::array<std::uint64_t, 4> out{0, 0, 0, 0};
+    for (const auto& subj : fwd_[static_cast<std::size_t>(r)]) {
+        for (const auto& obj : subj.second) {
+            const std::uint32_t c = obj.second;
+            if (c <= 1)       ++out[0];
+            else if (c == 2)  ++out[1];
+            else if (c < 10)  ++out[2];
+            else              ++out[3];
+        }
+    }
+    return out;
+}
+
+std::vector<Ligature::Plan> Ligature::plan_to(const std::string& goal,
+                                              int max_depth,
+                                              std::size_t beam,
+                                              std::size_t k,
+                                              std::uint32_t min_support) const {
+    std::vector<Plan> live;
+    live.push_back(Plan{{goal}, std::numeric_limits<std::uint32_t>::max()});
+
+    std::vector<Plan> done;
+    for (int d = 0; d < max_depth; ++d) {
+        std::vector<Plan> next;
+        for (const Plan& p : live) {
+            const std::string& head = p.steps.front();
+            auto causes = subjects(Relation::Causes, head, beam);
+            causes.erase(std::remove_if(causes.begin(), causes.end(),
+                                        [min_support](const auto& c) {
+                                            return c.second < min_support;
+                                        }),
+                         causes.end());
+            if (causes.empty()) {
+                // Nothing is known to cause the head: this chain is complete,
+                // and its first step is a root cause rather than a dead end.
+                if (p.steps.size() > 1) done.push_back(p);
+                continue;
+            }
+            for (const auto& c : causes) {
+                // Seen once is not evidence. Dropping these is what stops the
+                // planner returning fluent nonsense off the back of one sentence.
+                if (c.second < min_support) continue;
+                // A chain that revisits a concept is a loop, not a plan.
+                bool seen = false;
+                for (const std::string& st : p.steps) if (st == c.first) { seen = true; break; }
+                if (seen) continue;
+                Plan q;
+                q.steps.reserve(p.steps.size() + 1);
+                q.steps.push_back(c.first);
+                q.steps.insert(q.steps.end(), p.steps.begin(), p.steps.end());
+                // A plan is worth its WEAKEST link -- the step least supported by
+                // what the system actually read.
+                q.support = std::min(p.support, c.second);
+                next.push_back(std::move(q));
+            }
+        }
+        if (next.empty()) break;
+        // Keep the strongest partial chains and let the rest go: without a beam
+        // this is the full causal cone and it explodes at depth three.
+        std::sort(next.begin(), next.end(),
+                  [](const Plan& a, const Plan& b) { return a.support > b.support; });
+        if (next.size() > beam * 2) next.resize(beam * 2);
+        for (const Plan& p : next) if (static_cast<int>(p.steps.size()) - 1 >= max_depth) done.push_back(p);
+        live = std::move(next);
+    }
+    for (const Plan& p : live) if (p.steps.size() > 1) done.push_back(p);
+
+    // Longest first, then strongest: a plan that reaches further back is more
+    // of a plan, and among equals the better-supported one wins.
+    std::sort(done.begin(), done.end(), [](const Plan& a, const Plan& b) {
+        if (a.steps.size() != b.steps.size()) return a.steps.size() > b.steps.size();
+        return a.support > b.support;
+    });
+    // Drop duplicates -- the beam can reach the same chain by two routes.
+    std::vector<Plan> out;
+    for (const Plan& p : done) {
+        bool dup = false;
+        for (const Plan& q : out) if (q.steps == p.steps) { dup = true; break; }
+        if (!dup) out.push_back(p);
+        if (out.size() >= k) break;
+    }
+    return out;
+}
+
+double Ligature::benchmark_planning(std::size_t n, int min_steps, std::uint64_t seed,
+                                    std::uint32_t min_support) const {
+    // Goals are drawn from concepts that are actually CAUSED by something, since
+    // asking for a plan to reach a concept with no causes in the graph measures
+    // the graph's coverage rather than the planner.
+    std::vector<std::string> goals;
+    const auto& rev = rev_[static_cast<std::size_t>(Relation::Causes)];
+    goals.reserve(rev.size());
+    for (const auto& kv : rev) goals.push_back(kv.first);
+    if (goals.empty()) return 0.0;
+
+    std::uint64_t s = seed ? seed : 0x9E3779B97F4A7C15ULL;
+    auto nxt = [&s]() { s ^= s << 13; s ^= s >> 7; s ^= s << 17; return s; };
+
+    std::size_t tried = 0, reached = 0;
+    for (std::size_t i = 0; i < n; ++i) {
+        const std::string& g = goals[nxt() % goals.size()];
+        ++tried;
+        const auto plans = plan_to(g, 4, 6, 1, min_support);
+        if (!plans.empty() &&
+            static_cast<int>(plans.front().steps.size()) - 1 >= min_steps) ++reached;
+    }
+    return tried ? static_cast<double>(reached) / static_cast<double>(tried) : 0.0;
 }
 
 std::vector<Inference> Ligature::deduce(const std::string& subject, int max_depth) const {

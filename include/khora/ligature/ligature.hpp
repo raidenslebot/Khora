@@ -84,12 +84,66 @@ public:
     // a pure association graph (the Plexus) provably could not produce.
     std::vector<Inference> deduce(const std::string& subject, int max_depth = 3) const;
 
+    // A PLAN — the chain that would BRING THE GOAL ABOUT.
+    //
+    // deduce() chains forward: given a subject, what follows from it. That is
+    // inference. Planning is the other direction and the system had no way to do
+    // it: given a GOAL, what causes it, and what causes that, back to something
+    // with no known cause of its own. Ninety-four tools, nineteen thousand typed
+    // relations, and nothing that could ask "what would bring this about".
+    //
+    // Beam search backward over CAUSES, scored by the weakest link in the chain,
+    // because a plan is only as good as its least-supported step. Cycles are
+    // refused: a chain that revisits a concept is not a plan, it is a loop.
+    //
+    // This is goal decomposition over knowledge the system read for itself, not
+    // a hand-written task hierarchy. What it cannot do is check whether a step is
+    // ACHIEVABLE -- there is no world model and no action preconditions here --
+    // so it reports the route and leaves the acting to Volition.
+    struct Plan {
+        std::vector<std::string> steps;      // root cause first, goal last
+        std::uint32_t            support = 0;  // the weakest link
+    };
+    // `min_support` is not a tuning knob, it is the difference between a plan and
+    // a coincidence. Relations extracted from prose are dominated by single
+    // sightings -- asked to reach "war" on the live graph, the unfiltered planner
+    // returns `annual -> cannot -> him -> way -> war`, every link asserted once.
+    // Those chains are real paths through the graph and worthless as plans, and
+    // requiring every step to have been seen more than once is what separates
+    // them from the ones worth acting on.
+    std::vector<Plan> plan_to(const std::string& goal,
+                              int max_depth = 4,
+                              std::size_t beam = 6,
+                              std::size_t k = 5,
+                              std::uint32_t min_support = 2) const;
+
+    // OBJECTIVE self-measurement of the PLANNING faculty, the same shape as the
+    // deduction one: over goals drawn from the graph, what fraction admit a
+    // chain of at least `min_steps` causal steps. A capability nobody measures
+    // is a capability nobody can tell has regressed.
+    double benchmark_planning(std::size_t n = 200, int min_steps = 2,
+                              std::uint64_t seed = 0,
+                              std::uint32_t min_support = 2) const;
+
     // OBJECTIVE self-measurement of the DEDUCTION faculty. Constructs facts that are
     // genuinely derivable (X is-a A, A rel Z, with X rel Z NOT directly asserted) and
     // returns the fraction that deduce() actually recovers. A fitness signal for
     // reasoning over structure — the closed loop, reaching past inference into
     // deduction so a second faculty becomes measurable (and, in time, evolvable).
     double benchmark_deduction(std::size_t n = 200, std::uint64_t seed = 0) const;
+
+    // HOW MUCH OF THIS IS EVIDENCE. Counts of distinct triples by support:
+    // seen once, twice, three-to-nine times, ten or more.
+    //
+    // This exists because the planning benchmark fell from 100% of goals to 7%
+    // when a support floor of two was applied, which says the causal layer is
+    // dominated by single sightings. A relation seen once is a sentence, not a
+    // fact, and a reasoner built on top of those produces fluent nonsense --
+    // measured: `annual -> cannot -> him -> way -> war`, every link asserted
+    // exactly once. Knowing the shape of the distribution is how you tell
+    // whether a reasoning result is limited by the reasoner or by what it has
+    // to reason over.
+    std::array<std::uint64_t, 4> support_profile(Relation r) const;
 
     // Inspectors.
     std::uint64_t triple_count() const noexcept { return triples_; }
