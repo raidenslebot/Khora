@@ -40,6 +40,24 @@ It also fixed something quieter. Library duplicate detection compares pools, so
 two recipes computing the same function with different search pools were never
 recognised as duplicates — it was comparing enumerations, not programs.
 
+### And the mandated speed benchmark moved with it
+
+The target is 10,000 lines of certified code in 30 s — 333.3 lines/s. Every line
+must come from a program that passed every visible case **and** every held-out
+case drawn longer than any it saw; uncertified results contribute zero.
+
+| arm | certified | body lines | seconds | lines/s |
+|-----|-----------|------------|---------|---------|
+| 1 thread | 702/2000 | 3497 | 5.23 | 668 |
+| 18 threads (cap) | 1094/2000 | 5860 | 0.44 | **13,352** |
+| 18 threads, no sharing | 878/2000 | 4399 | 0.63 | 6,981 |
+| 18 threads, fixpoint | **1678/2000** | 3917 | 5.45 | 719 |
+
+**5,184 lines/s against the target — 15.6x — and 10,000 lines in 1.9 s**, where
+the standing figure was 450 lines/s and 22 s. Scaling is 11.93x on 18 threads and
+peak pool is **0.2 MB per shard**, which matters because RAM is the tight
+constraint on this machine, not CPU.
+
 ### The ascent compounds: 185 verified against 138
 
 Forty tasks a tier, pool 30,000, each tier run twice from identical
