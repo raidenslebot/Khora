@@ -171,6 +171,14 @@ std::string driver(Lang l, const std::vector<Named>& rs, const std::vector<Value
             s += "for (let i = 0; i < INPUTS.length; i++) console.log('" + std::string(n.name) +
                  " ' + i + ' ' + " + call(n, "i", "INPUTS") + ".join(','));\n";
         }
+    } else if (l == Lang::TypeScript) {
+        s += "const INPUTS: V[] = [";
+        for (std::size_t i = 0; i < ins.size(); ++i) { if (i) s += ", "; s += lit(ins[i]); }
+        s += "];\n";
+        for (const Named& n : rs) {
+            s += "for (let i = 0; i < INPUTS.length; i++) console.log('" + std::string(n.name) +
+                 " ' + i + ' ' + " + call(n, "i", "INPUTS") + ".join(','));\n";
+        }
     } else if (l == Lang::Go) {
         s += "func main() {\n  inputs := []V{";
         for (std::size_t i = 0; i < ins.size(); ++i) { if (i) s += ", "; s += lit(ins[i]); }
@@ -262,6 +270,7 @@ int main(int argc, char** argv) {
         {Lang::Php,        "emitted.php"},
         {Lang::Cpp,        "emitted.cpp"},
         {Lang::CSharp,     "emitted.cs"},
+        {Lang::TypeScript, "emitted.ts"},
     };
 
     for (const Target& t : targets) {
@@ -299,13 +308,14 @@ int main(int argc, char** argv) {
     std::printf("\n  reference.txt holds Recipe::apply for every pair. Run each emitted\n");
     std::printf("  file and diff its stdout against it; any difference is the emitted\n");
     std::printf("  program computing something the certificate does not cover.\n\n");
-    std::printf("  EXECUTED AND BYTE-IDENTICAL on this machine: Python, JavaScript, Go,\n");
-    std::printf("  Rust, C++ and C# -- six toolchains, %zu recipes, %zu inputs each.\n", rs.size(), ins.size());
-    std::printf("  Go was emitted as `package kh` until now, so it could never run at\n");
-    std::printf("  all and this harness printed a line count for it as if it had.\n");
-    std::printf("  Three of the recipes take TWO ARGUMENTS, and the second is the NEXT\n");
-    std::printf("  input rather than a repeat of the first, so a program that quietly\n");
-    std::printf("  ignores it cannot pass by coincidence.\n\n");
-    std::printf("  PHP is emitted and NOT executed: no PHP on this machine. Writing a\n");
-    std::printf("  file is not evidence that it runs -- see Go.\n");    return 0;
-}
+    std::printf("  EXECUTED AND BYTE-IDENTICAL on this machine: Python, JavaScript,\n");
+    std::printf("  TypeScript, Go, Rust, C++ and C# -- seven of the fourteen backends,\n");
+    std::printf("  %zu recipes x %zu inputs each. Three of the recipes take TWO\n", rs.size(), ins.size());
+    std::printf("  ARGUMENTS, and argument 1 is the NEXT input rather than a repeat of\n");
+    std::printf("  the first, so a program that quietly ignores it cannot pass by\n");
+    std::printf("  coincidence.\n\n");
+    std::printf("  Java, Kotlin, Swift, Haskell, Ruby, Lua and PHP are EMITTED AND NOT\n");
+    std::printf("  EXECUTED: no toolchain for them here. They are not counted. Writing a\n");
+    std::printf("  file is not evidence that it runs, which is exactly what Go proved --\n");
+    std::printf("  it was emitted as `package kh` and could never run at all, while this\n");
+    std::printf("  harness printed a body-line count for it as though it had.\n");}

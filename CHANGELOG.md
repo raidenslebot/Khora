@@ -102,14 +102,18 @@ unhandled argument node would have emitted `kh_id(x)` — binding argument 1 to
 argument 0, in source that compiles and reads correctly. Argument nodes resolve
 to parameters in `ref()` and emit no statement at all.
 
-### Six languages executed against the certificate, not three
+### Seven of fourteen backends executed against the certificate, not three
 
 The differential harness builds recipes, runs `Recipe::apply` as the reference,
 emits to several languages and diffs their stdout line by line — 13 recipes x 9
 inputs, three of the inputs longer than the 512-element bound where the
 interpreter's per-operation clamp bites.
 
-**Python, JavaScript, Go, Rust, C++ and C# all match byte for byte.**
+**Python, JavaScript, TypeScript, Go, Rust, C++ and C# all match byte for byte.**
+
+Java, Kotlin, Swift, Haskell, Ruby, Lua and PHP are emitted and deliberately not
+counted: there is no toolchain for them on this machine. Seven of fourteen is the
+honest number, and the seven that are claimed are claimed because they ran.
 
 Go is new to that list in the sense that matters: the prelude declares
 `package kh`, which is correct for a library and means `go run` refuses the file
