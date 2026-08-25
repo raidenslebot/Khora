@@ -179,7 +179,7 @@ altneg  negate odd positions
 before the generator gave up at 12. Tier 15 now draws 1,511 to keep 40, where it
 drew 1,611 to keep 11.
 
-### And the instrument that can: 18 to 26 against a bar that cannot move
+### And the instrument that can: 18 to 25 against a bar that cannot move
 
 `fixedbar_bench`. An evaluation set of 96 tasks drawn **once** from a fixed seed
 over the base atoms — never regenerated, never filtered against anything the
@@ -193,25 +193,49 @@ re-attempts the identical set with an empty library at every stage.
 | 1 | 96 | 30 | 22 of 96 | 18 of 96 |
 | 3 | 288 | 73 | 23 of 96 | 18 of 96 |
 | 6 | 576 | 96 | 25 of 96 | 18 of 96 |
-| 9 | 864 | 96 | **26 of 96** | 18 of 96 |
-| 14 | 1,344 | 96 | 26 of 96 | 18 of 96 |
+| 6 | 576 | 96 | **25 of 96** | 18 of 96 |
+| 8 | 768 | 96 | 25 of 96 | 18 of 96 |
 
-**Eighteen to twenty-six on problems that never changed**, while the control sits
+**Eighteen to twenty-five on problems that never changed**, while the control sits
 at exactly 18 at every stage. The pipeline is deterministic and the flat control
 proves it, so this is not a sample and needs no confidence interval — the
 difference is attributable to the library and to nothing else. The system solved
 things it could not solve before, because of what it taught itself on problems it
 is never scored on.
 
-**And it plateaus.** Flat at 26 from stage 9 while training continues. The
-library hits its budget at stage 5, so the budget is the obvious suspect — and
-raising it to 512 reaches 27, flattens at stage 11, with the library still
-growing at 298 entries. Five times the budget buys one task.
+One flaw in the harness, found and fixed before these numbers: `holds_up` drew
+its verification inputs from the same global stream that task generation mutates,
+so the probes a task was checked against differed from stage to stage. On a bench
+whose whole purpose is that nothing about the measurement moves, "solved" was
+quietly meaning something slightly different each time. Seeding the verifier
+per call moved the endpoint by one task — small, and exactly the kind of drift
+that is invisible until someone looks.
 
-Self-improvement here is real, measurable against a fixed external bar, worth
-+44%, and decelerating hard for a reason the budget does not explain. That
-residual is the open question, and it is a better one than "does it improve at
-all".
+**And it plateaus** — flat from stage 6 while training continues.
+
+### Why it plateaus: two axes, not one
+
+The library hits its budget first, so the budget is the obvious suspect, and
+raising it five times bought a single task. It was the wrong axis. Scoring the
+same fixed 96 tasks:
+
+| pool cap | no library | with a learned library |
+|----------|------------|------------------------|
+| 20,000 | 18 | **25** |
+| 60,000 | 23 | **28** at peak, settling 27 |
+| 200,000 | **26** | — |
+
+**A learned library is worth roughly a tenfold search budget.** 25 with a library
+at a 20,000 pool is what raw search reaches at 200,000. If that were the whole
+story the library would be a compute substitute and nothing more.
+
+It is not the whole story. At a 60,000 pool the library reaches 28, which beats
+raw search at 200,000 while using a third of the pool. The two axes compose, so
+the vocabulary buys something that cannot be had by handing search more room.
+
+Both plateau, and neither alone sets the ceiling. Self-improvement here is real,
+measured against a bar the system cannot move, worth +39%, and bounded jointly by
+search depth and vocabulary rather than by either one.
 
 ### Why this benchmark cannot show unbounded self-improvement
 

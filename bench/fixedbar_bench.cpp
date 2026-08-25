@@ -47,6 +47,26 @@
 // it to 512 reaches 27 and flattens anyway, at stage 11, with the library still
 // growing (298 entries and rising). Five times the budget buys ONE more task.
 //
+// WHY IT PLATEAUS, which is the question this bench was built to ask properly.
+// Two axes, not one. The SAME fixed 96 tasks throughout:
+//
+//   pool cap | no library | with a learned library
+//     20,000 |     18     |  25
+//     60,000 |     23     |  28 at its peak, settling 27
+//    200,000 |     26     |
+//
+// A LEARNED LIBRARY IS WORTH ROUGHLY A TENFOLD SEARCH BUDGET: 25 with a library
+// at a 20,000 pool is what raw search reaches at 200,000. If that were all, the
+// library would be a compute substitute and nothing more.
+//
+// It is not all. At a 60,000 pool the library reaches 28, which BEATS raw search
+// at 200,000 while using a third of the pool. The two axes compose, so the
+// vocabulary buys something that cannot be had by handing search more room.
+//
+// Both plateau, and neither alone explains the ceiling -- which is why raising
+// the library budget five times bought a single task. It was the wrong axis to
+// push by itself.
+//
 // So the curve is real, it is not an artefact, and it decelerates hard. What is
 // left over after the budget explanation is the honest open question here, and
 // it is a better question than the one this bench was built to answer.
@@ -205,6 +225,13 @@ Drawn draw_set(std::uint64_t seed, std::size_t per_depth, std::size_t lo, std::s
 // Attempt every task. `lib` is READ ONLY here -- nothing is admitted, which is
 // what makes this a measurement rather than another round of training.
 std::size_t score(const Drawn& d, const Library* lib, std::size_t pool_cap) {
+    // THE VERIFIER'S INPUTS ARE FIXED TOO, and that is not a detail. holds_up
+    // draws from the same global stream that task generation mutates, so
+    // without this the probes a task is checked against differ from stage to
+    // stage -- and "solved" would quietly mean something slightly different at
+    // every measurement, on a bench whose entire purpose is that nothing about
+    // the measurement moves.
+    rs = 0x5C012ULL;
     std::size_t n = 0;
     for (std::size_t i = 0; i < d.tasks.size(); ++i) {
         BuildResult b = construct(d.specs[i], pool_cap, lib);
@@ -238,7 +265,10 @@ int main(int argc, char** argv) {
     std::printf("  curve is capability and not drift.\n\n");
 
     const Drawn eval = draw_set(0xE7A1u, per_depth, 2, 7);
-    std::printf("  evaluation set: %zu tasks, fixed for the whole run\n\n", eval.tasks.size());
+    std::printf("  evaluation set: %zu tasks, fixed for the whole run\n", eval.tasks.size());
+    // The scores mean nothing without these two, and they turned out to be the
+    // two axes the ceiling sits on.
+    std::printf("  pool cap %zu, library budget %zu\n\n", pool_cap, budget);
 
     Library learned(budget);
     const auto t0 = clk::now();
