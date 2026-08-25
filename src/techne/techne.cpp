@@ -782,6 +782,7 @@ BuildResult construct(const Spec& spec, std::size_t max_pool, const Library* lib
 
         for (std::size_t i = start; i < end && found_at < 0 && pool.size() < max_pool; ++i) {
             for (const Op op : unary_ops()) {
+                if (!spec.allows(op)) continue;
                 std::vector<Value> outs(ncase);
                 for (std::size_t c = 0; c < ncase; ++c) {
                     outs[c] = apply_op(op, behaviour[i][c], {}, 0, lib, 0);
@@ -795,6 +796,7 @@ BuildResult construct(const Spec& spec, std::size_t max_pool, const Library* lib
             for (std::size_t j = 0; j < end && found_at < 0 && pool.size() < max_pool; ++j) {
                 if (i < start && j < start) continue;   // this pair already combined
                 for (const Op op : binary_ops()) {
+                    if (!spec.allows(op)) continue;
                     std::vector<Value> outs(ncase);
                     for (std::size_t c = 0; c < ncase; ++c) {
                         outs[c] = apply_op(op, behaviour[i][c], behaviour[j][c], 0, lib, 0);

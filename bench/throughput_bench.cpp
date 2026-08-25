@@ -46,6 +46,16 @@ using clk = std::chrono::high_resolution_clock;
 
 namespace {
 
+// HOW MANY VISIBLE CASES A SPECIFICATION CARRIES.
+//
+// This is the quality knob, and it is not a detail. A program that satisfies six
+// examples can be wrong everywhere those six did not look -- measured, 333 of
+// 2,000 tasks produced exactly that and were correctly refused as memorisation.
+// Every additional case is another constraint the answer has to survive, so the
+// set of behaviours consistent with the specification shrinks and the false
+// positives go with it.
+std::size_t g_visible = 6;
+
 std::uint64_t mix(std::uint64_t& s) {
     std::uint64_t z = (s += 0x9E3779B97F4A7C15ULL);
     z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ULL;
@@ -103,7 +113,7 @@ Spec make(const Gen& g, std::uint64_t& seed) {
         }
         return v;
     };
-    for (std::size_t i = 0; i < 6; ++i) s.cases.push_back({draw(2 + i % 5), {}});
+    for (std::size_t i = 0; i < g_visible; ++i) s.cases.push_back({draw(2 + i % 5), {}});
     for (std::size_t i = 0; i < 4; ++i) s.holdout.push_back({draw(7 + i), {}});
     for (auto& c : s.cases)   c.out = g(c.in);
     for (auto& c : s.holdout) c.out = g(c.in);
@@ -221,6 +231,7 @@ int main(int argc, char** argv) {
     const std::size_t ntask    = (argc > 1) ? std::stoul(argv[1]) : 2000;
     const std::size_t pool_cap = (argc > 2) ? std::stoul(argv[2]) : 3000;
     const std::size_t lib_bud  = (argc > 3) ? std::stoul(argv[3]) : 24;
+    g_visible                  = (argc > 4) ? std::stoul(argv[4]) : 6;
 
     const unsigned hw = std::max(1u, std::thread::hardware_concurrency());
     std::printf("How fast does it write CERTIFIED code?\n\n");
@@ -266,6 +277,25 @@ int main(int argc, char** argv) {
     const auto many = sweep(hw, true);
     const auto solo = sweep(hw, false);
 
+    // ---- TO FIXPOINT --------------------------------------------------------
+    //
+    // Every arm above attempts each task exactly once, in whatever order the
+    // queue hands it out, so a task that is trivial once some component exists
+    // fails when it happens to come first. That is a fact about scheduling, not
+    // about solvability, and iterating removes it.
+    SolveConfig sc;
+    sc.pool_cap = pool_cap;
+    sc.lib_budget = lib_bud;
+    SolveStats st;
+    const auto results = solve_all(specs, sc, &st);
+    std::size_t fx_lines = 0;
+    for (const BuildResult& b : results) {
+        if (b.proof != Proof::Generalised) continue;
+        std::size_t n = 0;
+        (void)emit(b.recipe, Lang::Cpp, "f", &n);
+        fx_lines += n;
+    }
+
     const Shard single = one.first;   const double s1 = one.second;
     const Shard all    = many.first;  const double sN = many.second;
 
@@ -280,7 +310,20 @@ int main(int argc, char** argv) {
     std::printf("  %2u thr, no share| %5zu/%-5zu| %10zu | %7.2f | %8.1f\n",
                 hw, solo.first.solved, solo.first.attempted, solo.first.body_lines,
                 solo.second, solo.first.body_lines / std::max(1e-9, solo.second));
+    std::printf("  %2u thr, FIXPOINT| %5zu/%-5zu| %10zu | %7.2f | %8.1f\n",
+                hw, st.certified, st.attempted, fx_lines, st.seconds,
+                fx_lines / std::max(1e-9, st.seconds));
     std::printf("\n  scaling: %.2fx on %u threads\n", s1 / std::max(1e-9, sN), hw);
+    std::printf("\n  ITERATING TO FIXPOINT -- newly certified per round:\n   ");
+    for (const std::size_t k : st.solved_per_round) std::printf(" %zu", k);
+    std::printf("\n  %zu rounds, %zu certified (%.1f%%), %zu memorised and rejected,\n",
+                st.rounds, st.certified,
+                100.0 * st.certified / std::max<std::size_t>(1, st.attempted),
+                st.memorised);
+    std::printf("  library holds %zu primitives, %zu calls inside answers.\n",
+                st.library_size, st.library_calls);
+    std::printf("  A round that certifies nothing new ends it: nothing changed, so\n");
+    std::printf("  nothing can change. That is why an unbounded loop terminates.\n");
     std::printf("  one shared library against one per worker: %zu certified vs %zu,\n",
                 all.solved, solo.first.solved);
     std::printf("  and %zu library calls inside answers vs %zu.\n",
