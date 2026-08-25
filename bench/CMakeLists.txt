@@ -57,3 +57,6 @@ target_link_libraries(ribosome_bench PRIVATE khora::ribosome khora::plexus khora
 
 add_executable(autopoiesis_bench autopoiesis_bench.cpp)
 target_link_libraries(autopoiesis_bench PRIVATE khora::ribosome khora::plexus khora::reservoir)
+
+add_executable(techne_bench techne_bench.cpp)
+target_link_libraries(techne_bench PRIVATE khora::techne)

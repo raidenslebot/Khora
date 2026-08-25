@@ -43,6 +43,7 @@ add_subdirectory(src/volition)
 add_subdirectory(src/carapace)
 add_subdirectory(src/morphus)
 add_subdirectory(src/ribosome)
+add_subdirectory(src/techne)
 
 if(KHORA_BUILD_TESTS)
     add_subdirectory(tests)

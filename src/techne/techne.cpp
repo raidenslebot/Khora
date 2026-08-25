@@ -1,0 +1,778 @@
+#include "khora/techne/techne.hpp"
+
+#include <algorithm>
+#include <array>
+#include <cstdio>
+#include <functional>
+#include <numeric>
+#include <unordered_set>
+
+namespace khora::techne {
+namespace {
+
+// splitmix64. NOTE: seeds are used raw, never forced odd.
+//
+// An earlier `seed | 1ULL` here silently mapped seeds 1000 and 1001 to the same
+// stream, so Program::random(3, 1000) and Program::random(3, 1001) were the
+// SAME PROGRAM. It surfaced as a library refusing half its admissions as
+// duplicates, but the real damage was upstream: it halved the diversity of every
+// randomly initialised population in this module. splitmix64 has no requirement
+// that its seed be odd.
+inline std::uint64_t splitmix(std::uint64_t& s) noexcept {
+    std::uint64_t z = (s += 0x9E3779B97F4A7C15ULL);
+    z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ULL;
+    z = (z ^ (z >> 27)) * 0x94D049BB133111EBULL;
+    return z ^ (z >> 31);
+}
+
+inline double unit(std::uint64_t& s) noexcept {
+    return static_cast<double>(splitmix(s) >> 11) / 9007199254740992.0;
+}
+
+// EVERY VALUE IS CAPPED, and that is what makes the arithmetic total rather
+// than carefully-case-analysed.
+//
+// The first version used hand-written saturating add and multiply. It had
+// undefined behaviour in it -- negating INT64_MIN to implement subtraction --
+// and the test process died at once. Case analysis over the full 64-bit range
+// is exactly the kind of thing that looks right and is not.
+//
+// Capping magnitudes at 1e9 makes a sum at most 2e9 and a product at most 1e18,
+// both comfortably inside int64. No overflow is possible, so no check is
+// needed, and there is no case to get wrong. Results are re-capped, so the cap
+// is a closed interval under every operation.
+inline constexpr std::int64_t kValueCap = 1'000'000'000;
+
+inline std::int64_t cap(std::int64_t x) noexcept {
+    return x < -kValueCap ? -kValueCap : (x > kValueCap ? kValueCap : x);
+}
+inline std::int64_t sat_add(std::int64_t a, std::int64_t b) noexcept { return cap(a + b); }
+inline std::int64_t sat_sub(std::int64_t a, std::int64_t b) noexcept { return cap(a - b); }
+inline std::int64_t sat_mul(std::int64_t a, std::int64_t b) noexcept { return cap(a * b); }
+
+inline void clamp_len(Value& v) { if (v.size() > kMaxListLen) v.resize(kMaxListLen); }
+
+// Elementwise with the shorter operand cycling. Cycling rather than truncating
+// means a scalar operand broadcasts over a list for free, which is the common
+// case and would otherwise need a separate opcode.
+template <typename F>
+Value zip(const Value& a, const Value& b, F f) {
+    if (a.empty() || b.empty()) return {};
+    Value out;
+    out.reserve(a.size());
+    for (std::size_t i = 0; i < a.size(); ++i) out.push_back(f(a[i], b[i % b.size()]));
+    return out;
+}
+
+const char* op_name(Op o) {
+    switch (o) {
+        case Op::Nop: return "nop";      case Op::Mov: return "mov";
+        case Op::Const: return "const";  case Op::Add: return "add";
+        case Op::Sub: return "sub";      case Op::Mul: return "mul";
+        case Op::Div: return "div";      case Op::Mod: return "mod";
+        case Op::Len: return "len";      case Op::Head: return "head";
+        case Op::Tail: return "tail";    case Op::Rev: return "rev";
+        case Op::Sort: return "sort";    case Op::Append: return "append";
+        case Op::Take: return "take";    case Op::Drop: return "drop";
+        case Op::Index: return "index";  case Op::Range: return "range";
+        case Op::Sum: return "sum";      case Op::Max: return "max";
+        case Op::Min: return "min";      case Op::Filter: return "filter";
+        case Op::MapAdd: return "mapadd";case Op::MapMul: return "mapmul";
+        case Op::Count: return "count";  case Op::Call: return "call";
+        default: return "?";
+    }
+}
+
+// Which opcodes read a second register operand. Needed by liveness.
+inline bool binary(Op o) {
+    switch (o) {
+        case Op::Add: case Op::Sub: case Op::Mul: case Op::Div: case Op::Mod:
+        case Op::Append: case Op::Take: case Op::Drop: case Op::Index:
+        case Op::Filter: case Op::MapAdd: case Op::MapMul: case Op::Count:
+            return true;
+        default: return false;
+    }
+}
+
+// The constants a program can name. Small integers dominate real code, and a
+// full 8-bit literal range would spend most of the search on constants nobody
+// needs.
+inline std::int64_t const_of(std::uint8_t b) {
+    static const std::array<std::int64_t, 16> k{0, 1, 2, 3, 4, 5, 6, 7,
+                                                8, 9, 10, -1, -2, 100, 1000, 2};
+    return k[b % k.size()];
+}
+
+} // namespace
+
+// ---------------------------------------------------------------------------
+// Program
+// ---------------------------------------------------------------------------
+
+Program Program::random(std::size_t instrs, std::uint64_t seed) {
+    std::vector<std::uint8_t> t(instrs * 4);
+    std::uint64_t s = seed;
+    for (auto& b : t) b = static_cast<std::uint8_t>(splitmix(s) & 0xFF);
+    return Program(std::move(t));
+}
+
+std::vector<Instr> Program::decode() const {
+    std::vector<Instr> out;
+    out.reserve(tape_.size() / 4);
+    for (std::size_t i = 0; i + 3 < tape_.size(); i += 4) {
+        Instr c;
+        // Scaled rather than wrapped: a plain modulo leaves the tail of the enum
+        // under-represented, and in the sibling organ the under-represented tail
+        // was exactly the set of opcodes that carried a gradient.
+        c.op  = static_cast<Op>((static_cast<std::uint32_t>(tape_[i]) *
+                                 static_cast<std::uint32_t>(Op::kCount)) >> 8);
+        c.dst = tape_[i + 1] % kRegisters;
+        c.a   = tape_[i + 2] % kRegisters;
+        c.b   = tape_[i + 3];
+        out.push_back(c);
+    }
+    return out;
+}
+
+Program Program::mutate(std::uint64_t seed, double rate) const {
+    std::uint64_t s = seed;
+    std::vector<std::uint8_t> t;
+    t.reserve(tape_.size() + 4);
+    for (const std::uint8_t b : tape_) {
+        t.push_back(unit(s) < rate ? static_cast<std::uint8_t>(splitmix(s) & 0xFF) : b);
+    }
+    // Whole-instruction indels keep the reading frame. Substitution alone can
+    // never change program LENGTH, which would fix the shape of every solution
+    // the search can reach.
+    if (unit(s) < rate * 0.15 && t.size() >= 8) {
+        const std::size_t at = (splitmix(s) % (t.size() / 4)) * 4;
+        t.erase(t.begin() + static_cast<std::ptrdiff_t>(at),
+                t.begin() + static_cast<std::ptrdiff_t>(at + 4));
+    } else if (unit(s) < rate * 0.15 && t.size() < 128) {
+        const std::size_t at = (splitmix(s) % (t.size() / 4 + 1)) * 4;
+        std::array<std::uint8_t, 4> c{};
+        for (auto& x : c) x = static_cast<std::uint8_t>(splitmix(s) & 0xFF);
+        t.insert(t.begin() + static_cast<std::ptrdiff_t>(at), c.begin(), c.end());
+    }
+    return Program(std::move(t));
+}
+
+Program Program::cross(const Program& x, const Program& y, std::uint64_t seed) {
+    std::uint64_t s = seed;
+    if (x.length() == 0) return y;
+    if (y.length() == 0) return x;
+    const std::size_t a = (splitmix(s) % x.length()) * 4;
+    const std::size_t b = (splitmix(s) % y.length()) * 4;
+    std::vector<std::uint8_t> t;
+    t.insert(t.end(), x.tape().begin(), x.tape().begin() + static_cast<std::ptrdiff_t>(a));
+    t.insert(t.end(), y.tape().begin() + static_cast<std::ptrdiff_t>(b), y.tape().end());
+    if (t.empty()) t = x.tape();
+    return Program(std::move(t));
+}
+
+std::size_t Program::output_register() const {
+    std::size_t out = 0;
+    for (const Instr& c : decode()) if (c.op != Op::Nop) out = c.dst;
+    return out;
+}
+
+std::vector<bool> Program::live_mask() const {
+    const auto code = decode();
+    std::vector<bool> live(code.size(), false);
+    std::array<bool, kRegisters> reg{};
+    reg[output_register()] = true;
+    for (std::size_t k = code.size(); k-- > 0;) {
+        const Instr& c = code[k];
+        if (c.op == Op::Nop || !reg[c.dst]) continue;
+        live[k] = true;
+        const bool reads_dst = (c.a == c.dst) ||
+                               (binary(c.op) && (c.b % kRegisters) == c.dst);
+        if (!reads_dst) reg[c.dst] = false;
+        if (c.op != Op::Const) reg[c.a] = true;
+        if (binary(c.op)) reg[c.b % kRegisters] = true;
+    }
+    return live;
+}
+
+std::size_t Program::effective_length() const {
+    std::size_t n = 0;
+    for (const bool b : live_mask()) if (b) ++n;
+    return n;
+}
+
+std::string Program::disassemble() const {
+    std::string out;
+    char line[128];
+    const auto live = live_mask();
+    std::size_t i = 0;
+    for (const Instr& c : decode()) {
+        switch (c.op) {
+            case Op::Const:
+                std::snprintf(line, sizeof line, "%2zu  const  r%u <- %lld",
+                              i, c.dst, static_cast<long long>(const_of(c.b)));
+                break;
+            case Op::Call:
+                std::snprintf(line, sizeof line, "%2zu  call   r%u <- lib[%u](r%u)",
+                              i, c.dst, c.b, c.a);
+                break;
+            case Op::Nop:
+                std::snprintf(line, sizeof line, "%2zu  nop", i);
+                break;
+            default:
+                if (binary(c.op)) {
+                    std::snprintf(line, sizeof line, "%2zu  %-6s r%u <- r%u, r%u",
+                                  i, op_name(c.op), c.dst, c.a, c.b % kRegisters);
+                } else {
+                    std::snprintf(line, sizeof line, "%2zu  %-6s r%u <- r%u",
+                                  i, op_name(c.op), c.dst, c.a);
+                }
+                break;
+        }
+        std::string l(line);
+        while (l.size() < 40) l += ' ';
+        out += l;
+        out += (i < live.size() && live[i]) ? "  <- LIVE" : "  (dead)";
+        out.push_back(0x0A);
+        ++i;
+    }
+    return out;
+}
+
+// ---------------------------------------------------------------------------
+// Library
+// ---------------------------------------------------------------------------
+
+bool Library::admit(std::string name, Program body, std::size_t task) {
+    for (const auto& it : items_) if (it.body.tape() == body.tape()) return false;
+    Learned l;
+    l.name = std::move(name);
+    l.body = std::move(body);
+    l.born = task;
+    items_.push_back(std::move(l));
+    return true;
+}
+
+Value Library::call(std::size_t index, const Value& arg, std::size_t depth) const {
+    if (index >= items_.size() || depth >= kMaxCallDepth) return {};
+    return run(items_[index].body, arg, this, depth);
+}
+
+std::size_t Library::prune() {
+    if (items_.size() <= budget_) return 0;
+    std::stable_sort(items_.begin(), items_.end(),
+                     [](const Learned& a, const Learned& b) { return a.uses > b.uses; });
+    const std::size_t dropped = items_.size() - budget_;
+    items_.resize(budget_);
+    evicted_ += dropped;
+    return dropped;
+}
+
+// ---------------------------------------------------------------------------
+// Execution
+// ---------------------------------------------------------------------------
+
+Value run(const Program& p, const Value& input, const Library* lib, std::size_t depth) {
+    std::array<Value, kRegisters> r;
+    // Cap on entry too, so a caller cannot hand in a value that breaks the
+    // invariant the arithmetic relies on.
+    r[0] = input;
+    for (auto& x : r[0]) x = cap(x);
+    // The other registers start empty rather than as copies of the input: a
+    // register file pre-loaded with the input hands the search free identity
+    // programs, and an identity that scores well on some cases is a local
+    // optimum with a moat around it.
+    for (std::size_t i = 1; i < kRegisters; ++i) r[i].clear();
+
+    const auto code = p.decode();
+    for (const Instr& c : code) {
+        const Value& A = r[c.a];
+        const Value& B = r[c.b % kRegisters];
+        Value out;
+        switch (c.op) {
+            case Op::Nop:   continue;
+            case Op::Mov:   out = A; break;
+            case Op::Const: out = Value{const_of(c.b)}; break;
+            case Op::Add:   out = zip(A, B, [](auto x, auto y) { return sat_add(x, y); }); break;
+            case Op::Sub:   out = zip(A, B, [](auto x, auto y) { return sat_sub(x, y); }); break;
+            case Op::Mul:   out = zip(A, B, [](auto x, auto y) { return sat_mul(x, y); }); break;
+            case Op::Div:   out = zip(A, B, [](auto x, auto y) {
+                                return y == 0 ? std::int64_t{0} : x / y; }); break;
+            case Op::Mod:   out = zip(A, B, [](auto x, auto y) {
+                                return y == 0 ? std::int64_t{0} : x % y; }); break;
+            case Op::Len:   out = Value{static_cast<std::int64_t>(A.size())}; break;
+            case Op::Head:  if (!A.empty()) out = Value{A.front()}; break;
+            case Op::Tail:  if (A.size() > 1) out.assign(A.begin() + 1, A.end()); break;
+            case Op::Rev:   out.assign(A.rbegin(), A.rend()); break;
+            case Op::Sort:  out = A; std::sort(out.begin(), out.end()); break;
+            case Op::Append: out = A; out.insert(out.end(), B.begin(), B.end()); break;
+            case Op::Take: {
+                if (B.empty()) break;
+                const std::int64_t n = std::max<std::int64_t>(0, B[0]);
+                out.assign(A.begin(),
+                           A.begin() + static_cast<std::ptrdiff_t>(
+                               std::min<std::size_t>(A.size(), static_cast<std::size_t>(n))));
+                break;
+            }
+            case Op::Drop: {
+                if (B.empty()) break;
+                const std::int64_t n = std::max<std::int64_t>(0, B[0]);
+                const std::size_t d = std::min<std::size_t>(A.size(), static_cast<std::size_t>(n));
+                out.assign(A.begin() + static_cast<std::ptrdiff_t>(d), A.end());
+                break;
+            }
+            case Op::Index: {
+                if (B.empty() || B[0] < 0) break;
+                const std::size_t i = static_cast<std::size_t>(B[0]);
+                if (i < A.size()) out = Value{A[i]};
+                break;
+            }
+            case Op::Range: {
+                if (A.empty()) break;
+                const std::int64_t n = std::min<std::int64_t>(
+                    std::max<std::int64_t>(0, A[0]), static_cast<std::int64_t>(kMaxListLen));
+                out.resize(static_cast<std::size_t>(n));
+                std::iota(out.begin(), out.end(), std::int64_t{0});
+                break;
+            }
+            case Op::Sum: {
+                std::int64_t s = 0;
+                for (const auto x : A) s = sat_add(s, x);
+                out = Value{s};
+                break;
+            }
+            case Op::Max: if (!A.empty()) out = Value{*std::max_element(A.begin(), A.end())}; break;
+            case Op::Min: if (!A.empty()) out = Value{*std::min_element(A.begin(), A.end())}; break;
+            case Op::Filter: {
+                if (B.empty()) break;
+                for (const auto x : A) if (x > B[0]) out.push_back(x);
+                break;
+            }
+            case Op::MapAdd: {
+                if (B.empty()) break;
+                for (const auto x : A) out.push_back(sat_add(x, B[0]));
+                break;
+            }
+            case Op::MapMul: {
+                if (B.empty()) break;
+                for (const auto x : A) out.push_back(sat_mul(x, B[0]));
+                break;
+            }
+            case Op::Count: {
+                if (B.empty()) break;
+                std::int64_t n = 0;
+                for (const auto x : A) if (x == B[0]) ++n;
+                out = Value{n};
+                break;
+            }
+            case Op::Call: {
+                if (lib == nullptr || lib->size() == 0) break;
+                out = lib->call(c.b % lib->size(), A, depth + 1);
+                break;
+            }
+            default: break;
+        }
+        clamp_len(out);
+        r[c.dst] = std::move(out);
+    }
+    return r[p.output_register()];
+}
+
+// ---------------------------------------------------------------------------
+// Scoring
+// ---------------------------------------------------------------------------
+
+double score(const Program& p, const std::vector<Case>& cases, const Library* lib) {
+    if (cases.empty()) return 0.0;
+    std::size_t exact = 0;
+    double partial = 0.0;
+    for (const Case& c : cases) {
+        const Value got = run(p, c.in, lib);
+        if (got == c.out) { ++exact; partial += 1.0; continue; }
+        // PARTIAL CREDIT, and it is not decoration. A previous organ in this
+        // repo could not find a ONE-INSTRUCTION solution in 2,048 births because
+        // every wrong answer scored identically to every other wrong answer:
+        // a flat surface with a single invisible needle. Element-level agreement
+        // gives the surface a slope.
+        const std::size_t n = std::max(got.size(), c.out.size());
+        if (n == 0) { partial += 1.0; continue; }
+        std::size_t same = 0;
+        for (std::size_t i = 0; i < std::min(got.size(), c.out.size()); ++i) {
+            if (got[i] == c.out[i]) ++same;
+        }
+        partial += static_cast<double>(same) / static_cast<double>(n);
+    }
+    const double m = static_cast<double>(cases.size());
+    // Exact matches dominate by three orders of magnitude, so a program that
+    // solves one case outright always outranks one that is merely close on all
+    // of them.
+    return static_cast<double>(exact) / m + 0.001 * (partial / m);
+}
+
+namespace {
+
+std::size_t exact_count(const Program& p, const std::vector<Case>& cases, const Library* lib) {
+    std::size_t n = 0;
+    for (const Case& c : cases) if (run(p, c.in, lib) == c.out) ++n;
+    return n;
+}
+
+Solution certify(const Spec& spec, Program p, const Library* lib, std::size_t tried) {
+    Solution s;
+    s.program = std::move(p);
+    s.candidates_tried = tried;
+    s.cases_total = spec.cases.size();
+    s.holdout_total = spec.holdout.size();
+    s.cases_passed = exact_count(s.program, spec.cases, lib);
+    s.holdout_passed = exact_count(s.program, spec.holdout, lib);
+
+    // THE CONTRACT. Nothing is certified unless every visible case passes, and
+    // "Generalised" additionally requires every held-out case -- cases the
+    // search never saw and could not have fitted. A program that passes the
+    // visible cases and fails the held-out ones is memorisation, and it is
+    // reported as Tested rather than dressed up.
+    if (s.cases_total > 0 && s.cases_passed == s.cases_total) {
+        s.proof = (s.holdout_total == 0 || s.holdout_passed == s.holdout_total)
+                      ? Proof::Generalised : Proof::Tested;
+    } else {
+        s.proof = Proof::None;
+    }
+    return s;
+}
+
+} // namespace
+
+// ---------------------------------------------------------------------------
+// Search
+// ---------------------------------------------------------------------------
+
+Solution synthesise(const Spec& spec, SearchConfig cfg, Library* lib) {
+    std::uint64_t rng = cfg.seed;
+    struct Ind { Program p; double f = -1.0; };
+
+    std::vector<Ind> pop;
+    pop.reserve(cfg.population);
+    for (std::size_t i = 0; i < cfg.population; ++i) {
+        Ind x;
+        x.p = Program::random(cfg.program_len, splitmix(rng));
+        x.f = score(x.p, spec.cases, lib);
+        pop.push_back(std::move(x));
+    }
+    std::size_t tried = cfg.population;
+
+    Ind best = pop.front();
+    for (const Ind& x : pop) if (x.f > best.f) best = x;
+
+    const double solved = 1.0 + 0.001 - 1e-9;   // every case exact
+    for (std::size_t g = 0; g < cfg.generations && best.f < solved; ++g) {
+        const std::size_t replace = std::max<std::size_t>(1, pop.size() / 4);
+        for (std::size_t k = 0; k < replace; ++k) {
+            auto pick = [&]() {
+                std::size_t b = splitmix(rng) % pop.size();
+                for (std::size_t j = 1; j < cfg.tournament; ++j) {
+                    const std::size_t c = splitmix(rng) % pop.size();
+                    if (pop[c].f > pop[b].f) b = c;
+                }
+                return b;
+            };
+            std::size_t worst = splitmix(rng) % pop.size();
+            for (std::size_t j = 1; j < cfg.tournament; ++j) {
+                const std::size_t c = splitmix(rng) % pop.size();
+                if (pop[c].f < pop[worst].f) worst = c;
+            }
+            Program child = (unit(rng) < cfg.crossover)
+                ? Program::cross(pop[pick()].p, pop[pick()].p, splitmix(rng))
+                : pop[pick()].p;
+            child = child.mutate(splitmix(rng), cfg.mutation_rate);
+            pop[worst].p = std::move(child);
+            pop[worst].f = score(pop[worst].p, spec.cases, lib);
+            ++tried;
+            if (pop[worst].f > best.f) best = pop[worst];
+        }
+        // ELITISM. Without it the champion survives only as a reporting
+        // artefact: it is never re-inserted, and a quarter of the population is
+        // displaced every round.
+        auto w = std::min_element(pop.begin(), pop.end(),
+                                  [](const Ind& a, const Ind& b) { return a.f < b.f; });
+        *w = best;
+    }
+
+    return certify(spec, best.p, lib, tried);
+}
+
+Solution enumerate(const Spec& spec, std::size_t max_len, std::size_t budget,
+                   Library* lib) {
+    // THE DUMB BASELINE, and in this repo it has won often enough not to be a
+    // formality -- a thirty-line trigram table beat a temporal memory, and a
+    // one-line graph heuristic tied an evolved operator. Systematic enumeration
+    // of short programs is what a synthesiser has to beat to justify itself.
+    std::uint64_t rng = 0xC0DEC0DEULL;
+    Solution best;
+    best.cases_total = spec.cases.size();
+    double best_score = -1.0;
+    Program best_p;
+
+    for (std::size_t tried = 0; tried < budget; ++tried) {
+        const std::size_t len = 1 + (tried % max_len);
+        Program p = Program::random(len, splitmix(rng));
+        const double f = score(p, spec.cases, lib);
+        if (f > best_score) { best_score = f; best_p = p; }
+        if (f >= 1.0) {
+            return certify(spec, std::move(p), lib, tried + 1);
+        }
+    }
+    return certify(spec, std::move(best_p), lib, budget);
+}
+
+// ---------------------------------------------------------------------------
+// Bottom-up construction
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// The operations worth composing. Nop and Mov are excluded: they add a node
+// without adding a behaviour, and this pool is indexed by behaviour.
+const std::vector<Op>& unary_ops() {
+    static const std::vector<Op> v{Op::Len, Op::Head, Op::Tail, Op::Rev, Op::Sort,
+                                   Op::Range, Op::Sum, Op::Max, Op::Min};
+    return v;
+}
+const std::vector<Op>& binary_ops() {
+    static const std::vector<Op> v{Op::Add, Op::Sub, Op::Mul, Op::Div, Op::Mod,
+                                   Op::Append, Op::Take, Op::Drop, Op::Index,
+                                   Op::Filter, Op::MapAdd, Op::MapMul, Op::Count};
+    return v;
+}
+
+// One operation, sharing the helpers the tape machine uses, so a constructed
+// program and an evolved one cannot disagree about what an opcode means.
+Value apply_op(Op op, const Value& A, const Value& B, std::uint8_t k,
+               const Library* lib, std::size_t depth) {
+    Value out;
+    switch (op) {
+        case Op::Const: out = Value{const_of(k)}; break;
+        case Op::Add:   out = zip(A, B, [](auto x, auto y) { return sat_add(x, y); }); break;
+        case Op::Sub:   out = zip(A, B, [](auto x, auto y) { return sat_sub(x, y); }); break;
+        case Op::Mul:   out = zip(A, B, [](auto x, auto y) { return sat_mul(x, y); }); break;
+        case Op::Div:   out = zip(A, B, [](auto x, auto y) { return y == 0 ? std::int64_t{0} : x / y; }); break;
+        case Op::Mod:   out = zip(A, B, [](auto x, auto y) { return y == 0 ? std::int64_t{0} : x % y; }); break;
+        case Op::Len:   out = Value{static_cast<std::int64_t>(A.size())}; break;
+        case Op::Head:  if (!A.empty()) out = Value{A.front()}; break;
+        case Op::Tail:  if (A.size() > 1) out.assign(A.begin() + 1, A.end()); break;
+        case Op::Rev:   out.assign(A.rbegin(), A.rend()); break;
+        case Op::Sort:  out = A; std::sort(out.begin(), out.end()); break;
+        case Op::Append: out = A; out.insert(out.end(), B.begin(), B.end()); break;
+        case Op::Take: {
+            if (B.empty()) break;
+            const std::size_t n = static_cast<std::size_t>(std::max<std::int64_t>(0, B[0]));
+            out.assign(A.begin(), A.begin() + static_cast<std::ptrdiff_t>(std::min(A.size(), n)));
+            break;
+        }
+        case Op::Drop: {
+            if (B.empty()) break;
+            const std::size_t n = std::min(A.size(),
+                static_cast<std::size_t>(std::max<std::int64_t>(0, B[0])));
+            out.assign(A.begin() + static_cast<std::ptrdiff_t>(n), A.end());
+            break;
+        }
+        case Op::Index: {
+            if (B.empty() || B[0] < 0) break;
+            const std::size_t i = static_cast<std::size_t>(B[0]);
+            if (i < A.size()) out = Value{A[i]};
+            break;
+        }
+        case Op::Range: {
+            if (A.empty()) break;
+            const std::int64_t n = std::min<std::int64_t>(std::max<std::int64_t>(0, A[0]),
+                                                          static_cast<std::int64_t>(kMaxListLen));
+            out.resize(static_cast<std::size_t>(n));
+            std::iota(out.begin(), out.end(), std::int64_t{0});
+            break;
+        }
+        case Op::Sum: { std::int64_t t = 0; for (const auto x : A) t = sat_add(t, x); out = Value{t}; break; }
+        case Op::Max: if (!A.empty()) out = Value{*std::max_element(A.begin(), A.end())}; break;
+        case Op::Min: if (!A.empty()) out = Value{*std::min_element(A.begin(), A.end())}; break;
+        case Op::Filter: { if (B.empty()) break; for (const auto x : A) if (x > B[0]) out.push_back(x); break; }
+        case Op::MapAdd: { if (B.empty()) break; for (const auto x : A) out.push_back(sat_add(x, B[0])); break; }
+        case Op::MapMul: { if (B.empty()) break; for (const auto x : A) out.push_back(sat_mul(x, B[0])); break; }
+        case Op::Count: { if (B.empty()) break; std::int64_t n = 0; for (const auto x : A) if (x == B[0]) ++n; out = Value{n}; break; }
+        case Op::Call:  if (lib && lib->size()) out = lib->call(k % lib->size(), A, depth + 1); break;
+        default: out = A; break;
+    }
+    clamp_len(out);
+    return out;
+}
+
+// A BEHAVIOUR is the concatenation of a candidate's outputs over every visible
+// case. Two candidates with the same behaviour are indistinguishable to the
+// specification, so only the first is kept -- and because the pool is grown in
+// size order, the first is also the smallest.
+std::string signature(const std::vector<Value>& outs) {
+    std::string s;
+    s.reserve(outs.size() * 8);
+    for (const Value& v : outs) {
+        s.push_back('|');
+        for (const auto x : v) { s += std::to_string(x); s.push_back(','); }
+    }
+    return s;
+}
+
+} // namespace
+
+Value Recipe::apply(const Value& in, const Library* lib) const {
+    if (!found || pool.empty()) return in;
+    std::vector<Value> vals(pool.size());
+    for (std::size_t i = 0; i < pool.size(); ++i) {
+        const Expr& e = pool[i];
+        const Value& A = (e.a < 0) ? in : vals[static_cast<std::size_t>(e.a)];
+        const Value& B = (e.b < 0) ? in : vals[static_cast<std::size_t>(e.b)];
+        vals[i] = apply_op(e.op, A, B, e.k, lib, 0);
+    }
+    return vals[root];
+}
+
+std::size_t Recipe::size() const {
+    if (!found) return 0;
+    std::vector<bool> used(pool.size(), false);
+    std::vector<std::size_t> stack{root};
+    while (!stack.empty()) {
+        const std::size_t i = stack.back();
+        stack.pop_back();
+        if (i >= pool.size() || used[i]) continue;
+        used[i] = true;
+        if (pool[i].a >= 0) stack.push_back(static_cast<std::size_t>(pool[i].a));
+        if (pool[i].b >= 0) stack.push_back(static_cast<std::size_t>(pool[i].b));
+    }
+    std::size_t n = 0;
+    for (const bool b : used) if (b) ++n;
+    return n;
+}
+
+std::string Recipe::render() const {
+    if (!found) return "(none)";
+    std::function<std::string(int)> go = [&](int i) -> std::string {
+        if (i < 0) return "x";
+        const Expr& e = pool[static_cast<std::size_t>(i)];
+        if (e.op == Op::Const) return std::to_string(const_of(e.k));
+        if (e.op == Op::Call)  return "lib" + std::to_string(e.k) + "(" + go(e.a) + ")";
+        if (e.op == Op::Mov)   return go(e.a);
+        const std::string nm = op_name(e.op);
+        for (const Op u : unary_ops()) if (u == e.op) return nm + "(" + go(e.a) + ")";
+        return nm + "(" + go(e.a) + ", " + go(e.b) + ")";
+    };
+    return go(static_cast<int>(root));
+}
+
+BuildResult construct(const Spec& spec, std::size_t max_pool, const Library* lib) {
+    BuildResult r;
+    r.cases_total = spec.cases.size();
+    r.holdout_total = spec.holdout.size();
+    if (spec.cases.empty()) return r;
+
+    const std::size_t ncase = spec.cases.size();
+    std::vector<Value> target;
+    target.reserve(ncase);
+    for (const Case& c : spec.cases) target.push_back(c.out);
+    const std::string want = signature(target);
+
+    std::vector<Expr> pool;
+    std::vector<std::vector<Value>> behaviour;
+    std::vector<std::string> sigs;
+    std::unordered_set<std::string> seen;
+    int found_at = -1;
+
+    auto consider = [&](const Expr& e, std::vector<Value> outs) {
+        ++r.nodes_considered;
+        std::string sig = signature(outs);
+        if (!seen.insert(sig).second) return;   // observationally equivalent: drop
+        const bool is_target = (sig == want);
+        pool.push_back(e);
+        behaviour.push_back(std::move(outs));
+        sigs.push_back(std::move(sig));
+        if (is_target && found_at < 0) found_at = static_cast<int>(pool.size()) - 1;
+    };
+
+    // Level 0: the input, the constants, and every library primitive.
+    //
+    // Seeding the library HERE is the point of the whole exercise. A learned
+    // primitive is available from the first level rather than having to be
+    // stumbled upon by a mutation operator -- which, measured, never happened
+    // once in twenty tasks.
+    {
+        std::vector<Value> ident;
+        ident.reserve(ncase);
+        for (const Case& c : spec.cases) ident.push_back(c.in);
+        Expr e; e.op = Op::Mov; e.a = -1;
+        consider(e, std::move(ident));
+    }
+    for (std::uint8_t k = 0; k < 16 && found_at < 0; ++k) {
+        std::vector<Value> outs(ncase);
+        for (std::size_t c = 0; c < ncase; ++c) outs[c] = apply_op(Op::Const, {}, {}, k, lib, 0);
+        Expr e; e.op = Op::Const; e.k = k;
+        consider(e, std::move(outs));
+    }
+    if (lib != nullptr) {
+        for (std::size_t li = 0; li < lib->size() && found_at < 0; ++li) {
+            std::vector<Value> outs(ncase);
+            for (std::size_t c = 0; c < ncase; ++c) {
+                outs[c] = apply_op(Op::Call, spec.cases[c].in, {},
+                                   static_cast<std::uint8_t>(li), lib, 0);
+            }
+            Expr e; e.op = Op::Call; e.a = -1; e.k = static_cast<std::uint8_t>(li);
+            consider(e, std::move(outs));
+        }
+    }
+
+    // Grow by size. Every pool entry is already the smallest expression with its
+    // behaviour, so composing over the pool composes over BEHAVIOURS rather than
+    // over syntax -- which is what collapses the combinatorial explosion.
+    std::size_t frontier = 0;
+    while (found_at < 0 && pool.size() < max_pool) {
+        const std::size_t start = frontier;
+        const std::size_t end = pool.size();
+        if (start >= end) break;
+        frontier = end;
+
+        for (std::size_t i = start; i < end && found_at < 0 && pool.size() < max_pool; ++i) {
+            for (const Op op : unary_ops()) {
+                std::vector<Value> outs(ncase);
+                for (std::size_t c = 0; c < ncase; ++c) {
+                    outs[c] = apply_op(op, behaviour[i][c], {}, 0, lib, 0);
+                }
+                Expr e; e.op = op; e.a = static_cast<int>(i);
+                consider(e, std::move(outs));
+                if (found_at >= 0) break;
+            }
+        }
+        for (std::size_t i = 0; i < end && found_at < 0 && pool.size() < max_pool; ++i) {
+            for (std::size_t j = 0; j < end && found_at < 0 && pool.size() < max_pool; ++j) {
+                if (i < start && j < start) continue;   // this pair already combined
+                for (const Op op : binary_ops()) {
+                    std::vector<Value> outs(ncase);
+                    for (std::size_t c = 0; c < ncase; ++c) {
+                        outs[c] = apply_op(op, behaviour[i][c], behaviour[j][c], 0, lib, 0);
+                    }
+                    Expr e; e.op = op; e.a = static_cast<int>(i); e.b = static_cast<int>(j);
+                    consider(e, std::move(outs));
+                    if (found_at >= 0) break;
+                }
+            }
+        }
+    }
+
+    r.distinct_behaviours = pool.size();
+    if (found_at < 0) return r;
+
+    r.recipe.pool = std::move(pool);
+    r.recipe.root = static_cast<std::size_t>(found_at);
+    r.recipe.found = true;
+
+    for (const Case& c : spec.cases)   if (r.recipe.apply(c.in, lib) == c.out) ++r.cases_passed;
+    for (const Case& c : spec.holdout) if (r.recipe.apply(c.in, lib) == c.out) ++r.holdout_passed;
+    if (r.cases_passed == r.cases_total) {
+        r.proof = (r.holdout_total == 0 || r.holdout_passed == r.holdout_total)
+                      ? Proof::Generalised : Proof::Tested;
+    }
+    return r;
+}
+
+} // namespace khora::techne
