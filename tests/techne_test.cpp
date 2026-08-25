@@ -200,6 +200,57 @@ int main() {
         check(!lib.admit("b", p, 1), "an identical primitive is refused rather than duplicated");
     }
 
+    // --- THE EMITTED SOURCE IS THE PROGRAM THAT WAS CERTIFIED ----------------
+    //
+    // This is the claim the whole organ rests on, and it was FALSE for three
+    // quarters of results until an external reader found it. Op::Call was
+    // treated as an identity alias to its argument, so a library call was
+    // deleted from the emitted source: max(sub(x, lib1(x))) came out as
+    // kh_max(kh_sub(x, x)) -- a different program, returning [0] where the
+    // recipe returns [15]. A certificate attached to a program you do not hand
+    // back is attached to nothing.
+    {
+        Library lib(8);
+
+        // A library function: double every element.
+        Recipe dbl;
+        dbl.pool.push_back(Expr{Op::Mov, -1, -1, 0});
+        dbl.pool.push_back(Expr{Op::Const, -1, -1, 2});
+        dbl.pool.push_back(Expr{Op::MapMul, 0, 1, 0});
+        dbl.root = 2;
+        dbl.found = true;
+        check(lib.admit_recipe("double", dbl, 0), "a library function is admitted");
+
+        // A caller that USES it: sum(double(x)).
+        Recipe caller;
+        caller.pool.push_back(Expr{Op::Mov, -1, -1, 0});
+        caller.pool.push_back(Expr{Op::Call, 0, -1, 0});
+        caller.pool.push_back(Expr{Op::Sum, 1, -1, 0});
+        caller.root = 2;
+        caller.found = true;
+
+        const Value in{1, 2, 3, 4};
+        const Value want = caller.apply(in, &lib);
+        std::printf("  recipe with a library call on [1,2,3,4] -> [%lld]\n",
+                    want.empty() ? 0LL : static_cast<long long>(want[0]));
+        check(want == Value{20}, "the recipe itself computes sum of doubles");
+
+        const Recipe flat = inline_calls(caller, lib);
+        bool has_call = false;
+        for (const Expr& e : flat.pool) if (e.op == Op::Call) has_call = true;
+        check(!has_call, "inlining removes every library call");
+        check(flat.apply(in, nullptr) == want,
+              "and the inlined recipe computes exactly the same thing");
+
+        std::size_t lines = 0;
+        const std::string src = emit(caller, Lang::Python, "f", &lines, &lib);
+        std::printf("%s", src.c_str());
+        check(src.find("kh_sum") != std::string::npos,
+              "the emitted source contains the outer operation");
+        check(src.find("kh_mulk") != std::string::npos,
+              "AND the library body, rather than silently dropping the call");
+    }
+
     std::printf("\n");
     if (failures == 0) std::printf("ALL PASS\n");
     else               std::printf("%d FAILURE(S)\n", failures);

@@ -432,7 +432,16 @@ BuildResult construct(const Spec& spec, std::size_t max_pool, const Library* lib
 // fixed cost; the function is the synthesised part, and the two are counted
 // separately so the line rate cannot be inflated by boilerplate.
 // ---------------------------------------------------------------------------
-enum class Lang { Cpp, Python, JavaScript, Rust };
+// A backend is a claim, not a formality: each one has to reproduce the value
+// cap, the empty-list results, the zero-guard on division and the cycling
+// shorter operand in that language's own arithmetic. Most of these targets get
+// truncating division from the language; Python, Ruby, Lua and Haskell all
+// FLOOR by default and have to have it built, which is a difference that stays
+// invisible until a negative dividend shows up.
+enum class Lang {
+    Cpp, Python, JavaScript, Rust,
+    Go, Java, CSharp, TypeScript, Ruby, Lua, Haskell, Swift, Kotlin, Php
+};
 
 const char* lang_name(Lang l);
 const char* lang_ext(Lang l);
@@ -440,10 +449,24 @@ const char* lang_ext(Lang l);
 // The operation set in the target language. Emit once per file.
 std::string prelude(Lang l);
 
+// Splice every library call into the recipe, so the result depends on nothing
+// outside itself.
+//
+// This exists because library indices are NOT STABLE. Library::prune sorts by
+// usage and truncates, which renumbers the survivors -- so a stored recipe
+// holding `Call 3` silently comes to mean a different function after any prune.
+// A self-contained recipe cannot rot that way, and it is also the only form that
+// can be emitted as source that stands alone.
+Recipe inline_calls(const Recipe& r, const Library& lib);
+
 // One recipe as one function. `lines` receives the number of body lines, which
 // is the synthesised output rather than the boilerplate.
+//
+// Pass the library whenever the recipe might contain Op::Call. Emission inlines
+// them; it does not have the option of ignoring them, because a call that is
+// dropped makes the emitted source a different program from the certified one.
 std::string emit(const Recipe& r, Lang l, const std::string& fn,
-                 std::size_t* lines = nullptr);
+                 std::size_t* lines = nullptr, const Library* lib = nullptr);
 
 // ---------------------------------------------------------------------------
 // SOLVING TO FIXPOINT: the loop that makes the system improve itself.

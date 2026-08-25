@@ -14,9 +14,13 @@
 //   model emits thousands of lines a second and knows nothing about whether any
 //   of them are right.
 //
-//   NOT one language. The same recipes are emitted to C++, Python, JavaScript
-//   and Rust from the same certificate, because a backend per target is what
-//   "any language" has to mean if it is going to mean anything.
+//   NOT one language. The same recipes are emitted to fourteen targets from the
+//   same certificate, because a backend per target is what "any language" has
+//   to mean if it is going to mean anything. Each backend reproduces the value
+//   cap, the empty-list results, the zero-guard on division and the cycling
+//   shorter operand in that language's own arithmetic -- Python, Ruby, Lua and
+//   Haskell have to be told to truncate rather than floor, and getting that
+//   wrong would make a certificate a lie on exactly the negative inputs.
 //
 // CPU IS A TOOL TO BE ABUSED: tasks are independent, so the work is taken from a
 // single atomic cursor by every hardware thread, and the library they learn into
@@ -197,7 +201,8 @@ void run_worker(const std::vector<Spec>& specs, std::atomic<std::size_t>& cursor
 
         ++out.solved;
         std::size_t lines = 0;
-        (void)emit(b.recipe, lang, "kh_" + specs[i].name, &lines);
+        (void)emit(b.recipe, lang, "kh_" + specs[i].name, &lines,
+                   shared ? snap.get() : &solo);
         out.body_lines += lines;
         // Library primitives INSIDE the answer, over the nodes the root reaches.
         // If this is zero across a whole run, later solutions are not built on
@@ -295,7 +300,7 @@ int main(int argc, char** argv) {
     for (const BuildResult& b : results) {
         if (b.proof != Proof::Generalised) continue;
         std::size_t n = 0;
-        (void)emit(b.recipe, Lang::Cpp, "f", &n);
+        (void)emit(b.recipe, Lang::Cpp, "f", &n, nullptr);
         fx_lines += n;
     }
 
@@ -415,7 +420,7 @@ int main(int argc, char** argv) {
     // Emitted from ONE certificate each. The certificate is language-independent
     // because it is a statement about behaviour, not about syntax -- which is
     // what makes a new backend a day of work rather than a new organ.
-    std::printf("\n  THE SAME CERTIFICATES, EMITTED TO FOUR LANGUAGES\n");
+    std::printf("\n  THE SAME CERTIFICATES, EMITTED TO FOURTEEN LANGUAGES\n");
     std::printf("  language     | prelude | bodies | total lines\n");
     std::printf("  -------------+---------+--------+------------\n");
     Library demo_lib(lib_bud);
@@ -427,13 +432,21 @@ int main(int argc, char** argv) {
         demo_lib.admit_recipe(specs[i].name, b.recipe, i);
         demo_lib.prune();
     }
-    for (const Lang l : {Lang::Cpp, Lang::Python, Lang::JavaScript, Lang::Rust}) {
+    // The body count is IDENTICAL across every row, and that is the check
+    // rather than a coincidence: a recipe is a statement about behaviour, so
+    // the number of synthesised lines is a property of the recipe and not of
+    // the target. A row whose body count differs has a backend that is emitting
+    // something other than the recipe.
+    for (const Lang l : {Lang::Cpp, Lang::Python, Lang::JavaScript, Lang::Rust,
+                         Lang::Go, Lang::Java, Lang::CSharp, Lang::TypeScript,
+                         Lang::Ruby, Lang::Lua, Lang::Haskell, Lang::Swift,
+                         Lang::Kotlin, Lang::Php}) {
         std::size_t pre = 1, bodies = 0;
         const std::string p = prelude(l);
         for (const char ch : p) if (ch == '\n') ++pre;
         for (std::size_t i = 0; i < certified.size(); ++i) {
             std::size_t n = 0;
-            (void)emit(certified[i], l, "f" + std::to_string(i), &n);
+            (void)emit(certified[i], l, "f" + std::to_string(i), &n, &demo_lib);
             bodies += n;
         }
         std::printf("  %-12s | %7zu | %6zu | %11zu\n",
@@ -444,7 +457,7 @@ int main(int argc, char** argv) {
     if (!certified.empty()) {
         std::printf("\n  SAMPLE (%s), one certified function:\n\n", lang_name(Lang::Python));
         std::size_t n = 0;
-        std::printf("%s", emit(certified.front(), Lang::Python, "solved_0", &n).c_str());
+        std::printf("%s", emit(certified.front(), Lang::Python, "solved_0", &n, &demo_lib).c_str());
     }
     return 0;
 }
