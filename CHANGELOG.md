@@ -95,6 +95,65 @@ Two further negatives from the same run:
   co-occurrence graph, and that is a fact about the environment rather than about
   the search.
 
+### An adversarial audit of Ribosome, and it invalidated my own reporting
+
+Rather than defend the negative results above, an agent was dispatched to attack
+the search. It returned an exhaustive scan of all 384 one-instruction programs
+and nine confirmed defects. The three that matter:
+
+- **Every reported difference was noise.** Held-out is 1,133 pairs, so
+  "3.18% vs 3.44%" is **36 correct answers against 39** (z = 0.35, p = 0.72), and
+  the earlier withdrawn win of 0.353 vs 0.177 was **4 against 2** (p = 0.41).
+  Nothing the bench printed was distinguishable from anything else it printed.
+  Every rate now carries `hits/n` and a 95% Wilson interval, and the verdict line
+  says INSIDE THE NOISE when a z-test cannot separate the top two.
+- **The objective was anti-correlated with the reported metric.** The chamber
+  selected on one designated sibling while the bench reported same-category
+  accuracy; the instruction it preferred scores 1.62% on the reported metric and
+  the one it rejected scores 3.36%. The champion was **rank 1 of 384** on the
+  target it was given — selection never failed, the objective was wrong.
+- **The "corrected" metric was also won by a constant**, at 3.97%, beating both
+  the champion and the baseline. The majority-class row was printed beside the
+  metric that did not need it. The same trap, twice.
+
+Six more, all confirmed: `sample = 96` left 294 of 300 organisms at zero hits so
+the tournament was a coin flip (needs ~34,000 samples; now the full set); `Assoc`
+took `b % degree` with degree varying 0–32, so one codon meant a different rank
+per word and the best primitive had 0.027 expected copies in a starting
+population; `Common` was bit-identical to `Assoc[0]`; opcode decode had a modulo
+bias against exactly the four opcodes with a gradient; there was no elitism, so a
+discovered operator could be bred out; and 88% of `Vm::run` was regenerating
+constant registers, with a champion-admission test costing 411,012 extra VM runs
+per round against the 28,800 needed to score the population.
+
+### The deepest finding: most of a genome was dead
+
+Over 200,000 random 5-codon genomes: mean **1.309** live instructions, **27%**
+pure identity, only 53% producing output that depended on the input. The
+behaviourally distinct space was ~384 programs, enumerable in seconds.
+
+The response changed the machine rather than the fitness — a bonus for
+composition would be a human prior smuggled into the search, which is what the
+total decoder exists to avoid. **The output is now the last register written**,
+so the final instruction is live by construction and liveness propagates
+backwards. Measured: **1.309 → 2.241** live instructions, **27% → 0.0%** pure
+identity.
+
+Corrected co-hyponymy result, all audit fixes in place:
+
+| predictor | plain | hits/n | balanced |
+|---|---|---|---|
+| constant | 0.794% | 9/1133 | 0.667% |
+| top Plexus associate | 3.442% | 39/1133 | 3.128% |
+| second-order kin | 2.913% | 33/1133 | 2.370% |
+| **Ribosome (evolved)** | **3.530%** | **40/1133** | **3.295%** |
+
+Ribosome leads on both — and the bench prints INDISTINGUISHABLE, because 40 hits
+against 39 cannot rank two predictors. **That is a tie.** What did change is
+qualitative: the champion is five live instructions
+(`assoc → neigh → and → clean → common`) instead of collapsing to a single
+`neigh` that rediscovered a baseline.
+
 ### Three findings that redesigned Ribosome mid-build
 
 - **A closed instruction set cannot search a hypervector space.** With no senses,
