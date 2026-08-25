@@ -342,21 +342,74 @@ TierResult run_tier(const std::vector<Task>& tasks, const std::vector<Spec>& spe
     // stays single-threaded and in order, so the answers do not depend on the
     // thread count -- which is what makes this loop's numbers still comparable
     // with the ones it produced on one core.
+    // SPECULATION, because three of twenty-four cores were busy.
+    //
+    // solve_one already runs forward, bidirectional and library-free at once --
+    // three cores, resolved by a fixed preference order. The loop over tasks
+    // stays ordered because admission is task-by-task and that is where the
+    // compounding lives, so twenty-one cores sat idle while the deepest tiers
+    // took twenty-seven seconds each and the run became wall-clock bound.
+    //
+    // A CORRECT PROGRAM STAYS CORRECT HOWEVER THE LIBRARY GROWS. So tasks ahead
+    // are solved speculatively against the library as it stands; when a task's
+    // turn comes, a speculative answer that generalised and survives the
+    // external check is kept, and one that failed is re-run against the richer
+    // library it should have had. The re-run recovers what the sequential loop
+    // would have found, so the verified count cannot fall below it.
+    //
+    // Eight speculative tasks times three searches is twenty-four, which is this
+    // machine. holds_up is NOT called in the parallel phase: it draws from the
+    // global stream and would be a data race, and after recipe compaction it is
+    // cheap enough that leaving it sequential costs nothing.
+    const std::size_t kSpec =
+        std::max<std::size_t>(1, khora::governor::Governor::cap_workers(0.90) / 3);
+    std::vector<BuildResult> ahead;
+    std::size_t ahead_base = 0;
+    bool lib_moved = false;
+
     for (std::size_t i = 0; i < tasks.size(); ++i) {
-        // Forward, bidirectional and library-free, ALL AT ONCE, resolved by a
-        // fixed preference order rather than by who finishes first. They never
-        // depended on each other -- running them in sequence was spending the
-        // time budget three times for one answer, and this loop's tier depth is
-        // exactly what that budget buys.
         const auto tc = clk::now();
-        BuildResult b = solve_one(specs[i], pool_cap, lib);
+        if (ahead.empty() || i >= ahead_base + ahead.size()) {
+            const std::size_t n = std::min(kSpec, tasks.size() - i);
+            ahead.assign(n, BuildResult{});
+            ahead_base = i;
+            lib_moved = false;
+            std::vector<std::thread> pool;
+            pool.reserve(n);
+            for (std::size_t j = 0; j < n; ++j) {
+                pool.emplace_back([&ahead, &specs, lib, pool_cap, i, j] {
+                    ahead[j] = solve_one(specs[i + j], pool_cap, lib);
+                });
+            }
+            for (auto& th : pool) th.join();
+        }
+        BuildResult b = std::move(ahead[i - ahead_base]);
         r.t_fwd += std::chrono::duration<double>(clk::now() - tc).count();
+        const auto tv = clk::now();
+        bool ok = (b.proof == Proof::Generalised) && holds_up(b.recipe, lib, tasks[i].f);
+        r.t_check += std::chrono::duration<double>(clk::now() - tv).count();
+        // A SPECULATIVE MISS GETS THE LIBRARY IT SHOULD HAVE HAD. Anything after
+        // the first of a batch was solved against a staler library than the
+        // sequential loop would have handed it, so a failure there is not an
+        // answer -- it is a stale attempt, and it is retried against the library
+        // as it now stands. That is what keeps the verified count from falling
+        // below the sequential one.
+        // ONLY IF THE LIBRARY ACTUALLY MOVED. Retrying every speculative failure
+        // solved each genuinely unsolvable task TWICE, and at deep tiers most
+        // tasks are unsolvable -- eight-way speculation came out SLOWER than the
+        // sequential loop it replaced, tier 15 against tier 23 in the same three
+        // hundred seconds. A speculation is only stale if something was admitted
+        // since it started; if nothing was, it is exactly the answer the
+        // sequential loop would have produced and there is nothing to redo.
+        if (!ok && i > ahead_base && lib_moved) {
+            const auto tr = clk::now();
+            b = solve_one(specs[i], pool_cap, lib);
+            r.t_bidir += std::chrono::duration<double>(clk::now() - tr).count();
+            ok = (b.proof == Proof::Generalised) && holds_up(b.recipe, lib, tasks[i].f);
+        }
         r.nodes += b.nodes_considered;
         if (b.proof != Proof::Generalised) continue;
         ++r.solved;
-        const auto tv = clk::now();
-        const bool ok = holds_up(b.recipe, lib, tasks[i].f);
-        r.t_check += std::chrono::duration<double>(clk::now() - tv).count();
         if (!ok) continue;
         ++r.verified;
         const std::size_t calls = live_calls(b.recipe);
@@ -364,6 +417,7 @@ TierResult run_tier(const std::vector<Task>& tasks, const std::vector<Spec>& spe
         if (calls > 1) ++r.chained_calls;
         if (admit && lib != nullptr) {
             lib->admit_recipe(tasks[i].name, b.recipe, i);
+            lib_moved = true;
             lib->prune();
             // AND IT BECOMES MATERIAL FOR FUTURE PROBLEMS. The recipe is captured
             // BY VALUE: the library prunes under a budget, and a task generator
