@@ -102,15 +102,21 @@ unhandled argument node would have emitted `kh_id(x)` — binding argument 1 to
 argument 0, in source that compiles and reads correctly. Argument nodes resolve
 to parameters in `ref()` and emit no statement at all.
 
-### Nine of fourteen backends executed against the certificate, not three
+### Twelve of fourteen backends executed against the certificate, not three
 
 The differential harness builds recipes, runs `Recipe::apply` as the reference,
 emits to several languages and diffs their stdout line by line — 13 recipes x 9
 inputs, three of the inputs longer than the 512-element bound where the
 interpreter's per-operation clamp bites.
 
-**Python, JavaScript, TypeScript, Go, Rust, C++, C#, Lua and Ruby all match byte
-for byte.**
+**Python, JavaScript, TypeScript, Go, Rust, C++, C#, Java, Kotlin, PHP, Lua and
+Ruby all match byte for byte.**
+
+The standing goal says the machine's hardware is the only restriction and grants
+100 GB, so the missing toolchains were installed rather than treated as a wall:
+Temurin JDK 21 and the Kotlin 2.0 compiler for the two JVM backends, PHP 8.4 for
+the third. That took the count from nine to twelve in one sitting, and it was
+never a limit of the system — only of what was on the disk.
 
 Lua and Ruby have no native toolchain on this machine, but the real
 implementations do — Lua 5.4 and CRuby 3.4 compiled to WebAssembly, run under
@@ -120,9 +126,14 @@ CRuby's WASI stdout is not wired up here, so the Ruby driver returns its
 transcript as a value instead of printing it; the semantics under test are
 identical either way.
 
-Java, Kotlin, Swift, Haskell and PHP are emitted and deliberately not counted:
-no toolchain for them here, native or WASM. Nine of fourteen is the honest
-number, and the nine that are claimed are claimed because they ran.
+Swift and Haskell are emitted and deliberately not counted: no toolchain
+installed for them yet. Twelve of fourteen is the honest number, and the twelve
+that are claimed are claimed because they ran.
+
+A note on the PHP that was already on PATH: it was a different tool entirely,
+shadowing the real thing. Every earlier report correctly refused to count PHP
+because the file never executed — the fix was installing PHP, not trusting the
+binary name.
 
 Go is new to that list in the sense that matters: the prelude declares
 `package kh`, which is correct for a library and means `go run` refuses the file
