@@ -241,10 +241,13 @@ int main(int argc, char** argv) {
 
     std::uint64_t seed = 0xC0FFEEULL;
     std::vector<Spec> specs;
+    std::vector<Gen> gens;
     specs.reserve(ntask);
+    gens.reserve(ntask);
     for (std::size_t i = 0; i < ntask; ++i) {
         Gen g{static_cast<int>(mix(seed) % 10),
               static_cast<std::int64_t>(mix(seed) % 9) + 1};
+        gens.push_back(g);
         specs.push_back(make(g, seed));
     }
 
@@ -314,6 +317,73 @@ int main(int argc, char** argv) {
                 hw, st.certified, st.attempted, fx_lines, st.seconds,
                 fx_lines / std::max(1e-9, st.seconds));
     std::printf("\n  scaling: %.2fx on %u threads\n", s1 / std::max(1e-9, sN), hw);
+    // ---- COUNTEREXAMPLE-GUIDED, the arm that attacks memorisation -----------
+    //
+    // 249 of 2,000 tasks produce a program that passes every case it was shown
+    // and is wrong on a held-out one. More examples helps and cannot GUARANTEE,
+    // because any finite sample leaves behaviours consistent with all of it and
+    // wrong everywhere else. This hunts instead: synthesise, look for an input
+    // where the program disagrees with the reference, feed that input back as a
+    // constraint, repeat. A counterexample is by construction a case the current
+    // program gets WRONG, so the next search cannot return the same program.
+    {
+        const std::size_t sample = std::min<std::size_t>(specs.size(), 400);
+        // Only VERIFIED recipes enter this library. A merely certified one is
+        // wrong somewhere the sample did not look, and admitting it would put a
+        // primitive that lies underneath every later search.
+        Library cegis_lib(lib_bud);
+        std::size_t verified = 0, certified_only = 0, unsolved = 0;
+        std::size_t total_rounds = 0, total_probes = 0;
+        const auto tv = clk::now();
+        for (std::size_t i = 0; i < sample; ++i) {
+            const Gen g = gens[i];
+            Oracle oracle = [g](const Value& in) { return g(in); };
+            auto ps = std::make_shared<std::uint64_t>(0xA11CEULL + i);
+            Prober prober = [ps](std::size_t k) -> Value {
+                // The edges first, then random. A prober that only draws
+                // uniformly misses exactly the shapes that break a fitted
+                // program.
+                static const Value edges[] = {
+                    {}, {0}, {1}, {-1}, {7, 7, 7}, {1, 2, 3, 4, 5}, {5, 4, 3, 2, 1},
+                    {1000000000}, {-1000000000}, {0, 0, 0, 0},
+                };
+                if (k < sizeof(edges) / sizeof(edges[0])) return edges[k];
+                Value v;
+                const std::size_t len = mix(*ps) % 11;
+                for (std::size_t j = 0; j < len; ++j) {
+                    v.push_back(static_cast<std::int64_t>(mix(*ps) % 50) - 20);
+                }
+                return v;
+            };
+            Verification ver;
+            // The library was nullptr here, which meant the one arm measuring
+            // real correctness was also the only arm denied the compounding
+            // every other arm gets.
+            const BuildResult b = synthesise_verified(specs[i], pool_cap, oracle,
+                                                      prober, 300, 6, &cegis_lib, &ver);
+            if (b.proof == Proof::Verified) {
+                cegis_lib.admit_recipe(specs[i].name, b.recipe, i);
+                cegis_lib.prune();
+            }
+            total_rounds += ver.rounds;
+            total_probes += ver.probes_run;
+            if (b.proof == Proof::Verified) ++verified;
+            else if (b.certified()) ++certified_only;
+            else ++unsolved;
+        }
+        const double tvs = std::chrono::duration<double>(clk::now() - tv).count();
+        std::printf("\n  COUNTEREXAMPLE-GUIDED (%zu tasks, 300 probes, <=6 refinements)\n",
+                    sample);
+        std::printf("    VERIFIED, no counterexample found : %zu\n", verified);
+        std::printf("    certified but a counterexample exists: %zu\n", certified_only);
+        std::printf("    not solved at all                 : %zu\n", unsolved);
+        std::printf("    %.2f refinements and %.0f probes per task, %.1f s total\n",
+                    static_cast<double>(total_rounds) / sample,
+                    static_cast<double>(total_probes) / sample, tvs);
+        std::printf("    Of the ones it solves, %.1f%% survive an adversarial hunt.\n",
+                    100.0 * verified / std::max<std::size_t>(1, verified + certified_only));
+    }
+
     std::printf("\n  ITERATING TO FIXPOINT -- newly certified per round:\n   ");
     for (const std::size_t k : st.solved_per_round) std::printf(" %zu", k);
     std::printf("\n  %zu rounds, %zu certified (%.1f%%), %zu memorised and rejected,\n",

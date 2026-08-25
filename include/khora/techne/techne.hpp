@@ -67,6 +67,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -117,6 +118,21 @@ enum class Op : std::uint8_t {
     MapAdd,    // dst = [x + b[0] for x in a]
     MapMul,
     Count,     // dst = [#{x in a : x == b[0]}]
+    // ---- BOUNDED CONDITIONALS -----------------------------------------------
+    //
+    // Measured, and this is the wall counterexample refinement ran into. 189 of
+    // 400 tasks produced a program that is right in general and wrong on an
+    // edge -- empty input, singleton input -- and NO amount of refinement fixes
+    // them, because expressing "return nothing when the list is too short"
+    // requires a conditional and there was not one. Refinement averaged 0.55
+    // rounds against a ceiling of 6: it was not stopping because it had
+    // succeeded, it was stopping because the answer was unreachable.
+    //
+    // These two do not reintroduce the halting problem. Neither loops, neither
+    // branches control flow, and both evaluate both operands: they select
+    // between already-computed values. Termination by construction is untouched.
+    Guard,     // dst = b.empty() ? [] : a     -- a, but only if b is non-empty
+    Else,      // dst = a.empty() ? b : a      -- a, or b when a has nothing
     Call,      // dst = library[b](a)    a learned primitive
     kCount
 };
@@ -282,7 +298,15 @@ struct Spec {
 enum class Proof {
     None,        // no program satisfied the specification
     Tested,      // passes every visible case
-    Generalised  // passes every visible case AND every held-out case
+    Generalised, // passes every visible case AND every held-out case
+    // VERIFIED: an adversary was given the program and could not find an input
+    // on which it disagrees with the oracle.
+    //
+    // Generalised is a statement about a fixed sample. Verified is a statement
+    // about a search: a counterexample hunter ran against the candidate and
+    // failed. That is strictly stronger, and it is the only level that can
+    // honestly be called guaranteed -- over the domain the hunter covers.
+    Verified
 };
 
 struct Solution {
@@ -422,6 +446,53 @@ struct SolveStats {
     std::size_t nodes = 0;
     double seconds = 0.0;
 };
+
+// ---------------------------------------------------------------------------
+// COUNTEREXAMPLE-GUIDED SYNTHESIS.
+//
+// Measured: at 12 visible cases, 249 of 2,000 tasks produced a program that
+// passed every case it was shown and failed a held-out one. Adding cases helps
+// (333 at six cases, 249 at twelve) but it can never GUARANTEE, because it is
+// still sampling: any finite set of examples leaves behaviours consistent with
+// all of them and wrong everywhere else.
+//
+// So stop sampling and start ADVERSARIALLY SEARCHING. Synthesise a candidate,
+// then hunt for an input on which it disagrees with the oracle. If one is found
+// it becomes a new constraint and the search runs again; if the hunt fails, the
+// program is Verified.
+//
+// This is legitimate rather than a shortcut, because real programming HAS an
+// oracle. Tests, assertions, type checks and property predicates are all things
+// that can say "wrong on this input" without being able to say what the right
+// program is. That is exactly the interface below.
+//
+// An Oracle gives the reference behaviour for an input. That is what a test
+// suite, a specification, a property checker or a previous implementation all
+// are -- something that can say what SHOULD happen without being able to say
+// what program should do it.
+//
+// A Prober supplies inputs to try. It is where knowledge about hard cases
+// lives, and a lazy one that only draws uniformly at random will miss the edges
+// every time -- empty, singleton, all-equal, sorted, reverse-sorted and extreme
+// inputs are exactly where a program fitted to mid-sized random lists breaks.
+using Oracle = std::function<Value(const Value& in)>;
+using Prober = std::function<Value(std::size_t i)>;
+
+struct Verification {
+    bool verified = false;
+    std::size_t probes_run = 0;
+    std::size_t rounds = 0;              // counterexamples fed back
+    Value counterexample;                // the last one found, if any
+};
+
+// Synthesise, then refine against counterexamples until none can be found.
+// `probes` bounds the hunt; `rounds` bounds how many counterexamples are fed
+// back before giving up.
+BuildResult synthesise_verified(Spec spec, std::size_t pool_cap,
+                                const Oracle& oracle, const Prober& prober,
+                                std::size_t probes, std::size_t rounds,
+                                const Library* lib = nullptr,
+                                Verification* out = nullptr);
 
 // Solve every specification, to fixpoint, across every core.
 std::vector<BuildResult> solve_all(const std::vector<Spec>& specs,

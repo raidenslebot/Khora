@@ -79,6 +79,7 @@ const char* op_name(Op o) {
         case Op::Min: return "min";      case Op::Filter: return "filter";
         case Op::MapAdd: return "mapadd";case Op::MapMul: return "mapmul";
         case Op::Count: return "count";  case Op::Call: return "call";
+        case Op::Guard: return "guard";  case Op::Else: return "else";
         default: return "?";
     }
 }
@@ -89,6 +90,7 @@ inline bool binary(Op o) {
         case Op::Add: case Op::Sub: case Op::Mul: case Op::Div: case Op::Mod:
         case Op::Append: case Op::Take: case Op::Drop: case Op::Index:
         case Op::Filter: case Op::MapAdd: case Op::MapMul: case Op::Count:
+        case Op::Guard: case Op::Else:
             return true;
         default: return false;
     }
@@ -390,6 +392,8 @@ Value run(const Program& p, const Value& input, const Library* lib, std::size_t 
                 out = Value{n};
                 break;
             }
+            case Op::Guard: if (!B.empty()) out = A; break;
+            case Op::Else:  out = A.empty() ? B : A; break;
             case Op::Call: {
                 if (lib == nullptr || lib->size() == 0) break;
                 out = lib->call(c.b % lib->size(), A, depth + 1);
@@ -565,7 +569,8 @@ const std::vector<Op>& unary_ops() {
 const std::vector<Op>& binary_ops() {
     static const std::vector<Op> v{Op::Add, Op::Sub, Op::Mul, Op::Div, Op::Mod,
                                    Op::Append, Op::Take, Op::Drop, Op::Index,
-                                   Op::Filter, Op::MapAdd, Op::MapMul, Op::Count};
+                                   Op::Filter, Op::MapAdd, Op::MapMul, Op::Count,
+                                   Op::Guard, Op::Else};
     return v;
 }
 
@@ -621,6 +626,8 @@ Value apply_op(Op op, const Value& A, const Value& B, std::uint8_t k,
         case Op::MapAdd: { if (B.empty()) break; for (const auto x : A) out.push_back(sat_add(x, B[0])); break; }
         case Op::MapMul: { if (B.empty()) break; for (const auto x : A) out.push_back(sat_mul(x, B[0])); break; }
         case Op::Count: { if (B.empty()) break; std::int64_t n = 0; for (const auto x : A) if (x == B[0]) ++n; out = Value{n}; break; }
+        case Op::Guard: if (!B.empty()) out = A; break;
+        case Op::Else:  out = A.empty() ? B : A; break;
         case Op::Call:  if (lib && lib->size()) out = lib->call(k % lib->size(), A, depth + 1); break;
         default: out = A; break;
     }

@@ -42,6 +42,7 @@ const char* fn_of(Op op) {
         case Op::Max: return "kh_max";      case Op::Min: return "kh_min";
         case Op::Filter: return "kh_filter";case Op::MapAdd: return "kh_addk";
         case Op::MapMul: return "kh_mulk";  case Op::Count: return "kh_count";
+        case Op::Guard: return "kh_guard";  case Op::Else: return "kh_else";
         default: return "kh_id";
     }
 }
@@ -51,6 +52,7 @@ bool is_binary(Op op) {
         case Op::Add: case Op::Sub: case Op::Mul: case Op::Div: case Op::Mod:
         case Op::Append: case Op::Take: case Op::Drop: case Op::Index:
         case Op::Filter: case Op::MapAdd: case Op::MapMul: case Op::Count:
+        case Op::Guard: case Op::Else:
             return true;
         default: return false;
     }
@@ -89,6 +91,8 @@ def kh_filter(a, b): return [x for x in a if x > b[0]] if b else []
 def kh_addk(a, b): return [kh_cap(x + b[0]) for x in a] if b else []
 def kh_mulk(a, b): return [kh_cap(x * b[0]) for x in a] if b else []
 def kh_count(a, b): return [sum(1 for x in a if x == b[0])] if b else []
+def kh_guard(a, b): return list(a) if b else []
+def kh_else(a, b): return list(a) if a else list(b)
 )PY";
 
 const char* kCppPrelude = R"CPP(#include <algorithm>
@@ -145,6 +149,8 @@ static V kh_filter(const V& a, const V& b) { if (b.empty()) return {}; V o; for 
 static V kh_addk(const V& a, const V& b) { if (b.empty()) return {}; V o; for (auto x : a) o.push_back(kh_cap(x + b[0])); return o; }
 static V kh_mulk(const V& a, const V& b) { if (b.empty()) return {}; V o; for (auto x : a) o.push_back(kh_cap(x * b[0])); return o; }
 static V kh_count(const V& a, const V& b) { if (b.empty()) return {}; std::int64_t n = 0; for (auto x : a) if (x == b[0]) ++n; return { n }; }
+static V kh_guard(const V& a, const V& b) { return b.empty() ? V{} : a; }
+static V kh_else(const V& a, const V& b) { return a.empty() ? b : a; }
 )CPP";
 
 const char* kJsPrelude = R"JS(const CAP = 1000000000;
@@ -174,6 +180,8 @@ const kh_filter = (a, b) => b.length ? a.filter(x => x > b[0]) : [];
 const kh_addk = (a, b) => b.length ? a.map(x => kh_cap(x + b[0])) : [];
 const kh_mulk = (a, b) => b.length ? a.map(x => kh_cap(x * b[0])) : [];
 const kh_count = (a, b) => b.length ? [a.filter(x => x === b[0]).length] : [];
+const kh_guard = (a, b) => b.length ? a.slice() : [];
+const kh_else = (a, b) => a.length ? a.slice() : b.slice();
 )JS";
 
 const char* kRustPrelude = R"RS(pub type V = Vec<i64>;
@@ -230,6 +238,8 @@ pub fn kh_count(a: &V, b: &V) -> V {
     if b.is_empty() { return vec![]; }
     vec![a.iter().filter(|x| **x == b[0]).count() as i64]
 }
+pub fn kh_guard(a: &V, b: &V) -> V { if b.is_empty() { vec![] } else { a.clone() } }
+pub fn kh_else(a: &V, b: &V) -> V { if a.is_empty() { b.clone() } else { a.clone() } }
 )RS";
 
 } // namespace
