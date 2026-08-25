@@ -1067,13 +1067,16 @@ BuildResult construct(const Spec& spec, std::size_t max_pool, const Library* lib
 
     std::vector<Expr> pool;
     std::vector<std::vector<Value>> behaviour;
-    std::unordered_set<Sig, SigHash> seen;
+    // Sig -> POOL INDEX, not just a set. Knowing WHERE a behaviour lives is what
+    // lets the closing pass below turn "does this behaviour exist" into "here is
+    // the node that computes it".
+    std::unordered_map<Sig, std::size_t, SigHash> seen;
     int found_at = -1;
 
     auto consider = [&](const Expr& e, std::vector<Value> outs) {
         ++r.nodes_considered;
         const Sig sig = signature(outs);
-        if (!seen.insert(sig).second) return;   // observationally equivalent: drop
+        if (!seen.emplace(sig, pool.size()).second) return;  // observationally equivalent
         const bool is_target = (sig == want);
         pool.push_back(e);
         behaviour.push_back(std::move(outs));
@@ -1247,6 +1250,81 @@ BuildResult construct(const Spec& spec, std::size_t max_pool, const Library* lib
                     Expr e; e.op = op; e.a = static_cast<int>(i); e.b = static_cast<int>(j);
                     consider(e, std::move(outs));
                     if (found_at >= 0) break;
+                }
+            }
+        }
+
+        // THE CLOSING PASS: solve for the operand instead of enumerating it.
+        //
+        // The binary sweep tries every PAIR, which is end^2 x |ops| and is what
+        // puts operation-depth 4 out of reach -- a 200,000-node pool fills before
+        // the level completes. But for an invertible operation the second operand
+        // is DETERMINED by the target. If the answer is mul(a, b), then b is
+        // target / a; there is nothing to search for.
+        //
+        // So for each node already in the pool, compute the operand the target
+        // would require and look it up. That is O(pool) per operation instead of
+        // O(pool^2), and it reaches one level deeper than the sweep that produced
+        // the pool -- which is exactly the level that was missing. Measured: the
+        // wall was tasks needing six operation nodes, like
+        // mul(x, mapadd(range(len(x)), 1)), where every piece is cheap and only
+        // the final pairing is expensive.
+        //
+        // EVERY HIT IS VERIFIED BY APPLYING THE OPERATION. The inverses below are
+        // exact only when the shapes line up, and zip CYCLES its shorter operand,
+        // so a candidate that looks right by construction can still be wrong.
+        // Recomputing forward costs one op per hit and removes the whole class.
+        if (found_at < 0) {
+            const std::size_t close_end = pool.size();
+            for (std::size_t i = 0; i < close_end && found_at < 0; ++i) {
+                for (const Op op : {Op::Add, Op::Sub, Op::Mul, Op::Append}) {
+                    if (!spec.allows(op)) continue;
+                    std::vector<Value> need(ncase);
+                    bool ok = true;
+                    for (std::size_t c = 0; c < ncase && ok; ++c) {
+                        const Value& A = behaviour[i][c];
+                        const Value& T = target[c];
+                        Value& B = need[c];
+                        switch (op) {
+                            case Op::Add:                       // b = t - a
+                                if (A.size() != T.size()) { ok = false; break; }
+                                for (std::size_t k = 0; k < T.size(); ++k) B.push_back(T[k] - A[k]);
+                                break;
+                            case Op::Sub:                       // b = a - t
+                                if (A.size() != T.size()) { ok = false; break; }
+                                for (std::size_t k = 0; k < T.size(); ++k) B.push_back(A[k] - T[k]);
+                                break;
+                            case Op::Mul:                       // b = t / a, exactly
+                                if (A.size() != T.size()) { ok = false; break; }
+                                for (std::size_t k = 0; k < T.size() && ok; ++k) {
+                                    if (A[k] == 0) { if (T[k] != 0) ok = false; else B.push_back(0); }
+                                    else if (T[k] % A[k] != 0) ok = false;
+                                    else B.push_back(T[k] / A[k]);
+                                }
+                                break;
+                            case Op::Append:                    // b = t with a's prefix removed
+                                if (T.size() < A.size()) { ok = false; break; }
+                                for (std::size_t k = 0; k < A.size() && ok; ++k)
+                                    if (T[k] != A[k]) ok = false;
+                                if (ok) B.assign(T.begin() + static_cast<std::ptrdiff_t>(A.size()), T.end());
+                                break;
+                            default: ok = false; break;
+                        }
+                    }
+                    if (!ok) continue;
+                    const auto at = seen.find(signature(need));
+                    if (at == seen.end()) continue;
+                    const std::size_t j = at->second;
+                    // Verify forward before believing it.
+                    bool same = true;
+                    std::vector<Value> outs(ncase);
+                    for (std::size_t c = 0; c < ncase && same; ++c) {
+                        outs[c] = apply_op(op, behaviour[i][c], behaviour[j][c], 0, lib, 0);
+                        if (outs[c] != target[c]) same = false;
+                    }
+                    if (!same) continue;
+                    Expr e; e.op = op; e.a = static_cast<int>(i); e.b = static_cast<int>(j);
+                    consider(e, std::move(outs));
                 }
             }
         }

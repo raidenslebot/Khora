@@ -236,6 +236,49 @@ that is invisible until someone looks.
 
 **And it plateaus** — flat from stage 6 while training continues.
 
+### Solving for the operand instead of enumerating it
+
+The wall was named precisely enough to attack: bottom-up enumeration cannot reach
+operation-depth 4 before a 200,000-node pool fills, because the binary sweep is
+`end^2 x |ops|` pairs.
+
+For an invertible operation the second operand is not something to search for --
+it is **determined by the target**. If the answer is `mul(a, b)`, then `b` is
+`target / a`. So a closing pass runs after each level: for every node already in
+the pool, compute the operand the target would require and look it up in the
+dedup table. That is O(pool) per operation instead of O(pool²), and it reaches
+one level deeper than the sweep that produced the pool — exactly the level that
+was missing.
+
+| arm | before | after |
+|-----|--------|-------|
+| CONSTRUCTION | 16/20, 169,437 candidates | **18/20, 137,991 candidates** |
+
+Two more tasks, on nineteen percent less search.
+
+Every hit is re-verified by applying the operation forward. The inverses are
+exact only when the shapes line up and `zip` cycles its shorter operand, so a
+candidate that looks right by construction can still be wrong; recomputing costs
+one operation per hit and removes the entire class.
+
+What it does not fix: `idxmul` moves from finding nothing to finding a program
+that fits the visible cases and fails the holdout. `Mul`'s inverse is ambiguous
+wherever `a[k]` is zero — `b[k]` is then unconstrained — and zeros are common at
+these value ranges. The `Add`, `Sub` and `Append` inverses have no such hole.
+
+### Better search made the library a liability
+
+On the same fixed set the two arms INVERTED. Plain construction now scores 18/20;
+construction with a learned library scores **16/20**. The library had been
+compensating for weak search, and once the search improved, its extra level-0
+entries cost more than its vocabulary returned.
+
+It still pays +7 on the open-ended fixed bar, so this is benchmark-dependent
+rather than a verdict on library learning. But "vocabulary substitutes for
+search" has now been measured in both directions, and the direction that matters
+is the one nobody looks for: **improving the engine can turn a component that was
+earning its place into one that is not.**
+
 ### The residual ceiling, itemised
 
 Breaking the fixed 96-task bar down by depth turns one number into a diagnosis:
