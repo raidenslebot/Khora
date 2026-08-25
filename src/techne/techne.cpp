@@ -43,7 +43,10 @@ inline double unit(std::uint64_t& s) noexcept {
 // both comfortably inside int64. No overflow is possible, so no check is
 // needed, and there is no case to get wrong. Results are re-capped, so the cap
 // is a closed interval under every operation.
-inline constexpr std::int64_t kValueCap = 1'000'000'000;
+// kValueCap now lives in the header so a caller's reference function can
+// respect the same bound. Kept as a using-declaration rather than a second
+// definition, because two constants named the same thing is how they diverge.
+using khora::techne::kValueCap;
 
 inline std::int64_t cap(std::int64_t x) noexcept {
     return x < -kValueCap ? -kValueCap : (x > kValueCap ? kValueCap : x);

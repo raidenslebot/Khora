@@ -287,6 +287,51 @@ widening the cases from 1-5 to 1-12 already removed them. A counterexample hunt
 finds nothing when the specification is already informative enough, which is the
 outcome you want from having fixed the specification.
 
+### "Thirty programs certified and wrong" was two
+
+The counterexample arm has reported ~30 of 60 sampled tasks carrying a
+certificate and a counterexample at the same time for several cycles. I quoted it
+as the standing quality defect and never looked at the programs. Printing them
+took one line:
+
+```
+[ce] scale_5     len=1  want 1 vals, got 1  mul(x, 5)
+[ce] scale_2     len=1  want 1 vals, got 1  add(x, x)
+[ce] scale_7     len=1  want 1 vals, got 1  mul(x, 7)
+```
+
+`mul(x, 5)` **is** `scale_5`. It is the correct program. The edge probes include
+`{1000000000}`, which is exactly `kValueCap`, and the task generators computed
+`x * k` in unbounded int64 while every value the interpreter produces saturates.
+So the oracle demanded 5e9 from a system that cannot represent it.
+
+That is the `clamp_len` defect again — the interpreter bounds every result and
+the reference does not — and it is the reference that is wrong both times. The
+cap lived in `techne.cpp`, so a caller writing a reference function had no way to
+respect it; it is now in the header with a `cap_value` helper, and the generators
+use it.
+
+| | count |
+|---|-------|
+| originally reported | **30** |
+| oracle respects the value cap | 12 |
+| case lengths span the holdout | 8 |
+| of those, `Proof::Tested` — never claimed to hold | 6 |
+| **GENERALISED, past the holdout, and still wrong** | **2** |
+
+Two, not thirty. The other twenty-eight were an oracle that could not see the
+system's own value bound, a case range that could not see `take(_, 8)`, and six
+results the system already labels untrusted being counted under a heading that
+says "certified".
+
+The reported certification rate falls from 1,700 of 2,000 to 1,510 because the
+cases now span lengths 1-11 against a holdout at 13-16. That is a stricter bar
+and a smaller number against it, and the certificates mean correspondingly more.
+
+Fixing one defect uncovered the next: the earlier conclusion that "the thirty are
+not length overfits" was measured with the oracle bug present, and four of them
+plainly were.
+
 ### The fourth disjoint-length bench, where fixing it does not help
 
 Having found training cases whose lengths never overlapped the holdout's in

@@ -80,6 +80,19 @@ using Value = std::vector<std::int64_t>;
 
 inline constexpr std::size_t kRegisters   = 4;
 inline constexpr std::size_t kMaxListLen  = 512;   // memory bound
+
+// EVERY VALUE IS CAPPED AT THIS, which is what makes the arithmetic total rather
+// than carefully case-analysed. It lived in techne.cpp, so a caller writing a
+// reference function had no way to respect the semantics its results would be
+// compared against -- and throughput_bench's task generators duly did not,
+// computing x*5 on the 1e9 edge probe and demanding 5e9 from an interpreter that
+// saturates. Thirty programs were reported as "certified but a counterexample
+// exists" on the strength of that. An oracle that cannot see the value bound
+// cannot be an oracle for a system that has one.
+inline constexpr std::int64_t kValueCap = 1'000'000'000;
+inline std::int64_t cap_value(std::int64_t x) noexcept {
+    return x < -kValueCap ? -kValueCap : (x > kValueCap ? kValueCap : x);
+}
 inline constexpr std::size_t kMaxCallDepth = 3;    // library recursion bound
 
 // ---------------------------------------------------------------------------

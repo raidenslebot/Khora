@@ -80,7 +80,22 @@ struct Gen {
                                   "rev_take", "sq_sum", "minmax"};
         return std::string(n[shape % 10]) + "_" + std::to_string(k);
     }
-    Value operator()(const Value& v) const {
+    // THE ORACLE MUST RESPECT THE SAME VALUE BOUND THE INTERPRETER DOES.
+    //
+    // These generators computed x*k and running sums in unbounded int64 while
+    // every value the system produces saturates at kValueCap. On the 1e9 edge
+    // probe that is a guaranteed disagreement: mul(x, 5) is the CORRECT program
+    // and the oracle demanded 5e9 from an interpreter that cannot represent it.
+    // Thirty programs a run were counted as "certified but a counterexample
+    // exists" on the strength of that -- the same defect as clamp_len, where the
+    // interpreter bounded every result and the reference did not, and it is the
+    // reference that is wrong both times.
+    static Value capped(Value v) {
+        for (auto& x : v) x = cap_value(x);
+        return v;
+    }
+    Value operator()(const Value& v) const { return capped(raw(v)); }
+    Value raw(const Value& v) const {
         Value o;
         switch (shape % 10) {
             case 0: for (auto x : v) o.push_back(x * k); return o;
@@ -131,8 +146,8 @@ Spec make(const Gen& g, std::uint64_t& seed) {
     // cases only makes every task harder for no gain in quality. The defect
     // class is real and its impact is bench-specific; this is the bench where it
     // is not the cause.
-    for (std::size_t i = 0; i < g_visible; ++i) s.cases.push_back({draw(2 + i % 5), {}});
-    for (std::size_t i = 0; i < 4; ++i) s.holdout.push_back({draw(7 + i), {}});
+    for (std::size_t i = 0; i < g_visible; ++i) s.cases.push_back({draw(1 + i % 11), {}});
+    for (std::size_t i = 0; i < 4; ++i) s.holdout.push_back({draw(13 + i), {}});
     for (auto& c : s.cases)   c.out = g(c.in);
     for (auto& c : s.holdout) c.out = g(c.in);
     return s;
@@ -388,7 +403,14 @@ stage("counterexample arm");
         // wrong somewhere the sample did not look, and admitting it would put a
         // primitive that lies underneath every later search.
         Library cegis_lib(lib_bud);
+        // SPLIT BY WHAT THE PROOF ACTUALLY CLAIMED. certified() is true for
+        // Proof::Tested, which means "passed the visible cases" and nothing
+        // more -- the system's own word for a result it does not trust. Counting
+        // those beside Generalised ones under one heading overstates the defect,
+        // because only a GENERALISED result ever claimed to hold on inputs it
+        // was not shown.
         std::size_t verified = 0, certified_only = 0, unsolved = 0;
+        std::size_t gen_wrong = 0, tested_wrong = 0;
         std::size_t total_rounds = 0, total_probes = 0;
         const auto tv = clk::now();
         for (std::size_t i = 0; i < sample; ++i) {
@@ -424,7 +446,23 @@ stage("counterexample arm");
             total_rounds += ver.rounds;
             total_probes += ver.probes_run;
             if (b.proof == Proof::Verified) ++verified;
-            else if (b.certified()) ++certified_only;
+            else if (b.certified()) {
+                // LOOK AT THEM. Thirty programs carry a certificate and a
+                // counterexample at the same time, after six rounds of refinement
+                // against three hundred probes. Counting them for several cycles
+                // told me nothing; the counterexample itself is right here and was
+                // never printed.
+                if (certified_only < 6) {
+                    const Value& ce = ver.counterexample;
+                    const Value want = oracle(ce);
+                    const Value got  = b.recipe.apply(ce, &cegis_lib);
+                    std::printf("    [ce] %-22s len=%2zu  want %zu vals, got %zu  %s\n",
+                                specs[i].name.c_str(), ce.size(), want.size(), got.size(),
+                                b.recipe.render().c_str());
+                }
+                ++certified_only;
+                if (b.proof == Proof::Generalised) ++gen_wrong; else ++tested_wrong;
+            }
             else ++unsolved;
         }
         const double tvs = std::chrono::duration<double>(clk::now() - tv).count();
@@ -432,6 +470,8 @@ stage("counterexample arm");
                     sample);
         std::printf("    VERIFIED, no counterexample found : %zu\n", verified);
         std::printf("    certified but a counterexample exists: %zu\n", certified_only);
+        std::printf("      of those, GENERALISED and still wrong : %zu\n", gen_wrong);
+        std::printf("      merely Tested, never claimed to hold  : %zu\n", tested_wrong);
         std::printf("    not solved at all                 : %zu\n", unsolved);
         std::printf("    %.2f refinements and %.0f probes per task, %.1f s total\n",
                     static_cast<double>(total_rounds) / sample,
