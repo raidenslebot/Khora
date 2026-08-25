@@ -83,6 +83,8 @@ const char* op_name(Op o) {
         case Op::Count: return "count";  case Op::Call: return "call";
         case Op::Arg:   return "arg";
         case Op::Scan:  return "scan";
+        case Op::Eq:    return "eq";
+        case Op::Lt:    return "lt";
         case Op::ScanMax: return "scanmax";
         case Op::ScanMin: return "scanmin";
         case Op::Guard: return "guard";  case Op::Else: return "else";
@@ -100,7 +102,8 @@ inline bool binary(Op o) {
         case Op::Append: case Op::Take: case Op::Drop: case Op::Index:
         case Op::Filter: case Op::MapAdd: case Op::MapMul: case Op::Count:
         case Op::Guard: case Op::Else:
-        case Op::Gt: case Op::Member: case Op::Until:
+        case Op::Gt: case Op::Eq: case Op::Lt:
+        case Op::Member: case Op::Until:
             return true;
         default: return false;
     }
@@ -520,6 +523,16 @@ Value run(const Program& p, const Value& input, const Library* lib, std::size_t 
                 for (const auto x : A) out.push_back(x > B[0] ? 1 : 0);
                 break;
             }
+            case Op::Eq: {
+                if (B.empty()) break;
+                for (const auto x : A) out.push_back(x == B[0] ? 1 : 0);
+                break;
+            }
+            case Op::Lt: {
+                if (B.empty()) break;
+                for (const auto x : A) out.push_back(x < B[0] ? 1 : 0);
+                break;
+            }
             case Op::Member: {
                 if (B.empty()) break;
                 // O(|a| + |b|), not O(|a| x |b|). Scanning all of B for every
@@ -761,7 +774,7 @@ const std::vector<Op>& binary_ops() {
                                    Op::Append, Op::Take, Op::Drop, Op::Index,
                                    Op::Filter, Op::MapAdd, Op::MapMul, Op::Count,
                                    Op::Guard, Op::Else,
-                                   Op::Gt, Op::Member, Op::Until};
+                                   Op::Gt, Op::Eq, Op::Lt, Op::Member, Op::Until};
     return v;
 }
 
@@ -822,6 +835,16 @@ Value apply_op(Op op, const Value& A, const Value& B, std::uint8_t k,
         case Op::Gt: {
             if (B.empty()) break;
             for (const auto x : A) out.push_back(x > B[0] ? 1 : 0);
+            break;
+        }
+        case Op::Eq: {
+            if (B.empty()) break;
+            for (const auto x : A) out.push_back(x == B[0] ? 1 : 0);
+            break;
+        }
+        case Op::Lt: {
+            if (B.empty()) break;
+            for (const auto x : A) out.push_back(x < B[0] ? 1 : 0);
             break;
         }
         case Op::Member: {

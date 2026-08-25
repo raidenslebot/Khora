@@ -146,6 +146,17 @@ enum class Op : std::uint8_t {
     // All four are total and single-pass. None introduces a loop whose length is
     // not the length of its input, so termination by construction survives.
     Gt,        // dst = [ x > b[0] ? 1 : 0 for x in a ]   makes conditionals arithmetic
+    // The rest of the comparison set. Gt existed alone, which is an odd place to
+    // stop: with Eq and Lt, and Mul for masking and Sum for counting, ordinary
+    // conditional logic becomes expressible.
+    //
+    // Added because reach was MEASURED FREE -- ScanMax and ScanMin went into
+    // every level of every search and the ascent did not move by one program,
+    // while adding a single atom cost twenty-one. Operations are the side of
+    // this system that can be enriched without paying for it, so they get
+    // enriched whenever there is an obvious hole.
+    Eq,
+    Lt,
     Member,    // dst = [ x in b ? 1 : 0 for x in a ]     set membership
     Until,     // dst = prefix of a before the first element equal to b[0]
     Delta,     // dst = [ a[i+1] - a[i] ]                 neighbour comparison

@@ -287,6 +287,25 @@ widening the cases from 1-5 to 1-12 already removed them. A counterexample hunt
 finds nothing when the specification is already informative enough, which is the
 outcome you want from having fixed the specification.
 
+### Taking the free axis: Eq and Lt
+
+If reach is free, take it. `Gt` existed on its own, which is an odd place for a
+comparison set to stop — with `Eq` and `Lt`, plus `Mul` for masking and `Sum` for
+counting, ordinary conditional logic becomes expressible. Both added to the VM,
+the search, and all fourteen preludes, mirroring `kh_gt` exactly.
+
+Four new operations now (`ScanMax`, `ScanMin`, `Eq`, `Lt`) and the ascent is
+**232 against 192 at tier 29** — identical to baseline, to the digit.
+
+The honest caveat, because "free" was too strong a word by itself: free in
+OUTCOMES, not in candidates. The fixed task set explores 137,991 candidates
+before these and 154,958 after, twelve percent more search for the same 18/20.
+Nothing measured got worse and the system can express strictly more, but the
+search does pay for the wider branching factor and would eventually stop
+absorbing it.
+
+All fourteen backends re-verified byte-identical after the prelude changes.
+
 ### Raising reach is free; raising the curriculum is not
 
 The previous entry concluded that curriculum depth and solver reach have to move

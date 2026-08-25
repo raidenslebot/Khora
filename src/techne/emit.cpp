@@ -44,6 +44,7 @@ const char* fn_of(Op op) {
         case Op::MapMul: return "kh_mulk";  case Op::Count: return "kh_count";
         case Op::Guard: return "kh_guard";  case Op::Else: return "kh_else";
         case Op::Gt: return "kh_gt";        case Op::Member: return "kh_member";
+        case Op::Eq: return "kh_eq";        case Op::Lt: return "kh_lt";
         case Op::Until: return "kh_until";  case Op::Delta: return "kh_delta";
         case Op::Scan: return "kh_scan";
         case Op::ScanMax: return "kh_scanmax";
@@ -115,6 +116,8 @@ def kh_count(a, b): return [sum(1 for x in a if x == b[0])] if b else []
 def kh_guard(a, b): return list(a) if b else []
 def kh_else(a, b): return list(a) if a else list(b)
 def kh_gt(a, b): return [1 if x > b[0] else 0 for x in a] if b else []
+def kh_eq(a, b): return [1 if x == b[0] else 0 for x in a] if b else []
+def kh_lt(a, b): return [1 if x < b[0] else 0 for x in a] if b else []
 def kh_member(a, b): return [1 if x in b else 0 for x in a] if b else []
 def kh_until(a, b):
     if not b: return []
@@ -224,6 +227,8 @@ static V kh_count(const V& a, const V& b) { if (b.empty()) return {}; std::int64
 static V kh_guard(const V& a, const V& b) { return b.empty() ? V{} : a; }
 static V kh_else(const V& a, const V& b) { return a.empty() ? b : a; }
 static V kh_gt(const V& a, const V& b) { if (b.empty()) return {}; V o; for (auto x : a) o.push_back(x > b[0] ? 1 : 0); return o; }
+static V kh_eq(const V& a, const V& b) { if (b.empty()) return {}; V o; for (auto x : a) o.push_back(x == b[0] ? 1 : 0); return o; }
+static V kh_lt(const V& a, const V& b) { if (b.empty()) return {}; V o; for (auto x : a) o.push_back(x < b[0] ? 1 : 0); return o; }
 static V kh_member(const V& a, const V& b) {
     if (b.empty()) return {};
     V o;
@@ -296,6 +301,8 @@ const kh_else = (a, b) => a.length ? a.slice() : b.slice();
 // indexOf needs no lib beyond ES5, which is what the TypeScript twin of this
 // prelude has to compile under.
 const kh_gt = (a, b) => b.length ? a.map(x => x > b[0] ? 1 : 0) : [];
+const kh_eq = (a, b) => b.length ? a.map(x => x == b[0] ? 1 : 0) : [];
+const kh_lt = (a, b) => b.length ? a.map(x => x < b[0] ? 1 : 0) : [];
 const kh_member = (a, b) => b.length ? a.map(x => b.indexOf(x) >= 0 ? 1 : 0) : [];
 const kh_until = (a, b) => {
   if (!b.length) return [];
@@ -406,6 +413,14 @@ pub fn kh_else(a: &V, b: &V) -> V { if a.is_empty() { b.clone() } else { a.clone
 pub fn kh_gt(a: &V, b: &V) -> V {
     if b.is_empty() { return vec![]; }
     a.iter().map(|x| if *x > b[0] { 1 } else { 0 }).collect()
+}
+pub fn kh_eq(a: &V, b: &V) -> V {
+    if b.is_empty() { return vec![]; }
+    a.iter().map(|x| if *x == b[0] { 1 } else { 0 }).collect()
+}
+pub fn kh_lt(a: &V, b: &V) -> V {
+    if b.is_empty() { return vec![]; }
+    a.iter().map(|x| if *x < b[0] { 1 } else { 0 }).collect()
 }
 pub fn kh_member(a: &V, b: &V) -> V {
     if b.is_empty() { return vec![]; }
@@ -699,6 +714,30 @@ func kh_gt(a V, b V) V {
 	}
 	return o
 }
+func kh_eq(a V, b V) V {
+	if len(b) == 0 {
+		return V{}
+	}
+	o := make(V, len(a))
+	for i, x := range a {
+		if x == b[0] {
+			o[i] = 1
+		}
+	}
+	return o
+}
+func kh_lt(a V, b V) V {
+	if len(b) == 0 {
+		return V{}
+	}
+	o := make(V, len(a))
+	for i, x := range a {
+		if x < b[0] {
+			o[i] = 1
+		}
+	}
+	return o
+}
 
 func kh_member(a V, b V) V {
 	if len(b) == 0 {
@@ -919,6 +958,18 @@ class Kh {
         for (int i = 0; i < a.length; i++) o[i] = a[i] > b[0] ? 1 : 0;
         return o;
     }
+    static long[] kh_eq(long[] a, long[] b) {
+        if (b.length == 0) return EMPTY;
+        long[] o = new long[a.length];
+        for (int i = 0; i < a.length; i++) o[i] = a[i] == b[0] ? 1 : 0;
+        return o;
+    }
+    static long[] kh_lt(long[] a, long[] b) {
+        if (b.length == 0) return EMPTY;
+        long[] o = new long[a.length];
+        for (int i = 0; i < a.length; i++) o[i] = a[i] < b[0] ? 1 : 0;
+        return o;
+    }
     // A nested scan rather than a Set: long[] holds primitives, and boxing them
     // into a HashSet<Long> to ask contains() reintroduces exactly the reference
     // equality this backend uses long[] to avoid.
@@ -1109,6 +1160,18 @@ static class Kh {
         for (int i = 0; i < a.Length; i++) o[i] = a[i] > b[0] ? 1L : 0L;
         return o;
     }
+    public static long[] kh_eq(long[] a, long[] b) {
+        if (b.Length == 0) return EMPTY;
+        long[] o = new long[a.Length];
+        for (int i = 0; i < a.Length; i++) o[i] = a[i] == b[0] ? 1L : 0L;
+        return o;
+    }
+    public static long[] kh_lt(long[] a, long[] b) {
+        if (b.Length == 0) return EMPTY;
+        long[] o = new long[a.Length];
+        for (int i = 0; i < a.Length; i++) o[i] = a[i] < b[0] ? 1L : 0L;
+        return o;
+    }
     public static long[] kh_member(long[] a, long[] b) {
         if (b.Length == 0) return EMPTY;
         long[] o = new long[a.Length];
@@ -1215,6 +1278,8 @@ const kh_else = (a: V, b: V): V => (a.length ? a.slice() : b.slice());
 // indexOf, not includes: includes needs lib es2016, and this file declares no
 // tsconfig, so it must build under the default lib.
 const kh_gt = (a: V, b: V): V => (b.length ? a.map((x) => (x > b[0] ? 1 : 0)) : []);
+const kh_eq = (a: V, b: V): V => (b.length ? a.map((x) => (x == b[0] ? 1 : 0)) : []);
+const kh_lt = (a: V, b: V): V => (b.length ? a.map((x) => (x < b[0] ? 1 : 0)) : []);
 const kh_member = (a: V, b: V): V =>
   b.length ? a.map((x) => (b.indexOf(x) >= 0 ? 1 : 0)) : [];
 const kh_until = (a: V, b: V): V => {
@@ -1312,6 +1377,8 @@ def kh_count(a, b); b.empty? ? [] : [a.count { |x| x == b[0] }]; end
 def kh_guard(a, b); b.empty? ? [] : a.dup; end
 def kh_else(a, b); a.empty? ? b.dup : a.dup; end
 def kh_gt(a, b); b.empty? ? [] : a.map { |x| x > b[0] ? 1 : 0 }; end
+def kh_eq(a, b); b.empty? ? [] : a.map { |x| x == b[0] ? 1 : 0 }; end
+def kh_lt(a, b); b.empty? ? [] : a.map { |x| x < b[0] ? 1 : 0 }; end
 def kh_member(a, b); b.empty? ? [] : a.map { |x| b.include?(x) ? 1 : 0 }; end
 def kh_until(a, b); b.empty? ? [] : a.take_while { |x| x != b[0] }; end
 def kh_delta(a); (1...a.length).map { |i| kh_cap(a[i] - a[i - 1]) }; end
@@ -1506,6 +1573,18 @@ function kh_gt(a, b)
   for i = 1, #a do if a[i] > b[1] then o[i] = 1 else o[i] = 0 end end
   return o
 end
+function kh_eq(a, b)
+  if #b == 0 then return {} end
+  local o = {}
+  for i = 1, #a do if a[i] == b[1] then o[i] = 1 else o[i] = 0 end end
+  return o
+end
+function kh_lt(a, b)
+  if #b == 0 then return {} end
+  local o = {}
+  for i = 1, #a do if a[i] < b[1] then o[i] = 1 else o[i] = 0 end end
+  return o
+end
 
 function kh_member(a, b)
   if #b == 0 then return {} end
@@ -1666,8 +1745,10 @@ kh_count a b = if null b then [] else [fromIntegral (length (filter (== head b) 
 kh_guard a b = if null b then [] else a
 kh_else a b = if null a then b else a
 
-kh_gt, kh_member, kh_until :: V -> V -> V
+kh_gt, kh_eq, kh_lt, kh_member, kh_until :: V -> V -> V
 kh_gt a b = if null b then [] else map (\x -> if x > head b then 1 else 0) a
+kh_eq a b = if null b then [] else map (\x -> if x == head b then 1 else 0) a
+kh_lt a b = if null b then [] else map (\x -> if x < head b then 1 else 0) a
 kh_member a b = if null b then [] else map (\x -> if x `elem` b then 1 else 0) a
 kh_until a b = if null b then [] else takeWhile (/= head b) a
 
@@ -1781,6 +1862,18 @@ func kh_gt(_ a: V, _ b: V) -> V {
     if b.isEmpty { return [] }
     var o = V()
     for x in a { o.append(x > b[0] ? 1 : 0) }
+    return o
+}
+func kh_eq(_ a: V, _ b: V) -> V {
+    if b.isEmpty { return [] }
+    var o = V()
+    for x in a { o.append(x == b[0] ? 1 : 0) }
+    return o
+}
+func kh_lt(_ a: V, _ b: V) -> V {
+    if b.isEmpty { return [] }
+    var o = V()
+    for x in a { o.append(x < b[0] ? 1 : 0) }
     return o
 }
 func kh_member(_ a: V, _ b: V) -> V {
@@ -1902,6 +1995,8 @@ fun kh_else(a: V, b: V): V = if (a.isEmpty()) b.toList() else a.toList()
 // 1L and 0L, not 1 and 0: a bare Kotlin integer literal is an Int, and a
 // List<Int> is not a V.
 fun kh_gt(a: V, b: V): V = if (b.isEmpty()) emptyList() else a.map { if (it > b[0]) 1L else 0L }
+fun kh_eq(a: V, b: V): V = if (b.isEmpty()) emptyList() else a.map { if (it == b[0]) 1L else 0L }
+fun kh_lt(a: V, b: V): V = if (b.isEmpty()) emptyList() else a.map { if (it < b[0]) 1L else 0L }
 fun kh_member(a: V, b: V): V =
     if (b.isEmpty()) emptyList() else a.map { if (b.contains(it)) 1L else 0L }
 fun kh_until(a: V, b: V): V = if (b.isEmpty()) emptyList() else a.takeWhile { it != b[0] }
@@ -2011,6 +2106,18 @@ function kh_count($a, $b) {
 function kh_guard($a, $b) { return count($b) === 0 ? [] : array_values($a); }
 function kh_else($a, $b) { return count($a) === 0 ? array_values($b) : array_values($a); }
 function kh_gt($a, $b) {
+    if (count($b) === 0) return [];
+    $o = [];
+    foreach ($a as $x) $o[] = $x > $b[0] ? 1 : 0;
+    return $o;
+}
+function kh_eq($a, $b) {
+    if (count($b) === 0) return [];
+    $o = [];
+    foreach ($a as $x) $o[] = $x > $b[0] ? 1 : 0;
+    return $o;
+}
+function kh_lt($a, $b) {
     if (count($b) === 0) return [];
     $o = [];
     foreach ($a as $x) $o[] = $x > $b[0] ? 1 : 0;
