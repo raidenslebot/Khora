@@ -175,6 +175,42 @@ altneg  negate odd positions
 before the generator gave up at 12. Tier 15 now draws 1,511 to keep 40, where it
 drew 1,611 to keep 11.
 
+### Why this benchmark cannot show unbounded self-improvement
+
+The ascent's loop is: solve a problem, the solution becomes a primitive, deeper
+problems get posed. That is the self-improvement loop, and the obvious defect in
+it was `if (g_atoms.size() < 40)` — a magic number, admitting solutions with no
+check that the new primitive did anything the set could not already do.
+
+Fixing that made it worse. Three configurations, each the carried-minus-empty gap
+inside one run:
+
+| learned primitives admitted | tiers | carried | empty | gap |
+|-----------------------------|-------|---------|-------|-----|
+| whatever comes first | 20 | **220** | 191 | 29 |
+| novel and non-absorbing | 18 | 175 | 161 | 14 |
+| behaviourally novel only | 16 | 130 | 117 | 13 |
+
+Removing the arbitrary cap entirely changed nothing (512 and 40 gave identical
+results), so it is the FILTER, not the ceiling. Filtering to behaviourally
+distinct primitives is unambiguously better engineering and it scores worse.
+
+That is not a paradox once the measurement is read properly. **This benchmark's
+difficulty is defined relative to the atom set** — a task counts only if it
+differs from every atom — so enriching the vocabulary raises the bar for what
+counts as a problem at the same moment it raises the ability to solve one.
+Improving the vocabulary moves the yardstick it is measured against.
+
+So: an ascent whose curriculum is generated from its own solutions **cannot
+demonstrate unbounded self-improvement**. It can only ever show the system
+staying ahead of a bar it is simultaneously raising. Showing capability growth in
+absolute terms needs a fixed external task set hard enough to reward a richer
+vocabulary; `techne_bench` is the fixed set that exists and is not that one — its
+hand-picked list transformations come out 16/20 either way.
+
+This is recorded as a property of the instrument rather than a result about the
+system, because that is what it is.
+
 ### A library is a haystack as well as a vocabulary
 
 A 2x2, each cell the carried-minus-empty gap inside one run:

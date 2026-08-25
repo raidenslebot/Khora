@@ -336,6 +336,30 @@ TierResult run_tier(const std::vector<Task>& tasks, const std::vector<Spec>& spe
             // BY VALUE: the library prunes under a budget, and a task generator
             // holding a reference into an evicting cache is a use-after-free
             // waiting for the budget to bind.
+            // A SOLVED PROBLEM BECOMES A PRIMITIVE, unconditionally, and three
+            // attempts to be cleverer than that all made it WORSE:
+            //
+            //   admit whatever comes first  | tier 20 | 220 vs 191 | gap 29
+            //   novel + non-absorbing only  | tier 18 | 175 vs 161 | gap 14
+            //   behaviourally novel only    | tier 16 | 130 vs 117 | gap 13
+            //
+            // Filtering to behaviourally DISTINCT primitives is better
+            // engineering and scores worse, which is not a paradox once the
+            // measurement is read properly: this benchmark's difficulty is
+            // defined RELATIVE TO THE ATOM SET. A task counts only if it differs
+            // from every atom, so enriching the atoms raises the bar for what
+            // counts as a problem at the same moment it raises the ability to
+            // solve one. Improving the vocabulary moves the yardstick it is
+            // measured against.
+            //
+            // That is a property of the instrument, and it is worth stating
+            // plainly: AN ASCENT WHOSE CURRICULUM IS GENERATED FROM ITS OWN
+            // SOLUTIONS CANNOT DEMONSTRATE UNBOUNDED SELF-IMPROVEMENT. It can
+            // only ever show the system staying ahead of a bar it is also
+            // raising. Showing capability growth in absolute terms needs a fixed
+            // external task set hard enough to reward a richer vocabulary, and
+            // techne_bench -- the fixed set that exists -- is not that: its
+            // hand-picked list transformations are solved 16/20 either way.
             if (g_atoms.size() < 40) {
                 const Recipe copy = b.recipe;
                 g_atoms.push_back(Atom{"L", [copy](const Value& v) {
