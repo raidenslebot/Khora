@@ -3,6 +3,59 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.118.0 — I built the paradigm this system rejects, and raced it
+
+**Author:** Claude Opus 5
+
+Khora's banner reads LLM-free, its substrate is 10,000-bit binary hypervectors,
+and a capability audit found no BLAS, no matmul, no tensors, no autograd and no
+floating-point linear algebra anywhere in the tree. That is a design position.
+A design position that has never been measured against the thing it rejects is
+a preference, so `khora::descent` is dense float matrices, a two-layer
+perceptron, cross-entropy and minibatch SGD — about 130 lines, no dependencies —
+and `descent_test` runs it against the retina on the same generator, the same
+training set and the same disjoint 240-image test stream.
+
+### The backward pass is checked against finite differences first
+
+A hand-written backward pass nobody has checked numerically is probably wrong
+somewhere quiet: it still trains, the loss still goes down, and it converges to
+somewhere worse. Every weight in the output layer and the input layer is
+perturbed by 1e-6 and the analytic gradient compared to the numerical one.
+Worst disagreement **1.40e-10**. XOR then confirms the hidden layer does work at
+all: 4/4 after 4000 epochs, loss 0.0004.
+
+### The race, and why running it once would have produced a wrong conclusion
+
+I ran it once first, at 160 training images: hypervector 75.4%, MLP 58.8%,
+chance 25%. That is a clean win for the substrate Khora chose and I nearly
+published it. It is an artefact of the training-set size. HDC is known to be
+strong exactly when examples are scarce — a class prototype is a bundle, so one
+example already places it — and gradient descent is known to need volume. So
+the same comparison runs at four sizes with everything else fixed:
+
+| per class | hypervector | MLP (SGD) |
+|-----------|-------------|-----------|
+| 5 | **62.1%** | 31.7% |
+| 20 | **72.5%** | 47.5% |
+| 80 | **75.0%** | 72.1% |
+| 320 | 77.9% | **89.2%** |
+
+240 held-out images from a disjoint seed, identical for every row. MLP fixed at
+64 hidden units, 200 epochs, lr 0.15. Chance 25%.
+
+The crossover is between 80 and 320 examples per class. Khora's substrate wins
+by **30 points** at five examples and loses by **11** at three hundred and
+twenty, and adding data buys the MLP 57.5 points against the hypervector's 15.8.
+That is the finding, and it is the opposite of what one measurement said.
+
+It also says where each belongs. Khora learns from what it encounters, a few
+examples at a time, and never has three hundred labelled instances of anything —
+which is the regime where the substrate it already has is the better choice, and
+now that is measured rather than assumed. The MLP is the honest minimum needed
+to make the comparison, and it is labelled as such rather than as a deep
+learning stack: no GPU, no convolution, no adaptive optimiser.
+
 ## v0.117.0 — The library compounds, and the thing I optimised was 13% of the run
 
 **Author:** Claude Opus 5

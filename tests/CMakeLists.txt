@@ -82,6 +82,10 @@ add_executable(ribosome_test ribosome_test.cpp)
 target_link_libraries(ribosome_test PRIVATE khora::ribosome)
 add_test(NAME RibosomeTest COMMAND ribosome_test)
 
+add_executable(descent_test descent_test.cpp)
+target_link_libraries(descent_test PRIVATE khora::descent khora::retina)
+add_test(NAME DescentTest COMMAND descent_test)
+
 add_executable(logos_test logos_test.cpp)
 target_link_libraries(logos_test PRIVATE khora::logos)
 add_test(NAME LogosTest COMMAND logos_test)
