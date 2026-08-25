@@ -395,6 +395,55 @@ int main() {
               "and Delta with one");
     }
 
+    // -- A LIBRARY SURVIVES A ROUND TRIP TO DISK -----------------------------
+    //
+    // Without this the library is built, filled and discarded at process exit,
+    // so nothing about PROGRAMMING compounds across runs. The check is not that
+    // the file parses: it is that every entry computes the SAME FUNCTION after
+    // reloading, because a serialiser that writes enum ordinals would round-trip
+    // cleanly and silently mean something else after one operation was added.
+    {
+        Library src(16);
+        auto unit = [](Op op) {
+            Recipe r; r.found = true; r.root = 1;
+            Expr in;  in.op = Op::Mov;  in.a = -1;
+            Expr e;   e.op = op; e.a = 0;
+            r.pool = {in, e};
+            return r;
+        };
+        src.admit_recipe("sort", unit(Op::Sort), 0);
+        src.admit_recipe("rev",  unit(Op::Rev),  1);
+        {   // one with a literal, a k, and a call, so every field is exercised
+            Recipe r; r.found = true; r.root = 3;
+            Expr in;  in.op = Op::Mov;   in.a = -1;
+            Expr c;   c.op = Op::Const;  c.has_lit = true; c.lit = -7;
+            Expr m;   m.op = Op::MapAdd; m.a = 0; m.b = 1;
+            Expr k;   k.op = Op::Call;   k.a = 2; k.k = 0;
+            r.pool = {in, c, m, k};
+            src.admit_recipe("shift-then-sort", r, 2);
+        }
+
+        const std::string path = "techne_library_roundtrip.txt";
+        check(src.save(path), "a library writes itself to disk");
+
+        Library back(16);
+        check(back.load(path), "and reads itself back");
+        check(back.size() == src.size(), "with every entry present");
+
+        bool same = true, named = true;
+        const Value probes[] = {{}, {3, 1, 2}, {-5, 5}, {7}, {0, 0, 9, 2}};
+        for (std::size_t i = 0; i < src.size() && i < back.size(); ++i) {
+            if (src.at(i).name != back.at(i).name) named = false;
+            for (const Value& v : probes) {
+                if (src.at(i).recipe.apply(v, &src) != back.at(i).recipe.apply(v, &back))
+                    same = false;
+            }
+        }
+        check(named, "with names intact");
+        check(same, "and every entry computing the same function afterwards");
+        std::remove(path.c_str());
+    }
+
     // -- FUNCTIONS OF MORE THAN ONE ARGUMENT --------------------------------
     //
     // Every program this system could express used to be a UNARY function of one

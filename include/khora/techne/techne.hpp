@@ -397,6 +397,20 @@ public:
 
     std::size_t evicted() const noexcept { return evicted_; }
 
+    // PERSIST WHAT IT LEARNED. Without this the library is built, filled and
+    // thrown away at process exit, so nothing about PROGRAMMING compounds across
+    // runs -- every benchmark in this tree starts from nothing and the system
+    // that is supposed to improve itself forgets between sessions.
+    //
+    // Written as text with operations named rather than numbered. This class has
+    // twice shipped a defect caused by an index that meant something different
+    // later -- prune permuting items_, and Expr::k pointing at a renumbered
+    // entry -- and an enum ordinal in a file on disk is that same mistake with a
+    // longer fuse: adding one operation would silently reinterpret every stored
+    // program. A name either resolves or fails loudly.
+    bool save(const std::string& path) const;
+    bool load(const std::string& path);
+
 private:
     std::size_t budget_;
     std::vector<Learned> items_;
@@ -684,6 +698,11 @@ enum class Lang {
     Cpp, Python, JavaScript, Rust,
     Go, Java, CSharp, TypeScript, Ruby, Lua, Haskell, Swift, Kotlin, Php
 };
+
+// Operation names, and back again. The name is the stable identifier; the
+// enum ordinal is not, and must never reach a file or a wire.
+const char* op_name(Op o);
+bool op_from_name(const std::string& n, Op& out);
 
 const char* lang_name(Lang l);
 const char* lang_ext(Lang l);

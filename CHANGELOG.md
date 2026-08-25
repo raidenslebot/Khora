@@ -445,6 +445,36 @@ maximum in all fourteen languages, verified byte-identical, even though nothing
 in its curriculum asks for one — which is the right way round: reach costs
 nothing, so take it whenever it is offered.
 
+### The library now survives a restart
+
+Everything in this tree that learns to program threw it away at process exit.
+`Library` had no serialisation at all: built, filled, discarded, and the next run
+started from nothing. A system whose headline claim is self-improvement forgot
+between sessions.
+
+`Library::save` and `Library::load` write it as text with **operations named
+rather than numbered**. This class has already shipped two defects caused by an
+index that meant something different later — `prune` permuting `items_`, and
+`Expr::k` pointing at a renumbered entry — and an enum ordinal in a file is that
+same mistake with a longer fuse: adding one operation would silently reinterpret
+every stored program. A name either resolves or the load fails, whole.
+
+Measured across an actual process boundary, on a fixed 40-task set neither
+process may admit:
+
+```
+cold   library  0 entries            ->  21 of 40 solved
+       trained on 120 disjoint tasks, saved 73 entries
+warm   library 73 entries (loaded)   ->  31 of 40 solved
+```
+
+Ten more of the same tasks, in a new process, purely from what the previous one
+learned.
+
+The round-trip test checks by FUNCTION rather than by parse: every entry must
+compute the same thing after reloading, on five probes each. A serialiser writing
+enum ordinals would round-trip cleanly and still be wrong.
+
 ### "The curriculum saturates" was the generator giving up
 
 The ascent has ended on curriculum saturation for many cycles: the generator

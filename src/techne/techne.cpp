@@ -5,6 +5,8 @@
 #include <cstdio>
 #include <functional>
 #include <numeric>
+#include <fstream>
+#include <string>
 #include <thread>
 #include <unordered_map>
 #include <unordered_set>
@@ -69,6 +71,32 @@ Value zip(const Value& a, const Value& b, F f) {
     return out;
 }
 
+
+// Which opcodes read a second register operand. Needed by liveness.
+inline bool binary(Op o) {
+    switch (o) {
+        case Op::Add: case Op::Sub: case Op::Mul: case Op::Div: case Op::Mod:
+        case Op::Append: case Op::Take: case Op::Drop: case Op::Index:
+        case Op::Filter: case Op::MapAdd: case Op::MapMul: case Op::Count:
+        case Op::Guard: case Op::Else:
+        case Op::Gt: case Op::Eq: case Op::Lt:
+        case Op::Member: case Op::Until:
+            return true;
+        default: return false;
+    }
+}
+
+// The constants a program can name. Small integers dominate real code, and a
+// full 8-bit literal range would spend most of the search on constants nobody
+// needs.
+inline std::int64_t const_of(std::uint8_t b) {
+    static const std::array<std::int64_t, 16> k{0, 1, 2, 3, 4, 5, 6, 7,
+                                                8, 9, 10, -1, -2, 100, 1000, 2};
+    return k[b % k.size()];
+}
+
+} // namespace
+
 const char* op_name(Op o) {
     switch (o) {
         case Op::Nop: return "nop";      case Op::Mov: return "mov";
@@ -98,30 +126,14 @@ const char* op_name(Op o) {
     }
 }
 
-// Which opcodes read a second register operand. Needed by liveness.
-inline bool binary(Op o) {
-    switch (o) {
-        case Op::Add: case Op::Sub: case Op::Mul: case Op::Div: case Op::Mod:
-        case Op::Append: case Op::Take: case Op::Drop: case Op::Index:
-        case Op::Filter: case Op::MapAdd: case Op::MapMul: case Op::Count:
-        case Op::Guard: case Op::Else:
-        case Op::Gt: case Op::Eq: case Op::Lt:
-        case Op::Member: case Op::Until:
-            return true;
-        default: return false;
+bool op_from_name(const std::string& n, Op& out) {
+    for (int i = 0; i <= static_cast<int>(Op::ScanMin) + 8; ++i) {
+        const Op o = static_cast<Op>(i);
+        const char* nm = op_name(o);
+        if (nm != nullptr && n == nm && n != "?") { out = o; return true; }
     }
+    return false;
 }
-
-// The constants a program can name. Small integers dominate real code, and a
-// full 8-bit literal range would spend most of the search on constants nobody
-// needs.
-inline std::int64_t const_of(std::uint8_t b) {
-    static const std::array<std::int64_t, 16> k{0, 1, 2, 3, 4, 5, 6, 7,
-                                                8, 9, 10, -1, -2, 100, 1000, 2};
-    return k[b % k.size()];
-}
-
-} // namespace
 
 // ---------------------------------------------------------------------------
 // Program
@@ -355,6 +367,72 @@ void Library::reorder() {
         // fixed task set, where the same two engines came out byte-identical.
         return items_[x].born < items_[y].born;
     });
+}
+
+bool Library::save(const std::string& path) const {
+    std::ofstream f(path, std::ios::binary);
+    if (!f) return false;
+    f << "khora-techne-library 1\n" << items_.size() << "\n";
+    for (const Learned& l : items_) {
+        // The name can contain anything, so it is length-prefixed rather than
+        // delimited. Everything else is a fixed count of tokens.
+        f << l.name.size() << ' ' << l.name << ' '
+          << l.born << ' ' << l.uses << ' '
+          << (l.recipe.found ? 1 : 0) << ' ' << l.recipe.root << ' '
+          << l.recipe.pool.size() << '\n';
+        for (const Expr& e : l.recipe.pool) {
+            f << "  " << op_name(e.op) << ' ' << e.a << ' ' << e.b << ' '
+              << static_cast<int>(e.k) << ' ' << (e.has_lit ? 1 : 0) << ' '
+              << e.lit << '\n';
+        }
+    }
+    return static_cast<bool>(f);
+}
+
+bool Library::load(const std::string& path) {
+    std::ifstream f(path, std::ios::binary);
+    if (!f) return false;
+    std::string magic; int version = 0;
+    f >> magic >> version;
+    if (magic != "khora-techne-library" || version != 1) return false;
+    std::size_t n = 0;
+    if (!(f >> n)) return false;
+
+    std::vector<Learned> in;
+    in.reserve(n);
+    for (std::size_t i = 0; i < n; ++i) {
+        std::size_t namelen = 0;
+        if (!(f >> namelen)) return false;
+        f.get();                                   // the single space
+        std::string name(namelen, '\0');
+        if (namelen > 0) f.read(&name[0], static_cast<std::streamsize>(namelen));
+        Learned l;
+        l.name = name;
+        int found = 0; std::size_t npool = 0;
+        if (!(f >> l.born >> l.uses >> found >> l.recipe.root >> npool)) return false;
+        l.recipe.found = (found != 0);
+        l.recipe.pool.reserve(npool);
+        for (std::size_t j = 0; j < npool; ++j) {
+            std::string nm; int a = 0, b = 0, k = 0, hl = 0; std::int64_t lit = 0;
+            if (!(f >> nm >> a >> b >> k >> hl >> lit)) return false;
+            Expr e;
+            // A name that does not resolve is a library written by a different
+            // build. Refusing the whole file is right: half-loading it would put
+            // a primitive that means something else underneath every later
+            // search, which is the failure this format exists to avoid.
+            if (!op_from_name(nm, e.op)) return false;
+            e.a = a; e.b = b;
+            e.k = static_cast<std::uint8_t>(k);
+            e.has_lit = (hl != 0);
+            e.lit = lit;
+            l.recipe.pool.push_back(e);
+        }
+        if (l.recipe.root >= l.recipe.pool.size() && !l.recipe.pool.empty()) return false;
+        in.push_back(std::move(l));
+    }
+    items_ = std::move(in);
+    reorder();
+    return true;
 }
 
 std::size_t Library::prune() {
