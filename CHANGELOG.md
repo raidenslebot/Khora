@@ -252,11 +252,30 @@ Breaking the fixed 96-task bar down by depth turns one number into a diagnosis:
 Two walls, not one. Every gain the library produces lives in a narrow band at
 depths 3-5; it adds nothing at depth 2 and nothing at 6-7.
 
-And depth 2 is **10 of 16** — six of the shallowest possible tasks unsolved,
-which cannot be a search problem at two operations. Printing their names settles
-what four cycles of guessing did not: `rev.altneg`, `dec2.altneg`, `idxmul.sq`,
-`dup.idxmul`. **`altneg` and `idxmul` are index-aware and the operation set has
-nothing index-aware in it.** That is an expressibility floor, not a search one.
+And depth 2 is **10 of 16** — six of the shallowest possible tasks unsolved.
+Printing their names settles what four cycles of guessing did not: `rev.altneg`,
+`dec2.altneg`, `idxmul.sq`, `dup.idxmul`.
+
+**The obvious reading of that is wrong, and it was published wrong before this
+was checked.** `altneg` and `idxmul` are index-aware, so the natural conclusion
+is an expressibility floor — an operation set with nothing index-aware in it.
+But `Range(a)` is `[0 .. a[0]-1]`, so `range(len(x))` IS the index vector and has
+been in the set all along:
+
+```
+idxmul  =  mul(x, mapadd(range(len(x)), 1))     hand-built, 0 mismatches / 400
+altneg  =  mul(x, append(1, -1))                found BY THE SEARCH
+```
+
+`altneg` works because `zip` cycles the shorter operand, which is a nicer answer
+than the one intended. Both are expressible; only `altneg` is reachable.
+`rev.altneg` is found at a 200,000 pool and not at 20,000, and `idxmul` is not
+found at either.
+
+So it is ONE wall, not two, and it is SEARCH REACH. A task labelled depth 2 in
+atoms needs six operation nodes here — the benchmark's depth labels understate
+the real depth by up to three times, which is also why the depth-6 and depth-7
+rows are empty.
 
 `Op::Scan` was added on the way to finding that out — prefix sums, the exact
 inverse of the `Delta` already present, and a name-for-name match with a missing
