@@ -2223,21 +2223,44 @@ static std::string emit_inlined(const Recipe& r, Lang l, const std::string& fn,
     // and plain [Delta] on the same input matched exactly, which isolates the
     // cause to the alias rather than to any operation.
     //
-    // THERE IS NO SAFE ALIAS. My first fix here kept the alias when its source
-    // was the raw parameter, reasoning that the parameter is the one value the
-    // interpreter has not clamped yet. Reading apply_op again: Mov falls to
-    // `default: out = A` and then clamp_len runs. The parameter is clamped the
-    // moment Mov touches it, so [Mov] alone on 600 elements is 512 from the
-    // interpreter and 600 from the emitted code, and my fix did not cover it.
+    // ALIAS ONLY A MOV WHOSE SOURCE IS ANOTHER NODE, NEVER THE RAW PARAMETER.
     //
-    // So Mov always emits. That restores some of the `t0 = kh_id(x)` lines I
-    // removed for inflating the throughput count, and the count is the lesser
-    // concern: a throughput figure that counts a program computing something
-    // else is not a throughput figure. It also happens to fix the Rust backend,
-    // which could not compile an identity-root recipe at all -- `fn f(x: &V) -> V
-    // { x }` returns a reference where a value is wanted -- because the root now
-    // always names a real temporary.
-    std::vector<int> alias(r.pool.size(), -2);        // nothing is aliased
+    // Op::Mov is not free. The interpreter runs it through apply_op like
+    // everything else -- `default: out = A` and then clamp_len -- so Mov
+    // TRUNCATES to kMaxListLen. Aliasing it away dropped that truncation, and on
+    // a 600-element input the emitted code computed something else entirely:
+    //
+    //     [Mov, Rev]   same length, DIFFERENT VALUES: the interpreter reverses
+    //                  the first 512, the emitted code reverses all 600 and then
+    //                  truncates
+    //     [Mov, Tail]  511 against 512
+    //     [Mov] alone  512 against 600, the wrapper returning the bare parameter
+    //
+    // and plain [Delta] on the same input matched exactly, which isolates the
+    // cause to the alias rather than to any operation.
+    //
+    // The distinction that makes the minimal fix correct: a Mov whose source is
+    // ANOTHER POOL NODE is a genuine no-op, because that node was emitted as
+    // kh_lim(...) and is already within the bound, so clamping it again changes
+    // nothing. A Mov whose source is the raw parameter is NOT, because the
+    // parameter has never been through a clamp. Only the second must emit.
+    //
+    // I got this backwards first, aliasing exactly the case that must not be
+    // aliased, then over-corrected to aliasing nothing -- correct, but paying a
+    // line for every internal Mov as well. The condition below is the one that
+    // is both correct and minimal.
+    //
+    // It costs one emitted line per function, because the level-0 pool entry is
+    // Mov(input), and it lowers the reported lines-per-second. That trade is not
+    // close: a throughput figure that counts a program computing something else
+    // is not a throughput figure. It also fixes the Rust backend, which could not
+    // compile an identity-root recipe at all -- fn f(x: &V) -> V { x } returns a
+    // reference where a value is wanted -- because ref(root) no longer resolves
+    // the root to the bare parameter.
+    std::vector<int> alias(r.pool.size(), -2);        // -2 = not an alias
+    for (std::size_t i = 0; i < r.pool.size(); ++i) {
+        if (r.pool[i].op == Op::Mov && r.pool[i].a >= 0) alias[i] = r.pool[i].a;
+    }
 
     std::string body;
     std::size_t n = 0;

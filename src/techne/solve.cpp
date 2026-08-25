@@ -22,6 +22,7 @@
 // giving 1.20x scaling on 24 threads where copy-on-write gives 12.95x.
 
 #include "khora/techne/techne.hpp"
+#include "khora/governor/governor.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -76,14 +77,37 @@ std::size_t calls_in(const Recipe& r) {
 
 } // namespace
 
+std::size_t worker_threads(double fraction) {
+    const unsigned hw = std::max(1u, std::thread::hardware_concurrency());
+    if (fraction <= 0.0) return 1;
+    if (fraction >= 1.0) return hw;
+    // Round DOWN, then keep at least one worker. Rounding up on a 4-core machine
+    // would hand back 3 and call it 75% while leaving one core to run an
+    // operating system on, which is the case where headroom matters most.
+    const std::size_t n = static_cast<std::size_t>(static_cast<double>(hw) * fraction);
+    return std::max<std::size_t>(1, n);
+}
+
 std::vector<BuildResult> solve_all(const std::vector<Spec>& specs,
                                    SolveConfig cfg, SolveStats* stats) {
     const auto t0 = clk::now();
     std::vector<BuildResult> out(specs.size());
 
-    const std::size_t threads = cfg.threads > 0
-        ? cfg.threads
-        : std::max<std::size_t>(1, std::thread::hardware_concurrency());
+    // GOVERNED, not merely capped.
+    //
+    // A fixed thread count is a guess about how hot the machine will get. The
+    // governor measures instead: it starts at the ceiling and pulls workers back
+    // when the firmware reports thermal limiting or a temperature crosses the
+    // limit, then lets them return as things cool. Workers PARK rather than
+    // exit, so recovery costs nothing.
+    //
+    // Threads are still spawned at the ceiling -- parking a thread is cheap and
+    // respawning one is not, so the pool is sized once and its ACTIVE width is
+    // what varies.
+    khora::governor::Governor gov;
+    gov.start();
+    const std::size_t threads = cfg.threads > 0 ? cfg.threads
+                                                : khora::governor::Governor::cap_workers(0.90);
 
     Snapshot lib(cfg.lib_budget);
 
@@ -104,6 +128,11 @@ std::vector<BuildResult> solve_all(const std::vector<Spec>& specs,
 
         auto worker = [&](std::size_t slot) {
             for (;;) {
+                // Park before claiming work, never in the middle of it: a task
+                // half-done by a parked worker is a task nobody finishes.
+                while (gov.park_if_over(slot)) {
+                    if (cursor.load(std::memory_order_relaxed) >= pending.size()) return;
+                }
                 const std::size_t k = cursor.fetch_add(1, std::memory_order_relaxed);
                 if (k >= pending.size()) break;
                 const std::size_t i = pending[k];
@@ -169,7 +198,11 @@ std::vector<BuildResult> solve_all(const std::vector<Spec>& specs,
         pool_cap *= cfg.deepen;
     }
 
+    gov.stop();
     if (stats) {
+        stats->thermal_peak_c = gov.peak_celsius();
+        stats->min_workers = gov.min_allowed();
+        stats->throttle_events = gov.throttle_events();
         stats->attempted = specs.size();
         stats->nodes = nodes.load();
         for (const BuildResult& b : out) {

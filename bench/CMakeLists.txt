@@ -78,3 +78,9 @@ target_link_libraries(proof_bench PRIVATE khora::techne)
 
 add_executable(diagnosis_bench diagnosis_bench.cpp)
 target_link_libraries(diagnosis_bench PRIVATE khora::techne)
+
+add_executable(differential_bench differential_bench.cpp)
+target_link_libraries(differential_bench PRIVATE khora::techne)
+
+add_executable(governor_bench governor_bench.cpp)
+target_link_libraries(governor_bench PRIVATE khora::governor)

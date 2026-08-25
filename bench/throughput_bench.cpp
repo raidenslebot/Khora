@@ -238,11 +238,21 @@ int main(int argc, char** argv) {
     const std::size_t lib_bud  = (argc > 3) ? std::stoul(argv[3]) : 24;
     g_visible                  = (argc > 4) ? std::stoul(argv[4]) : 6;
 
-    const unsigned hw = std::max(1u, std::thread::hardware_concurrency());
+    // CAPPED AT A FRACTION OF THE MACHINE, not all of it. A stale run of this
+    // very benchmark reached 77 minutes and 14,297 CPU-seconds on a box someone
+    // was trying to work on. A benchmark that makes the machine unusable is one
+    // that gets killed rather than finished, so its numbers are worth less than
+    // the slightly smaller numbers it would have produced with headroom.
+    //
+    // The scaling arm below now measures scaling to the CAP, and the table says
+    // so, because reporting "24 threads" while running 18 would be a lie about
+    // the axis the measurement is against.
+    const unsigned hw = static_cast<unsigned>(worker_threads());
     std::printf("How fast does it write CERTIFIED code?\n\n");
     std::printf("  target: 10,000 lines in 30 s = 333.3 lines/s\n");
     std::printf("  %zu generated tasks, pool cap %zu, library budget %zu, %u hardware threads\n\n",
-                ntask, pool_cap, lib_bud, hw);
+                ntask, pool_cap, lib_bud, hw,
+                std::max(1u, std::thread::hardware_concurrency()));
 
     std::uint64_t seed = 0xC0FFEEULL;
     std::vector<Spec> specs;
@@ -312,7 +322,7 @@ int main(int argc, char** argv) {
     std::printf("  1 thread       | %5zu/%-5zu| %10zu | %7.2f | %8.1f\n",
                 single.solved, single.attempted, single.body_lines, s1,
                 single.body_lines / std::max(1e-9, s1));
-    std::printf("  %2u threads     | %5zu/%-5zu| %10zu | %7.2f | %8.1f\n",
+    std::printf("  %2u thr (cap)   | %5zu/%-5zu| %10zu | %7.2f | %8.1f\n",
                 hw, all.solved, all.attempted, all.body_lines, sN,
                 all.body_lines / std::max(1e-9, sN));
     std::printf("  %2u thr, no share| %5zu/%-5zu| %10zu | %7.2f | %8.1f\n",

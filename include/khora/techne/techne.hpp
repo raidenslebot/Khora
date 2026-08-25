@@ -575,6 +575,24 @@ std::string emit_unit(const Recipe& r, Lang l, const std::string& fn,
 // that makes it safe to run unattended -- it terminates. A round that certifies
 // nothing new cannot be followed by a round that does, because nothing changed.
 // ---------------------------------------------------------------------------
+// HOW MANY WORKERS TO RUN, AND WHY IT IS NOT ALL OF THEM.
+//
+// Saturating every core makes the machine unusable while a benchmark runs, and a
+// benchmark that has to be babysat is one nobody leaves running. A stale
+// throughput run here reached 77 minutes and 14,297 CPU-seconds before it was
+// noticed, on a box someone was trying to work on.
+//
+// The cap is a FRACTION of the cores, not a fixed count, so it travels to
+// machines with a different core count without becoming either wasteful or
+// oppressive. 0.75 leaves a quarter of the machine for everything else, which
+// on 24 cores is six cores of headroom -- enough that an editor, a compiler and
+// a shell all stay responsive.
+//
+// This is a ceiling, not a target. A caller that wants fewer says so.
+inline constexpr double kCpuFraction = 0.75;
+
+std::size_t worker_threads(double fraction = kCpuFraction);
+
 struct SolveConfig {
     std::size_t pool_cap   = 3000;
     std::size_t lib_budget = 24;
@@ -587,6 +605,12 @@ struct SolveConfig {
 };
 
 struct SolveStats {
+    // Thermal behaviour of the run, so a run that throttled and a run that never
+    // did cannot look identical afterwards.
+    double      thermal_peak_c  = -1.0;
+    std::size_t min_workers     = 0;    // narrowest the pool was driven
+    std::size_t throttle_events = 0;
+
     std::size_t rounds = 0;
     std::vector<std::size_t> solved_per_round;
     std::size_t certified = 0, attempted = 0, memorised = 0;

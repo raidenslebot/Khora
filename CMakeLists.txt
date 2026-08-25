@@ -44,6 +44,7 @@ add_subdirectory(src/carapace)
 add_subdirectory(src/morphus)
 add_subdirectory(src/ribosome)
 add_subdirectory(src/techne)
+add_subdirectory(src/governor)
 
 if(KHORA_BUILD_TESTS)
     add_subdirectory(tests)
