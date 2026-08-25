@@ -353,6 +353,46 @@ int main() {
         check(delta.apply(Value{5}, nullptr).empty(),
               "and a single element has no neighbours");
         check(delta.apply(Value{}, nullptr).empty(), "nor does an empty list");
+
+        // AND THEY EMIT. These four were refused by the emitter for want of a
+        // backend, which meant a recipe using one could be certified and never
+        // handed back as source. The failure mode if that regresses is not an
+        // empty string, it is fn_of() falling through to kh_id -- so the check
+        // is that the right helper is NAMED, not merely that something came out.
+        struct { const Recipe* r; const char* want; } named[] = {
+            {&gt, "kh_gt"}, {&mem, "kh_member"}, {&until, "kh_until"}, {&delta, "kh_delta"},
+        };
+        for (const auto& n : named) {
+            const std::string py = emit(*n.r, Lang::Python, "f", nullptr, nullptr);
+            check(py.find(n.want) != std::string::npos,
+                  (std::string("emitted Python names ") + n.want).c_str());
+        }
+        // Arity, in the one target where getting it wrong is not a syntax error.
+        // Haskell applies by juxtaposition, so a binary op emitted as unary
+        // silently becomes a partial application rather than a compile error at
+        // the call site.
+        // Counted, not pattern-matched against particular operand NAMES. The
+        // first version looked for the literal "kh_gt x t", which broke the
+        // moment Mov stopped being aliased away and the first operand became t0
+        // instead of x -- a correctness fix in the emitter failing a test that
+        // was only ever checking arity. A test should assert the property it
+        // cares about.
+        auto haskell_arity = [](const std::string& src, const std::string& fn) {
+            const std::size_t at = src.find(fn + " ");
+            if (at == std::string::npos) return static_cast<std::size_t>(0);
+            std::size_t i = at + fn.size();
+            std::size_t operands = 0;
+            while (i < src.size() && src[i] != ')' && src[i] != 0x0A) {
+                if (src[i] == ' ') { ++i; continue; }
+                ++operands;
+                while (i < src.size() && src[i] != ' ' && src[i] != ')' && src[i] != 0x0A) ++i;
+            }
+            return operands;
+        };
+        check(haskell_arity(emit(gt, Lang::Haskell, "f", nullptr, nullptr), "kh_gt") == 2,
+              "Haskell emits Gt with both operands");
+        check(haskell_arity(emit(delta, Lang::Haskell, "f", nullptr, nullptr), "kh_delta") == 1,
+              "and Delta with one");
     }
 
     std::printf("\n");

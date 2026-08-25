@@ -886,8 +886,8 @@ class Kh {
         }
         return acc;
     }
-}
   static long[] kh_lim(long[] a) { return a.length > 512 ? java.util.Arrays.copyOf(a, 512) : a; }
+}
 )JAVA";
 
 // C# has no top-level functions either, so it takes the same shape as Java: a
@@ -1050,8 +1050,8 @@ static class Kh {
         }
         return acc;
     }
-}
   public static long[] kh_lim(long[] a) { if (a.Length <= 512) return a; var o = new long[512]; System.Array.Copy(a, o, 512); return o; }
+}
 )CS";
 
 // TypeScript is the JavaScript backend with the types written down, so it
@@ -2208,10 +2208,36 @@ static std::string emit_inlined(const Recipe& r, Lang l, const std::string& fn,
     // `t0 = kh_id(x)` padding -- a correctness break shipped inside an integrity
     // fix, which is the kind of thing that only surfaces when someone else reads
     // the code.
-    std::vector<int> alias(r.pool.size(), -2);        // -2 = not an alias
-    for (std::size_t i = 0; i < r.pool.size(); ++i) {
-        if (r.pool[i].op == Op::Mov) alias[i] = r.pool[i].a;
-    }
+    // MOV IS NOT FREE, AND ALIASING IT AWAY WAS A CORRECTNESS BUG.
+    //
+    // The interpreter runs Mov through apply_op like everything else, which ends
+    // in clamp_len -- so Mov TRUNCATES to kMaxListLen. Emission aliased it to its
+    // argument and emitted no line at all, so the clamp vanished. Measured on a
+    // 600-element input, in every one of the nine executed backends:
+    //
+    //     [Mov, Rev]    interpreter reverses the first 512; emitted reverses all
+    //                   600 and truncates -- same length, DIFFERENT VALUES
+    //     [Mov, Tail]   511 against 512
+    //     [Mov] alone   512 against 600
+    //
+    // and plain [Delta] on the same input matched exactly, which isolates the
+    // cause to the alias rather than to any operation.
+    //
+    // THERE IS NO SAFE ALIAS. My first fix here kept the alias when its source
+    // was the raw parameter, reasoning that the parameter is the one value the
+    // interpreter has not clamped yet. Reading apply_op again: Mov falls to
+    // `default: out = A` and then clamp_len runs. The parameter is clamped the
+    // moment Mov touches it, so [Mov] alone on 600 elements is 512 from the
+    // interpreter and 600 from the emitted code, and my fix did not cover it.
+    //
+    // So Mov always emits. That restores some of the `t0 = kh_id(x)` lines I
+    // removed for inflating the throughput count, and the count is the lesser
+    // concern: a throughput figure that counts a program computing something
+    // else is not a throughput figure. It also happens to fix the Rust backend,
+    // which could not compile an identity-root recipe at all -- `fn f(x: &V) -> V
+    // { x }` returns a reference where a value is wanted -- because the root now
+    // always names a real temporary.
+    std::vector<int> alias(r.pool.size(), -2);        // nothing is aliased
 
     std::string body;
     std::size_t n = 0;
@@ -2305,9 +2331,16 @@ static std::string emit_inlined(const Recipe& r, Lang l, const std::string& fn,
         // fix. Doing it inside twenty-five helpers across fourteen backends would
         // be three hundred and fifty chances to miss one.
         if (e.op != Op::Const) {
-            rhs = (l == Lang::Haskell) ? ("kh_lim (" + rhs + ")")
-                : (l == Lang::Rust)    ? ("kh_lim(" + rhs + ")")
-                                       : ("kh_lim(" + rhs + ")");
+            // Java and C# have no top-level functions, so kh_lim lives on the
+            // same class as every other helper and must be named the same way.
+            // Emitting it bare produced source that DOES NOT COMPILE -- .NET 8
+            // reports CS8803 and CS0106 -- which means two of the fourteen
+            // backends were shipping nothing that builds, for every recipe. A
+            // backend that cannot compile is not a backend, and counting it was
+            // an overstatement.
+            const std::string limn = std::string(call_prefix(l)) + "kh_lim";
+            rhs = (l == Lang::Haskell) ? (limn + " (" + rhs + ")")
+                                       : (limn + "(" + rhs + ")");
         }
         switch (l) {
             case Lang::Cpp:        line("    const V " + lhs + " = " + rhs + ";"); break;

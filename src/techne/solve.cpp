@@ -109,8 +109,30 @@ std::vector<BuildResult> solve_all(const std::vector<Spec>& specs,
                 const std::size_t i = pending[k];
 
                 auto snap = lib.read();      // one atomic load, no lock held
+
+                // FORWARD FIRST, THEN BOTH ENDS. Measured on tasks graded by the
+                // depth of their known solution: bidirectional is slightly WORSE
+                // at depth 1-2 (~0.9x, goal-pool overhead) and decisive at depth
+                // -- max_minus_min falls from 219,799 nodes to 4,001, and at
+                // depth 4 forward search solves 0 of 3 where bidirectional solves
+                // 3 of 3.
+                //
+                // So the policy follows the measurement rather than picking a
+                // winner: the cheap engine runs first, and the expensive one is
+                // spent only on the residue that survived it. Round 0 is where
+                // the shallow tasks fall, so the switch happens after it.
                 BuildResult b = construct(specs[i], static_cast<std::size_t>(pool_cap),
                                           snap.get());
+                if (b.proof != Proof::Generalised && round > 0) {
+                    BuildResult d = construct_bidir(specs[i],
+                                                    static_cast<std::size_t>(pool_cap),
+                                                    snap.get());
+                    nodes.fetch_add(d.nodes_considered, std::memory_order_relaxed);
+                    if (d.proof == Proof::Generalised ||
+                        d.cases_passed > b.cases_passed) {
+                        b = std::move(d);
+                    }
+                }
                 nodes.fetch_add(b.nodes_considered, std::memory_order_relaxed);
 
                 if (b.proof == Proof::Generalised) {
