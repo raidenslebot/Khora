@@ -3,6 +3,126 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.117.0 — The library compounds, and the thing I optimised was 13% of the run
+
+**Author:** Claude Opus 5
+
+One large speedup, three dormant defects, and a methodological correction that
+matters more than any of them.
+
+### A recipe was carrying its entire search pool
+
+`Recipe::apply` evaluated **every node in the pool** and returned one of them. A
+recipe leaves the search holding the whole enumeration — every behaviour ever
+considered, up to `max_pool` of them — so a ten-node answer found in a
+fifteen-thousand-node pool cost about fifteen hundred times what it should. On
+every application: every verification probe, every library call, every emitted
+program, every duplicate check.
+
+`Recipe::compact()` drops what the root cannot reach. Node order is already
+topological, so survivors keep their relative order and the indices renumber.
+
+| tier | before | after |
+|------|--------|-------|
+| 2 | 29.8 s | **0.7 s** |
+| 3 | 53.2 s | **2.3 s** |
+| 5 | 49.2 s | **3.3 s** |
+| verification per tier | 26.1 s | **0.0 s** |
+
+The whole fifteen-tier ascent went from exhausting a 240 s budget at tier 5 to
+finishing in **32.7 s**, ending because its stopping rule fired rather than
+because it ran out of time — for the first time. Same answers: `techne_bench`,
+whose task set is fixed, returns the identical 16/20 on the identical 115,696
+candidates, and emitted Python and JavaScript still execute to a byte-identical
+match against `Recipe::apply` across 13 recipes and 9 inputs.
+
+It also fixed something quieter. Library duplicate detection compares pools, so
+two recipes computing the same function with different search pools were never
+recognised as duplicates — it was comparing enumerations, not programs.
+
+### The ascent compounds: 185 verified against 138
+
+Forty tasks a tier, pool 30,000, each tier run twice from identical
+specifications — once with the library carried from every earlier tier, once
+from empty. **185 against 138.** From tier 9 the empty arm verifies almost
+nothing while the carried arm keeps going.
+
+The library is a VOCABULARY rather than a lucky reordering of the search, and
+that is now counted rather than asserted: live `Call` nodes in the answers track
+the verified count almost exactly from tier 3 onward. Chained calls —
+`lib_j(lib_i(x))`, the composition the whole compounding story rests on — were
+**4 across an entire ascent** before compaction and are now routine (2, 6, 4, 3
+in the first tiers that admit them).
+
+### Three dormant defects in the library
+
+1. **Twenty-four of every thirty-two learned entries were unreachable.**
+   `Op::Call` shared a body bound with `MapF`/`FoldF` at 8, against a budget of
+   32. A call costs one body evaluation per case; a fold costs one per *element*
+   per case. Sharing the bound priced the cheap one as the expensive one.
+2. **`note_use()` was never called from anywhere in the tree.** `uses` was
+   permanently zero, so the "utility-based eviction" the header justifies at
+   length was sorting a column of zeroes.
+3. **`prune()` sorted `items_` in place and truncated.** A recipe names its
+   callee by INDEX, so permuting the store silently changes what every certified
+   program containing a call computes. It had never fired only because (2) made
+   every sort key equal — dormant for exactly the reason the call-depth bug was
+   dormant, and **armed by fixing (2)**. Truncation also dropped the newest
+   entries, which in an ascent are the deepest reached.
+
+Eviction now keeps the age-ordered prefix and remaps surviving indices; the
+prefix is closed under references for free, because an entry can only call
+entries that already existed when it was built. Closing the keep set under
+references instead — which was written first — has no upper bound and lets the
+library grow past its budget forever, the exact unbounded-growth failure the
+class exists to prevent, reintroduced by the fix for a different bug.
+
+### I parallelised the 13%
+
+Most of this cycle went into widening `construct()`: a block-parallel sweep with
+signature-only buffers, a persistent worker fan, adaptive block sizing, growing
+blocks. It produced no speedup at any width. Then the three phases were timed
+instead of theorised about:
+
+```
+tier 2 | forward 3.5 s | bidir 0.2 s | verify 26.1 s
+tier 3 | forward 7.9 s | bidir 4.0 s | verify 41.3 s
+```
+
+**The search was 13% of the run.** Amdahl had capped the entire effort before a
+line of it was written, which is exactly the "no change" the measurements kept
+reporting and I kept explaining away. Width 1 and width 21 came out 30.2 s and
+30.7 s — the parallel path RAN, and it did not matter. Reverted in full. It
+carried two bugs worth recording: blocks bounded by remaining pool capacity while
+`base` advanced by the intended block size, silently SKIPPING candidates; and a
+block start of 1024 overrunning buffers sized to a smaller byte-budgeted block,
+which segfaulted only at width ≥ 2 and only deep in an ascent.
+
+### ascent_bench cannot compare two engines, and now says so
+
+Each tier is built out of what the previous tier **solved**, so a change anywhere
+hands the benchmark a different curriculum. Four runs of it were read as a 2x
+slowdown and attributed to three different causes in turn — allocator contention,
+eviction policy, body ordering — with a confident causal comment written each
+time. Against `techne_bench`, whose task set is fixed, the two engines came out
+byte-identical. Every such comment has been rewritten to say what was observed
+and that the attribution is not supported, and the bench now prints the caveat.
+
+Whether `uses` or age should dominate eviction is left explicitly **unmeasured**:
+`techne_bench` fixes its curriculum but never admits enough to prune,
+`ascent_bench` prunes constantly but regenerates its tasks. Neither can price it.
+
+### Parallelising the tier destroys the compounding
+
+Spreading a tier's tasks across the pool is 8.5x faster per tier and turns the
+library from **+21 verified over its control into −8**. Admission is task-by-task
+and that is where the value is: task *j*'s solution enters the library before
+task *j+1* is attempted, so a twenty-task tier compounds twenty times. Tier 1
+starts EMPTY and still produced eight answers containing a library call. Parallel
+waves with admission between them did not recover it either.
+
+---
+
 ## v0.116.0 — The organ that constructs, and four assumptions measurement destroyed
 
 **Author:** Claude Opus 5
