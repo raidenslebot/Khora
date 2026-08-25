@@ -102,6 +102,37 @@ Recorded so they are not re-attempted without new evidence.
    (Kneser-Ney, hierarchical Pitman-Yor, context-tree weighting) and D2-CTW
    does it with BOUNDED model size. See `docs/SPEC-v2-population.md`.
 
+0b. **DONE, and it earned its place: `ContextTree`.** The variable-order-with-
+   backoff direction named above is built, tested and benched. Held out on 1.8M
+   tokens: **8.45%** against a bigram's 7.66%, under a hard 300,000-node ceiling
+   the bigram does not have to respect. 40,000 purely novel symbols settle at
+   18,471 nodes against a 20,000 budget. Three of its own assumptions were wrong
+   and are recorded in the header; `prior_weight` is a documented null result.
+   `docs/SPEC-v2-population.md` is superseded by the module itself.
+
+   STILL OPEN: it is not wired into `khora.exe`. Neither is TemporalMemory for
+   its real scope (structured sequences). Both are benched organs with no body.
+
+0c. **NEW ORGAN, and the honest status is "one relation out of two": `Ribosome`.**
+   The thing Khora could not do at all — construct a faculty nobody wrote. Byte-
+   tape genomes over Khora's own primitives, total decoder, PACE-style chamber,
+   containment by construction. Beats every baseline including the textbook VSA
+   role vector on WordNet co-hyponymy through Plexus; loses to a constant on
+   hypernymy, where under class-balanced fitness nothing above the constant floor
+   exists to be found.
+
+   NEXT, in order:
+   - Neighbourhood INTERSECTION and second-order kinship were an arbitrary
+     omission from the instruction set — union was there, its dual was not.
+     Both added; each is also its own baseline, so a rediscovered primitive
+     reads as one rather than as a compositional win.
+   - Run a relation Plexus demonstrably contains, so a loss separates "the
+     search is weak" from "the signal is absent".
+   - Bulwark only when organisms call Carapace tools. Until then the sandbox
+     claim stays unmade.
+   - The absolute numbers are small (0.353% on a 4,658-way choice, 17x chance).
+     Beating the baselines is necessary, not sufficient.
+
 1. PLANNED: **Ligature's extracted is-a relations are mostly false.** Measured.
    Everything symbolic — `deduce`, BFS reachability, crystallize — stands on
    them. Either fix extraction (sentence-boundary tokenisation is the obvious

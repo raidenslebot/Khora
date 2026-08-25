@@ -107,8 +107,24 @@ enum class Op : std::uint8_t {
     Assoc,     // dst = the b-th associate, in the environment graph, of the
                //       item nearest a
     Neigh,     // dst = bundle of the top (b mod 8) + 1 associates of that item
+    Common,    // dst = the item most linked-to by BOTH neighbourhoods, a and b
+    Kin,       // dst = the item whose neighbourhood most overlaps a's
     kCount
 };
+
+// INTERSECTION WAS AN ARBITRARY OMISSION, NOT A RESTRICTION.
+//
+// The first instruction set gave neighbourhood UNION (Neigh) and no
+// intersection. That is not a principled limit -- intersection is the exact dual
+// of union, and both are ordinary graph primitives. Leaving one out silently
+// decided which relations were reachable.
+//
+// Common and Kin close it. Kin in particular is second-order distributional
+// similarity: the item whose company most resembles yours. It is a strong
+// primitive, so the bench runs it as its OWN BASELINE as well as an opcode. If
+// the evolved program merely rediscovers Kin, the baseline scores the same and
+// the honest report is "evolution found a primitive it was handed", not "the
+// composition works".
 
 // WHY THE SENSES HAD TO BE ADDED, and it was a measured failure rather than a
 // design preference.
@@ -208,6 +224,15 @@ public:
     void link(std::size_t from, std::size_t to);
     const std::vector<std::uint32_t>& links(std::size_t i) const;
 
+    // Second-order neighbours: for each item, the item whose neighbourhood most
+    // overlaps it. Built once from the reverse index, so it costs
+    // O(edges * average in-degree) rather than O(items^2).
+    void precompute_kin();
+    std::size_t kin(std::size_t i) const;
+
+    // The item most linked-to by both neighbourhoods, or npos.
+    std::size_t common(std::size_t i, std::size_t j) const;
+
     // Index of the nearest item, or npos when empty.
     //
     // An EXACT hit short-circuits the scan. This is not only an optimisation:
@@ -235,6 +260,7 @@ private:
     // digest and capped, so at the cap a collision has probability ~1e-9 and
     // would cost one mis-scored pair, never a structurally wrong result.
     mutable std::unordered_map<std::uint64_t, std::uint32_t> memo_;
+    std::vector<std::uint32_t> kin_;
 };
 
 // ---------------------------------------------------------------------------

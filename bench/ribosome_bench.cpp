@@ -47,6 +47,7 @@
 
 #include "khora/ribosome/ribosome.hpp"
 #include "khora/plexus/plexus.hpp"
+#include "khora/lexicon/lexicon.hpp"
 
 #include <algorithm>
 #include <cstdio>
@@ -111,6 +112,21 @@ int main(int argc, char** argv) {
     const std::string wn_path       = (argc > 2) ? argv[2] : "data/eval/wn_categories.tsv";
     const std::size_t max_cats      = (argc > 3) ? std::stoul(argv[3]) : 60;
     const std::size_t generations   = (argc > 4) ? std::stoul(argv[4]) : 300;
+    // DOES THE HYPERVECTOR SUBSTRATE EARN ITS PLACE?
+    //
+    // With Glyph::from_hash every word is a random orthogonal vector, so
+    // bind/bundle/permute produce things that are not items and only the GRAPH
+    // opcodes do real work. If that is so, "the organism computes in the
+    // representation" is decoration and should be dropped.
+    //
+    // Lexicon's random-indexing context glyphs are the alternative: similar
+    // words get similar vectors, so cleanup becomes semantic and the VSA
+    // operations have something to be gradient over. Running both arms is the
+    // only way to find out which is true, and it strengthens the BASELINES too
+    // -- under distributional glyphs the nearest other word to a word is
+    // plausibly a co-hyponym, so identity and top-associate get harder to beat.
+    const int distributional = (argc > 5) ? std::stoi(argv[5]) : 0;
+    const std::string lex_prefix = (argc > 6) ? argv[6] : "data/lexicon_archive/main";
 
     khora::plexus::Plexus px;
     px.load(plexus_prefix);
@@ -149,11 +165,30 @@ int main(int argc, char** argv) {
     // ---- codebook: every word that can be an input or an answer -------------
     Codebook cb;
     std::unordered_map<std::string, std::size_t> slot;
+    khora::lexicon::Lexicon lex;
+    if (distributional) {
+        lex.load(lex_prefix);
+        std::printf("  glyphs: DISTRIBUTIONAL (Lexicon random indexing, %zu tokens)\n",
+                    lex.vocabulary_size());
+    } else {
+        std::printf("  glyphs: HASHED (every word orthogonal to every other)
+");
+    }
+    std::size_t no_context = 0;
     auto intern = [&](const std::string& w) -> std::size_t {
         const auto it = slot.find(w);
         if (it != slot.end()) return it->second;
         const std::size_t i = cb.size();
-        cb.add(w, Glyph::from_hash(w));
+        Glyph g = Glyph::from_hash(w);
+        if (distributional) {
+            const Glyph c = lex.context_glyph(w);
+            // A word the Lexicon never saw has a zero context glyph, and every
+            // one of those would collide onto the same point. Fall back to the
+            // hash so an unknown word stays distinguishable rather than
+            // silently merging with every other unknown.
+            if (c.popcount() > 0) g = c; else ++no_context;
+        }
+        cb.add(w, g);
         slot.emplace(w, i);
         return i;
     };
@@ -161,6 +196,13 @@ int main(int argc, char** argv) {
         intern(c.name);
         for (const auto& m : c.members) intern(m);
     }
+
+    // Which category each codebook slot belongs to, or -1 for a category name
+    // itself. Co-hyponymy is a SET-valued relation -- any sibling is a correct
+    // answer -- but an Assay carries one target index, so the scored task is
+    // strictly harder than the relation is. This map lets the bench also report
+    // the honest measure: did the answer land in the right category at all.
+    std::vector<int> cat_of(0);
 
     // ---- the environment graph: Plexus adjacency, restricted to the codebook -
     //
@@ -185,6 +227,16 @@ int main(int argc, char** argv) {
             ++kept; ++edges;
         }
     }
+    if (distributional) {
+        std::printf("  %zu of %zu codebook words had no context glyph, fell back to hash\n",
+                    no_context, cb.size());
+    }
+    cat_of.assign(cb.size(), -1);
+    for (std::size_t ci = 0; ci < usable.size(); ++ci) {
+        for (const auto& m : usable[ci].members) cat_of[slot[m]] = static_cast<int>(ci);
+    }
+
+    cb.precompute_kin();
     std::size_t with_edges = 0;
     for (std::size_t i = 0; i < cb.size(); ++i) if (!cb.links(i).empty()) ++with_edges;
     std::printf("  codebook %zu words, %zu environment edges (Plexus top-32, in-codebook)\n",
@@ -199,6 +251,7 @@ int main(int argc, char** argv) {
     // an operator that memorised its training pairs scores nothing here.
     struct Split { std::vector<Assay> train, held; };
     Split hyper, cohyp;
+    std::vector<std::size_t> cohyp_held_from;   // source slot of each held-out pair
     for (const auto& c : usable) {
         const std::size_t cat_slot = slot[c.name];
         for (std::size_t k = 0; k < c.members.size(); ++k) {
@@ -222,6 +275,7 @@ int main(int argc, char** argv) {
             o.to = cb.at(sib);
             o.to_index = sib;
             (is_held ? cohyp.held : cohyp.train).push_back(o);
+            if (is_held) cohyp_held_from.push_back(m);
         }
     }
     std::printf("  hypernym   : %zu train / %zu held out\n", hyper.train.size(), hyper.held.size());
@@ -247,7 +301,26 @@ int main(int argc, char** argv) {
         return khora::lattice::bundle(std::span<const Glyph>(xs));
     };
 
-    auto run_relation = [&](const char* label, Split& sp) {
+    // Same-category accuracy: did the answer land in the right category, rather
+    // than on one specific sibling. Only meaningful for co-hyponymy.
+    auto score_category = [&](const std::vector<Assay>& pairs,
+                              const std::function<Glyph(const Glyph&)>& f,
+                              const std::vector<std::size_t>& from_slots) {
+        if (pairs.empty()) return 0.0;
+        std::size_t right = 0;
+        for (std::size_t k = 0; k < pairs.size(); ++k) {
+            const std::size_t out = cb.nearest_index(f(pairs[k].from));
+            const int want = cat_of[from_slots[k]];
+            if (want >= 0 && out < cat_of.size() && cat_of[out] == want &&
+                out != from_slots[k]) {
+                ++right;
+            }
+        }
+        return 100.0 * static_cast<double>(right) / static_cast<double>(pairs.size());
+    };
+
+    auto run_relation = [&](const char* label, Split& sp,
+                            const std::vector<std::size_t>& held_from) {
         std::printf("  %s\n", label);
         std::printf("    predictor            | held-out accuracy | what it is\n");
         std::printf("    ---------------------+-------------------+------------\n");
@@ -283,6 +356,19 @@ int main(int argc, char** argv) {
         });
         std::printf("    top Plexus associate |       %6.3f%%     | no search at all\n", top);
 
+        // KIN AS A BASELINE, not only as an opcode. Second-order neighbourhood
+        // similarity is a strong primitive and the organism is now handed it.
+        // If the evolved program merely rediscovers it, this row scores the same
+        // and the honest report is "evolution found a primitive it was given",
+        // not "the composition works". A powerful primitive must be its own
+        // control, or adding it is just writing the answer into the machine.
+        const double kinb = score_direct(sp.held, [&](const Glyph& g) {
+            const std::size_t i = cb.nearest_index(g);
+            const std::size_t k = cb.kin(i);
+            return (k == static_cast<std::size_t>(-1)) ? g : cb.at(k);
+        });
+        std::printf("    second-order kin     |       %6.3f%%     | the Kin opcode, ALONE\n", kinb);
+
         const Glyph role = vsa_role(sp.train);
         const double vsa = score_direct(sp.held, [&](const Glyph& g) {
             return khora::lattice::bind(g, role);
@@ -315,6 +401,28 @@ int main(int argc, char** argv) {
                     evolved, ch.births(), ch.generations());
         std::printf("    (balanced accuracy, the measure it was selected on: %.3f%%)\n", balanced);
 
+        // SET-VALUED SCORE. The table above demands one specific sibling; this
+        // asks the question the relation actually poses -- did the answer land
+        // in the right category at all. Only meaningful where the target is a
+        // set, so it is reported for co-hyponymy alone.
+        if (!held_from.empty()) {
+            const double c_top = score_category(sp.held, [&](const Glyph& g) {
+                const std::size_t i = cb.nearest_index(g);
+                const auto& l = cb.links(i);
+                return l.empty() ? g : cb.at(l[0]);
+            }, held_from);
+            const double c_kin = score_category(sp.held, [&](const Glyph& g) {
+                const std::size_t i = cb.nearest_index(g);
+                const std::size_t k = cb.kin(i);
+                return (k == static_cast<std::size_t>(-1)) ? g : cb.at(k);
+            }, held_from);
+            const double c_evo = score_category(sp.held, [&](const Glyph& g) {
+                return scorer.run(ch.best().genome, g);
+            }, held_from);
+            std::printf("    SAME-CATEGORY (any sibling counts): top assoc %.2f%%, kin %.2f%%,"
+                        " Ribosome %.2f%%\n", c_top, c_kin, c_evo);
+        }
+
         // DOES THE EVOLVED OPERATOR ACTUALLY READ ITS INPUT?
         //
         // A constant function is a genuine optimum of this fitness and selection
@@ -336,7 +444,7 @@ int main(int argc, char** argv) {
             std::printf(",\n       so it is a function OF the input rather than a constant.\n");
         }
 
-        const double best_baseline = std::max({id, top, vsa, maj});
+        const double best_baseline = std::max({id, top, vsa, maj, kinb});
         if (evolved > best_baseline) {
             std::printf("    -> evolution BEATS every baseline, by %.2f points over the best.\n",
                         evolved - best_baseline);
@@ -352,9 +460,9 @@ int main(int argc, char** argv) {
         std::printf("\n");
     };
 
-    run_relation("HYPERNYM  (member -> its category)  -- vertical, and there is no", hyper);
+    run_relation("HYPERNYM  (member -> its category)  -- vertical, and there is no", hyper, {});
     run_relation("CO-HYPONYM (member -> a sibling)    -- horizontal, what a co-occurrence"
-                 "\n             graph is actually supposed to carry", cohyp);
+                 "\n             graph is actually supposed to carry", cohyp, cohyp_held_from);
 
     std::printf("  HOW TO READ IT\n");
     std::printf("    The VSA role vector is the comparison that matters. It is what a\n");

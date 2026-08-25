@@ -33,6 +33,8 @@ const char* op_name(Op o) {
         case Op::Clean:  return "clean";
         case Op::Assoc:  return "assoc";
         case Op::Neigh:  return "neigh";
+        case Op::Common: return "common";
+        case Op::Kin:    return "kin";
         default:         return "?";
     }
 }
@@ -136,7 +138,7 @@ std::string Genome::disassemble() const {
                 std::snprintf(line, sizeof line, "%2zu  neigh  r%u <- bundle top %u of r%u\n",
                               i, c.dst, static_cast<unsigned>((c.b % 8) + 1), c.a);
                 break;
-            case Op::Copy: case Op::Clean:
+            case Op::Copy: case Op::Clean: case Op::Kin:
                 std::snprintf(line, sizeof line, "%2zu  %-6s r%u <- r%u\n",
                               i, op_name(c.op), c.dst, c.a);
                 break;
@@ -182,6 +184,56 @@ void Codebook::link(std::size_t from, std::size_t to) {
 const std::vector<std::uint32_t>& Codebook::links(std::size_t i) const {
     static const std::vector<std::uint32_t> kNone;
     return (i < adj_.size()) ? adj_[i] : kNone;
+}
+
+void Codebook::precompute_kin() {
+    kin_.assign(items_.size(), static_cast<std::uint32_t>(-1));
+    if (adj_.size() < items_.size()) adj_.resize(items_.size());
+
+    // Reverse index: who points at each item. Walking it turns the O(N^2)
+    // all-pairs neighbourhood comparison into a pass over edges.
+    std::vector<std::vector<std::uint32_t>> rev(items_.size());
+    for (std::size_t i = 0; i < adj_.size(); ++i) {
+        for (const std::uint32_t t : adj_[i]) {
+            if (t < rev.size()) rev[t].push_back(static_cast<std::uint32_t>(i));
+        }
+    }
+
+    std::vector<std::uint32_t> shared(items_.size(), 0);
+    std::vector<std::uint32_t> touched;
+    for (std::size_t i = 0; i < items_.size(); ++i) {
+        touched.clear();
+        for (const std::uint32_t n : adj_[i]) {
+            for (const std::uint32_t j : rev[n]) {
+                if (j == i) continue;
+                if (shared[j] == 0) touched.push_back(j);
+                ++shared[j];
+            }
+        }
+        std::uint32_t best = static_cast<std::uint32_t>(-1), bc = 0;
+        for (const std::uint32_t j : touched) {
+            if (shared[j] > bc) { bc = shared[j]; best = j; }
+        }
+        kin_[i] = best;
+        for (const std::uint32_t j : touched) shared[j] = 0;
+    }
+}
+
+std::size_t Codebook::kin(std::size_t i) const {
+    if (i >= kin_.size() || kin_[i] == static_cast<std::uint32_t>(-1)) {
+        return static_cast<std::size_t>(-1);
+    }
+    return kin_[i];
+}
+
+std::size_t Codebook::common(std::size_t i, std::size_t j) const {
+    const auto& a = links(i);
+    const auto& b = links(j);
+    if (a.empty() || b.empty()) return static_cast<std::size_t>(-1);
+    for (const std::uint32_t x : a) {
+        for (const std::uint32_t y : b) if (x == y) return x;
+    }
+    return static_cast<std::size_t>(-1);
 }
 
 std::size_t Codebook::nearest_index(const lattice::Glyph& q) const {
@@ -280,6 +332,23 @@ lattice::Glyph Vm::run(const Genome& g, const lattice::Glyph& input) const {
                 xs.reserve(k);
                 for (std::size_t j = 0; j < k; ++j) xs.push_back(cleanup_->at(l[j]));
                 r[c.dst] = lattice::bundle(std::span<const lattice::Glyph>(xs));
+                break;
+            }
+            case Op::Common: {
+                if (!cleanup_) break;
+                const std::size_t i = cleanup_->nearest_index(r[c.a]);
+                const std::size_t j = cleanup_->nearest_index(r[c.b % kRegisters]);
+                if (i == static_cast<std::size_t>(-1) || j == static_cast<std::size_t>(-1)) break;
+                const std::size_t k = cleanup_->common(i, j);
+                if (k != static_cast<std::size_t>(-1)) r[c.dst] = cleanup_->at(k);
+                break;
+            }
+            case Op::Kin: {
+                if (!cleanup_) break;
+                const std::size_t i = cleanup_->nearest_index(r[c.a]);
+                if (i == static_cast<std::size_t>(-1)) break;
+                const std::size_t k = cleanup_->kin(i);
+                if (k != static_cast<std::size_t>(-1)) r[c.dst] = cleanup_->at(k);
                 break;
             }
             default: break;

@@ -53,4 +53,4 @@ add_executable(prediction_bench prediction_bench.cpp)
 target_link_libraries(prediction_bench PRIVATE khora::cortex khora::reservoir)
 
 add_executable(ribosome_bench ribosome_bench.cpp)
-target_link_libraries(ribosome_bench PRIVATE khora::ribosome khora::plexus)
+target_link_libraries(ribosome_bench PRIVATE khora::ribosome khora::plexus khora::lexicon)

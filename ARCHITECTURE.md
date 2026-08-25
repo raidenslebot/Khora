@@ -188,13 +188,13 @@ directed, after which it scored 100%.
 
 ## 3. Module map
 
-23 libraries and executables, in the order the root `CMakeLists.txt` adds them.
+24 libraries and executables, in the order the root `CMakeLists.txt` adds them.
 
 | Module | What the code does | Wired into `khora.exe`? |
 |---|---|---|
 | `lattice` | `Glyph`, `Sdr`, labelled store with linear-scan Hamming k-NN, binary persistence | yes (Glyph); **Sdr: no** |
 | `synapse` | Topic pub/sub with per-subscriber bounded queues and drop counting | **no — see §9** |
-| `cortex` | `PredictiveColumn` (dense, context→next) and `TemporalMemory` (sparse, per-cell context) | PredictiveColumn only; **TemporalMemory: no** |
+| `cortex` | `PredictiveColumn` (dense, context→next), `TemporalMemory` (sparse, per-cell context), and `ContextTree` (variable-order with backoff under a hard node budget) | PredictiveColumn only; **TemporalMemory and ContextTree: no** |
 | `soma` | Five scalar drives with homeostatic decay; dot-product arbitration | yes |
 | `reverie` | Background perturb-bundle-evaluate loop over stored glyphs | yes |
 | `lexicon` | Char-trigram token glyphs; random-indexing distributional context; sentence-aware tokenizer | yes |
@@ -214,6 +214,7 @@ directed, after which it scored 100%.
 | `ballast` | RSS + system-RAM governor; sheds cortex and lexicon under pressure | yes |
 | `volition` | Drive-weighted act selection over a repertoire | yes (on demand) |
 | `carapace` | Tool registry and command dispatch | yes |
+| `ribosome` | Evolvable byte-tape genomes over Khora's own primitives; total decoder, PACE-style chamber, environment senses over a graph | **no — see §6.4** |
 | `morphus` | `khora.exe`, `khora_next`, `plexus_forge`, `bulwark_probe`, `reforge_eval` | — |
 
 Dependency edges are direct C++ references declared in each module's
@@ -432,6 +433,60 @@ subsampled matching wins — and the reason is the slope, not the level: over th
 same range the trigram table's novelty rises 0.852 while the temporal memory's
 rises 0.383, less than half as fast. That is graceful degradation, it is what the
 false-match mathematics predicts, and it is measured on real prose.
+
+---
+
+### 6.3b `ContextTree` — bounded, and calibrated about its own depth
+
+Variable-order prediction with backoff, under a **hard node budget**. It exists
+because `TemporalMemory` does not converge on prose and the recurrence
+measurement says why: 8-word contexts recur 0.32% of the time even at 7.66M
+tokens, while 1/2/3-word contexts recur 66.9 / 30.7 / 13.5%.
+
+Three of its internal assumptions were wrong and were found by measurement, all
+recorded in the header:
+
+- **Depth is not reliability.** Choosing the longest context seen made accuracy
+  *fall* where the traffic is. Order is now chosen by each node's measured hit
+  rate, shrunk toward the shorter context it sits inside — the Kneser-Ney shape.
+- **A bounded successor list needs an algorithm, not a heuristic.** The
+  displace-singletons rule locked the order-0 node at **0.00%** accuracy.
+  Replaced with Space-Saving.
+- **Fitness must be correctness, not use.** Now measured off-policy: every step,
+  every context that could have predicted is graded on whether it would have
+  been right.
+
+Against a bigram table with unlimited memory on 1.8M held-out tokens: **8.45% vs
+7.66%**, under a 300,000-node ceiling. `depth_signal()` reports the mean order it
+could actually use, which is the calibrated version of what TemporalMemory's
+burst fraction was reaching for.
+
+---
+
+## 6.4 `Ribosome` — the organ that constructs
+
+Khora could perceive, act and contain. It could not **construct**: every faculty
+it has, a human wrote.
+
+A genome is a linear byte tape; four bytes per codon; every field masked into
+range on decode, so **the decoder is total** — every byte string is a running
+program. That is what makes mutation and crossover closed operations, as they are
+in DNA, with no repair rule to smuggle in a human prior. Registers hold `Glyph`s
+and the opcodes are Khora's own operations, so an organism computes *in* the
+representation rather than about it.
+
+**Containment is by construction, not by Bulwark**: fixed register file, no
+addressing, no I/O, no loops, instruction ceiling set by tape length. Bulwark
+becomes load-bearing only when organisms call Carapace tools.
+
+What it is worth, measured against WordNet through Plexus, held-out words:
+it beats every baseline on co-hyponymy — including the hand-designed VSA role
+vector — and loses to "always answer *person*" on hypernymy, where under
+class-balanced fitness it finds nothing above the constant floor. That split is
+the method reporting which relation is present in the environment.
+
+Full design and the three findings that redesigned it mid-build:
+`docs/SPEC-v3-ribosome.md`.
 
 ---
 
