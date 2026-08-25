@@ -101,6 +101,48 @@ set rather than a failure: it is the minimal core, measured instead of assumed.
 Previously 10 of 22. This was never recorded in the README or the changelog,
 which for the benchmark the goal actually names was the wrong omission to have.
 
+### Removing that ceiling: tier 15 to tier 20
+
+The collapse has a mechanism. `sum`, `len`, `take3`, `tail` and `drop2` funnel
+into ABSORBING STATES — the singleton and the empty list — after which `sort`,
+`rev` and `pos` are all identity, so a deep chain's behaviour was settled long
+before its last operation and the prefix check correctly rejects it.
+
+Five atoms with no absorbing state to fall into — length-preserving,
+position-dependent, and non-commuting with the arithmetic maps:
+
+```
+rot1    rotate left by one        idxmul  multiply element i by i+1
+scan    prefix sums               ziprev  v[i] + v[n-1-i]
+altneg  negate odd positions
+```
+
+**Tier 15 → tier 20. 185 → 220 verified.** Tiers stay full through 16, where
+before the generator gave up at 12. Tier 15 now draws 1,511 to keep 40, where it
+drew 1,611 to keep 11.
+
+### A library is a haystack as well as a vocabulary
+
+A 2x2, each cell the carried-minus-empty gap inside one run:
+
+| atoms | budget | tiers | carried | empty | tasks | lift/task |
+|-------|--------|-------|---------|-------|-------|-----------|
+| 19 | 32 | 15 | 185 | 138 | 517 | 9.1 pts |
+| 19 | 96 | 15 | **174** | 138 | 517 | 7.0 pts |
+| 24 | 32 | 20 | 214 | 191 | 718 | 3.2 pts |
+| 24 | 96 | 20 | **220** | 191 | 718 | 4.0 pts |
+
+The bigger library **hurts** the smaller atom set and **helps** the larger one.
+Every entry is another level-0 candidate, so the right size is a function of how
+diverse the problems are, not a constant to tune once. That control was nearly
+skipped — shipping budget 96 on the strength of the 24-atom result alone would
+have recorded a tuning win that is a loss in the other half of the table.
+
+The richer atom set also dilutes reuse: per-task lift falls from 9.1 points to
+4.0. The empty-arm rate barely moves (26.7% to 26.6%), so the tasks are not
+harder for a library-less solver — the library simply covers less of a more
+diverse space.
+
 ### The ceiling is the curriculum, not the solver
 
 The ascent stops at tier 15. Three attempts to push that from the solver side,

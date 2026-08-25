@@ -110,6 +110,30 @@ std::vector<Atom> atoms() {
         {"sum",    [](const Value& v) { std::int64_t s = 0; for (auto x : v) s += x; return Value{s}; }},
         {"delta",  [](const Value& v) { Value o; for (std::size_t i = 1; i < v.size(); ++i)
                         o.push_back(v[i] - v[i-1]); return o; }},
+        // LENGTH-PRESERVING AND POSITION-DEPENDENT. Everything above either maps
+        // elements independently or shrinks the list, and that is why deep random
+        // chains collapse: len, sum, take3, tail and drop2 funnel into ABSORBING
+        // STATES -- the singleton and the empty list -- after which sort, rev and
+        // pos are all identity and the chain's behaviour was settled long before
+        // its last operation. Measured, 99.3% of depth-15 draws were rejected for
+        // exactly that, and the ascent ended on the curriculum rather than the
+        // solver.
+        //
+        // These five have no absorbing state to fall into. They keep the length,
+        // they depend on POSITION rather than on the element alone, and they do
+        // not commute with the arithmetic maps -- rot1 then inc1 is not inc1 then
+        // rot1 once anything asymmetric has happened. That is what makes a
+        // fifteen-deep chain still fifteen deep.
+        {"rot1",   [](const Value& v) { if (v.size() < 2) return v;
+                        Value o(v.begin()+1, v.end()); o.push_back(v.front()); return o; }},
+        {"scan",   [](const Value& v) { Value o; std::int64_t s = 0;
+                        for (auto x : v) { s += x; o.push_back(s); } return o; }},
+        {"altneg", [](const Value& v) { Value o; for (std::size_t i = 0; i < v.size(); ++i)
+                        o.push_back(i % 2 ? -v[i] : v[i]); return o; }},
+        {"idxmul", [](const Value& v) { Value o; for (std::size_t i = 0; i < v.size(); ++i)
+                        o.push_back(v[i] * static_cast<std::int64_t>(i + 1)); return o; }},
+        {"ziprev", [](const Value& v) { Value o; const std::size_t n = v.size();
+                        for (std::size_t i = 0; i < n; ++i) o.push_back(v[i] + v[n-1-i]); return o; }},
         // Involution and idempotents, kept because real composition contains them.
         {"rev",    [](const Value& v) { return Value(v.rbegin(), v.rend()); }},
         {"sort",   [](const Value& v) { Value o = v; std::sort(o.begin(), o.end()); return o; }},
@@ -350,7 +374,19 @@ int main(int argc, char** argv) {
                 khora::governor::Governor::cap_workers(0.90),
                 probe.die_temp_available ? "available" : "NOT available");
 
-    Library carried(32);
+    // BUDGET 96, NOT 32, AND THAT DEPENDS ON THE ATOM SET. A 2x2, each cell the
+    // carried-minus-empty gap inside one run:
+    //
+    //   19 atoms, budget 32 | tier 15 | 185 vs 138 | 517 tasks | 9.1 pts/task
+    //   19 atoms, budget 96 | tier 15 | 174 vs 138 | 517 tasks | 7.0
+    //   24 atoms, budget 32 | tier 20 | 214 vs 191 | 718 tasks | 3.2
+    //   24 atoms, budget 96 | tier 20 | 220 vs 191 | 718 tasks | 4.0
+    //
+    // The bigger library HURTS the smaller atom set and HELPS the larger one. A
+    // library is a haystack as well as a vocabulary -- every entry is another
+    // level-0 candidate -- so the right size is a function of how diverse the
+    // problems are, not a constant to be tuned once.
+    Library carried(96);
     std::printf("  tier | tasks | carried library | empty library | used lib | chained |    nodes | seconds\n");
     std::printf("  -----+-------+-----------------+---------------+----------+---------+----------+--------\n");
 
@@ -392,7 +428,7 @@ int main(int argc, char** argv) {
         for (const Task& t : tasks) specs.push_back(make(t));
 
         const TierResult with = run_tier(tasks, specs, &carried, pool_cap, true);
-        Library empty(32);
+        Library empty(96);
         const TierResult without = run_tier(tasks, specs, &empty, pool_cap, false);
 
         total_carried += with.verified;
