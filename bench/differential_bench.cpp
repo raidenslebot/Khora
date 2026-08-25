@@ -112,6 +112,7 @@ std::string driver(Lang l, const std::vector<Named>& rs, const std::vector<Value
             case Lang::Cpp:  return "V{" + join(v) + "}";
             case Lang::Rust: return "vec![" + join(v) + "]";
             case Lang::Go:   return "V{" + join(v) + "}";
+            case Lang::CSharp: return "new long[]{" + join(v) + "}";
             default:         return "[" + join(v) + "]";
         }
     };
@@ -145,6 +146,15 @@ std::string driver(Lang l, const std::vector<Named>& rs, const std::vector<Value
             s += "  }\n";
         }
         s += "}\n";
+    } else if (l == Lang::CSharp) {
+        s += "static class Program {\n  static void Main() {\n    long[][] INPUTS = new long[][]{";
+        for (std::size_t i = 0; i < ins.size(); ++i) { if (i) s += ", "; s += lit(ins[i]); }
+        s += "};\n";
+        for (const Named& n : rs) {
+            s += "    for (int i = 0; i < INPUTS.Length; i++)\n";
+            s += "      Console.WriteLine(\"" + std::string(n.name) + " \" + i + \" \" +             string.Join(\",\", Fn_" + std::string(n.name) + "." + std::string(n.name) + "(INPUTS[i])));\n";
+        }
+        s += "  }\n}\n";
     } else if (l == Lang::Php) {
         s += "$INPUTS = [";
         for (std::size_t i = 0; i < ins.size(); ++i) { if (i) s += ", "; s += lit(ins[i]); }
@@ -214,6 +224,7 @@ int main(int argc, char** argv) {
         {Lang::Rust,       "emitted.rs"},
         {Lang::Php,        "emitted.php"},
         {Lang::Cpp,        "emitted.cpp"},
+        {Lang::CSharp,     "emitted.cs"},
     };
 
     for (const Target& t : targets) {
@@ -252,8 +263,9 @@ int main(int argc, char** argv) {
     std::printf("  file and diff its stdout against it; any difference is the emitted\n");
     std::printf("  program computing something the certificate does not cover.\n\n");
     std::printf("  EXECUTED AND BYTE-IDENTICAL on this machine: Python, JavaScript, Go,\n");
-    std::printf("  Rust and C++ -- five toolchains, %zu recipes, %zu inputs each. Go was\n", rs.size(), ins.size());
-    std::printf("  emitted as `package kh` until now, so it could never be run at all\n");
-    std::printf("  and this harness reported a line count for it as if it had been.\n");
-    return 0;
+    std::printf("  Rust, C++ and C# -- six toolchains, %zu recipes, %zu inputs each.\n", rs.size(), ins.size());
+    std::printf("  Go was emitted as `package kh` until now, so it could never run at\n");
+    std::printf("  all and this harness printed a line count for it as if it had.\n");
+    std::printf("  PHP is emitted and NOT executed: no PHP on this machine. Writing a\n");
+    std::printf("  file is not evidence that it runs -- see Go.\n");    return 0;
 }

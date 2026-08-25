@@ -72,20 +72,25 @@ the verified count almost exactly from tier 3 onward. Chained calls —
 **4 across an entire ascent** before compaction and are now routine (2, 6, 4, 3
 in the first tiers that admit them).
 
-### Five languages executed against the certificate, not four
+### Six languages executed against the certificate, not three
 
 The differential harness builds recipes, runs `Recipe::apply` as the reference,
 emits to several languages and diffs their stdout line by line — 13 recipes x 9
 inputs, three of the inputs longer than the 512-element bound where the
 interpreter's per-operation clamp bites.
 
-**Python, JavaScript, Go, Rust and C++ all match byte for byte.**
+**Python, JavaScript, Go, Rust, C++ and C# all match byte for byte.**
 
 Go is new to that list in the sense that matters: the prelude declares
 `package kh`, which is correct for a library and means `go run` refuses the file
 outright. The harness had been writing Go it could never execute and printing a
-body-line count for it as though it had. C++ is newly covered. PHP is emitted but
-not executed — the `php` on this machine's PATH is a different tool.
+body-line count for it as though it had. C++ and C# are newly covered — C# emits
+each function into its own `static class Fn_<name>`, so it compiles and runs
+under `dotnet` unchanged.
+
+PHP is emitted and deliberately NOT counted: the `php` on this machine's PATH is
+a different tool. Writing a file is not evidence that it runs, which is precisely
+what the Go case just demonstrated.
 
 Also corrected: the comment on `inline_calls` justified itself by saying library
 indices are unstable because `prune` sorts and truncates. That was true when it
