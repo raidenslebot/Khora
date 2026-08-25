@@ -395,6 +395,59 @@ int main() {
               "and Delta with one");
     }
 
+    // -- Eviction must not change what a surviving recipe computes ----------
+    //
+    // A recipe names its callee by INDEX. prune() used to sort items_ in place
+    // and truncate, so after an eviction a stored Call pointed at a different
+    // function. It was invisible because uses was never incremented, every sort
+    // key was equal, and stable_sort left the order alone. This is the check
+    // that would have caught it, and it fails against the old prune.
+    {
+        Library lib(3);
+        auto unit = [](Op op) {
+            Recipe r; r.found = true; r.root = 1;
+            Expr in;  in.op = Op::Mov;  in.a = -1;
+            Expr e;   e.op = op; e.a = 0;
+            r.pool = {in, e};
+            return r;
+        };
+        // The caller is admitted EARLY. Eviction keeps the age-ordered prefix,
+        // so a caller younger than the cut is dropped on its own merits and the
+        // check would pass or fail for reasons unrelated to indices.
+        lib.admit_recipe("sort", unit(Op::Sort), 0);
+        Recipe caller; caller.found = true; caller.root = 1;
+        {
+            Expr in; in.op = Op::Mov; in.a = -1;
+            Expr c;  c.op = Op::Call; c.a = 0; c.k = 0;   // sort
+            caller.pool = {in, c};
+        }
+        lib.admit_recipe("via-sort", caller, 1);
+        lib.admit_recipe("head", unit(Op::Head), 2);
+        lib.admit_recipe("rev",  unit(Op::Rev),  3);
+
+        const Value arg{3, 1, 2};
+        std::size_t at = lib.size();
+        for (std::size_t i = 0; i < lib.size(); ++i)
+            if (lib.at(i).name == "via-sort") at = i;
+        const Value before = lib.at(at).recipe.apply(arg, &lib, 0);
+        check(before == Value({1, 2, 3}), "caller resolves through the library");
+
+        check(lib.prune() > 0, "prune evicts when over budget");
+        // The budget is HARD even when survivors reference each other. Closing
+        // the keep set under references without a cap let the library grow
+        // without limit -- the failure this class exists to prevent.
+        check(lib.size() <= 3, "the hard budget holds across cross-references");
+
+        // Find the caller again by name -- its index may legitimately move.
+        at = lib.size();
+        for (std::size_t i = 0; i < lib.size(); ++i)
+            if (lib.at(i).name == "via-sort") at = i;
+        check(at < lib.size(), "the caller survived eviction");
+        if (at < lib.size())
+            check(lib.at(at).recipe.apply(arg, &lib, 0) == before,
+                  "and still computes the same function");
+    }
+
     std::printf("\n");
     if (failures == 0) std::printf("ALL PASS\n");
     else               std::printf("%d FAILURE(S)\n", failures);

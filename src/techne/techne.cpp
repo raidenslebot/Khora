@@ -256,6 +256,7 @@ bool Library::admit(std::string name, Program body, std::size_t task) {
     l.body = std::move(body);
     l.born = task;
     items_.push_back(std::move(l));
+    reorder();
     return true;
 }
 
@@ -278,7 +279,37 @@ bool Library::admit_recipe(std::string name, Recipe r, std::size_t task) {
     l.name = std::move(name);
     l.recipe = std::move(r);
     l.born = task;
+
+    // RECORD WHAT THIS SOLUTION USED. `uses` is the quantity prune() evicts on,
+    // and nothing in the tree ever incremented it -- so "utility-based eviction"
+    // was sorting a column of zeroes and keeping whatever insertion order
+    // happened to be. The header defines uses as "appearances in later certified
+    // solutions", and this is the only place a later certified solution arrives.
+    //
+    // Reachable nodes only: an unreachable node is dead code in the pool, and a
+    // call it contains never runs, so counting it would credit an entry for work
+    // that does not happen.
+    if (!items_.empty()) {
+        const Recipe& rr = l.recipe;
+        std::vector<bool> live(rr.pool.size(), false);
+        std::vector<std::size_t> stack{rr.root};
+        while (!stack.empty()) {
+            const std::size_t i = stack.back();
+            stack.pop_back();
+            if (i >= rr.pool.size() || live[i]) continue;
+            live[i] = true;
+            if (rr.pool[i].a >= 0) stack.push_back(static_cast<std::size_t>(rr.pool[i].a));
+            if (rr.pool[i].b >= 0) stack.push_back(static_cast<std::size_t>(rr.pool[i].b));
+        }
+        for (std::size_t i = 0; i < rr.pool.size(); ++i) {
+            if (!live[i]) continue;
+            const Expr& e = rr.pool[i];
+            if (e.op == Op::Call || e.op == Op::MapF || e.op == Op::FoldF)
+                note_use(e.k % items_.size());
+        }
+    }
     items_.push_back(std::move(l));
+    reorder();
     return true;
 }
 
@@ -291,13 +322,92 @@ Value Library::call(std::size_t index, const Value& arg, std::size_t depth) cons
     return run(l.body, arg, this, depth);
 }
 
+void Library::reorder() {
+    order_.resize(items_.size());
+    for (std::size_t i = 0; i < order_.size(); ++i) order_[i] = i;
+    std::stable_sort(order_.begin(), order_.end(), [&](std::size_t x, std::size_t y) {
+        // NOTE WHAT IS NOT HERE: `uses`. See the header. Age alone, measured.
+        if (items_[x].uses != items_[y].uses) return items_[x].uses > items_[y].uses;
+        // Ties break OLDEST first, not newest, because body depth is body cost:
+        // a recent entry is a deep recipe and every speculative call runs it once
+        // per case. Age is a free proxy for cheapness, and only a real use count
+        // may promote past it.
+        //
+        // WHICH OF uses AND age SHOULD DOMINATE IS UNMEASURED, and saying so is
+        // better than the alternative. Deciding it needs a benchmark that both
+        // exceeds the library budget and holds its task set fixed, and neither
+        // benchmark here is that: techne_bench fixes its curriculum but admits
+        // too few entries to ever prune, while ascent_bench prunes constantly and
+        // BUILDS ITS NEXT TIER OUT OF WHAT IT JUST SOLVED, so any engine change
+        // hands it a different problem set and the totals stop being comparable.
+        // I read four such runs as a 2x slowdown before checking that against a
+        // fixed task set, where the same two engines came out byte-identical.
+        return items_[x].born < items_[y].born;
+    });
+}
+
 std::size_t Library::prune() {
     if (items_.size() <= budget_) return 0;
-    std::stable_sort(items_.begin(), items_.end(),
-                     [](const Learned& a, const Learned& b) { return a.uses > b.uses; });
-    const std::size_t dropped = items_.size() - budget_;
-    items_.resize(budget_);
+
+    // THIS USED TO SORT items_ IN PLACE AND TRUNCATE, WHICH IS TWO BUGS.
+    //
+    // First, a stored recipe names its callee by INDEX in Expr::k and evaluates
+    // through items_[k] later. Permuting the store silently changes what every
+    // already-certified library program computes. It had not fired only because
+    // uses was never incremented, so every sort key was equal and stable_sort
+    // left the order alone -- dormant for exactly the reason the call-depth bug
+    // was dormant, and armed the moment the counter started moving.
+    //
+    // Second, with all keys equal, truncation dropped the TAIL: the newest
+    // entries, learned at the deepest tier reached, which in an ascent are
+    // precisely the ones the next tier needs.
+    //
+    // So: choose survivors by utility, keep them in their ORIGINAL relative
+    // order, and rewrite every surviving recipe's indices through the remap.
+    const std::vector<std::size_t> ord = order_;
+    std::vector<bool> keep;
+
+    // A kept entry whose body calls a dropped entry would dangle. Closing the
+    // keep set under references fixes that, and I built it twice: first without
+    // a cap, which let the library grow past its budget forever -- the exact
+    // unbounded-growth failure this class exists to prevent, reintroduced by the
+    // fix for a different bug -- then with a greedy cap.
+    //
+    // The closure is unnecessary either way. AN ENTRY CAN ONLY CALL ENTRIES THAT
+    // ALREADY EXISTED WHEN IT WAS BUILT, so after compaction every callee has a
+    // LOWER index than its caller, and an age-ordered prefix is therefore already
+    // closed under references for free.
+    //
+    // The remap below is what makes that safe. Without it a stale k wraps through
+    // the modulo in apply_op and silently resolves to whichever function now sits
+    // in that slot -- which is what the old prune did, sorting items_ in place
+    // and truncating. That had never fired only because nothing incremented
+    // `uses`, so every sort key was equal and stable_sort left the order alone:
+    // dormant for exactly the reason the call-depth bug was dormant, and armed
+    // the moment the counter started moving. Truncation also dropped the TAIL,
+    // the newest entries, which in an ascent are the deepest reached.
+    keep.assign(items_.size(), false);
+    for (std::size_t n = 0; n < budget_ && n < ord.size(); ++n) keep[ord[n]] = true;
+
+    const std::size_t was = items_.size();
+    std::vector<std::size_t> remap(was, 0);
+    std::vector<Learned> kept;
+    kept.reserve(was);
+    for (std::size_t i = 0; i < was; ++i) {
+        if (!keep[i]) continue;
+        remap[i] = kept.size();
+        kept.push_back(std::move(items_[i]));
+    }
+    for (Learned& l : kept) {
+        for (Expr& e : l.recipe.pool) {
+            if (e.op != Op::Call && e.op != Op::MapF && e.op != Op::FoldF) continue;
+            e.k = static_cast<std::uint8_t>(remap[e.k % was]);
+        }
+    }
+    const std::size_t dropped = was - kept.size();
+    items_ = std::move(kept);
     evicted_ += dropped;
+    reorder();
     return dropped;
 }
 
@@ -1085,6 +1195,20 @@ BuildResult construct(const Spec& spec, std::size_t max_pool, const Library* lib
         // reason.
         const std::size_t kHigherOrderNodes = 256;
         const std::size_t kHigherOrderBodies = 8;
+        // A CALL COSTS ONE BODY EVALUATION PER CASE. A map or fold costs one per
+        // ELEMENT per case -- up to 64x more by the operand cap just below. They
+        // shared a bound anyway, which priced the cheap one as if it were the
+        // expensive one: with a 32-entry budget and a limit of 8, TWENTY-FOUR OF
+        // EVERY THIRTY-TWO LEARNED ENTRIES WERE UNREACHABLE. Admitted, counted in
+        // the reported size, competing for budget in prune(), and impossible to
+        // name from a Call.
+        //
+        // It is nevertheless still 8, not 64. Raising it made the ascent finish
+        // four tiers instead of fifteen -- but see the note on prune() below: the
+        // ascent regenerates its curriculum from its own results, so that is an
+        // observation about one run and NOT a measurement of this constant. The
+        // conservative value stays until an instrument exists that can price it.
+        const std::size_t kCallBodies = 8;
         // A LIBRARY CALL ON AN INTERMEDIATE NODE, not only on the raw input.
         //
         // Op::Call was seeded at level 0 with a == -1 and nowhere else, so it
@@ -1101,11 +1225,15 @@ BuildResult construct(const Spec& spec, std::size_t max_pool, const Library* lib
         // Bounded and placed after the ordinary operations for the same reason
         // the higher-order expansion is: candidates that cost more should not get
         // the pool before candidates that cost less.
+        static const std::vector<std::size_t> kNoBodies;
+        const std::vector<std::size_t>& body_order =
+            lib != nullptr ? lib->search_order() : kNoBodies;
         if (lib != nullptr && lib->size() > 0) {
             const std::size_t call_nodes = std::min(end, kHigherOrderNodes);
-            const std::size_t call_bodies = std::min(lib->size(), kHigherOrderBodies);
+            const std::size_t call_bodies = std::min(body_order.size(), kCallBodies);
             for (std::size_t i = start; i < call_nodes && found_at < 0 && pool.size() < max_pool; ++i) {
-                for (std::size_t li = 0; li < call_bodies && found_at < 0; ++li) {
+                for (std::size_t oi = 0; oi < call_bodies && found_at < 0; ++oi) {
+                    const std::size_t li = body_order[oi];
                     std::vector<Value> outs(ncase);
                     for (std::size_t c = 0; c < ncase; ++c) {
                         outs[c] = apply_op(Op::Call, behaviour[i][c], {},
@@ -1138,6 +1266,13 @@ BuildResult construct(const Spec& spec, std::size_t max_pool, const Library* lib
 
                 for (const Op hop : {Op::MapF, Op::FoldF}) {
                     if (!spec.allows(hop)) continue;
+                    // INSERTION ORDER HERE, deliberately, unlike the Call loop.
+                    // A fold invokes its body once per element, so body COST is
+                    // what dominates, and older entries were learned from
+                    // shallower tiers and are cheaper to run. Ordering these by
+                    // utility instead was measured: identical verified counts at
+                    // every tier and roughly 3x the time, because it fed the
+                    // per-element loop the deepest recipes in the library.
                     for (std::size_t li = 0; li < body_lim && found_at < 0; ++li) {
                         std::vector<Value> outs(ncase);
                         for (std::size_t c = 0; c < ncase; ++c) {

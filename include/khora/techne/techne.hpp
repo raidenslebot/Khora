@@ -294,6 +294,35 @@ public:
 
     void note_use(std::size_t i) { if (i < items_.size()) ++items_[i].uses; }
 
+    // The order the SEARCH should try bodies in, most promising first.
+    //
+    // NOT a reordering of items_. A certified recipe stores its library index in
+    // Expr::k and evaluates through it later, so permuting the store would
+    // silently change the meaning of every already-certified program holding a
+    // Call -- the exact class of defect this module has now shipped twice.
+    // Indices stay fixed forever; only the order they are TRIED in moves.
+    //
+    // Trying bodies 0..7 meant trying the OLDEST eight, which is the worst
+    // available prior: old entries were learned from shallow tiers, and deep
+    // tasks need deep parts. Uses then accrue only to entries that get tried, so
+    // prune() kept whichever eight were visible and discarded the rest
+    // unexamined -- utility measured through a window that decided utility.
+    //
+    // Ties break toward the NEWEST, because an entry admitted at the deepest
+    // tier so far is the one most likely to be a part of the next tier down.
+    // The order the SEARCH should try bodies in, most promising first.
+    //
+    // NOT a reordering of items_. A certified recipe stores its library index in
+    // Expr::k and evaluates through it later, so permuting the store would
+    // silently change the meaning of every already-certified program holding a
+    // Call. Indices stay fixed; only the order they are TRIED in moves.
+    //
+    // Returned BY REFERENCE from a precomputed member. The order changes only
+    // when the library does, so it is rebuilt where the library is written --
+    // never in the search path, which runs it at every level of every construct
+    // on every worker.
+    const std::vector<std::size_t>& search_order() const noexcept { return order_; }
+
     // Evict the least used when over budget. A library that only accretes turns
     // into a haystack the search has to hunt through, which makes later problems
     // HARDER -- the same unbounded-growth failure that made TemporalMemory
@@ -306,6 +335,8 @@ private:
     std::size_t budget_;
     std::vector<Learned> items_;
     std::size_t evicted_ = 0;
+    std::vector<std::size_t> order_;
+    void reorder();
 };
 
 // ---------------------------------------------------------------------------

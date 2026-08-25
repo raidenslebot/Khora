@@ -34,6 +34,8 @@
 // because a tier that certifies a wrong program has not learned anything and
 // would poison every tier after it.
 
+#include <thread>
+#include <atomic>
 #include "khora/techne/techne.hpp"
 #include "khora/governor/governor.hpp"
 
@@ -224,6 +226,12 @@ struct TierResult {
     // chained calls separately again -- lib_j(lib_i(x)) is the composition the
     // whole compounding story rests on.
     std::size_t used_library = 0, chained_calls = 0;
+    // Deterministic work. Wall clock on one thread of a hybrid CPU varied 2x on
+    // IDENTICAL code -- 35.9 s, 56.2 s and 69.1 s on the same tier -- because an
+    // unpinned thread lands on a performance or an efficiency core run to run. I
+    // attributed that spread to three separate code changes before checking. A
+    // candidate count does not care which core counted it.
+    unsigned long long nodes = 0;
     double secs = 0.0;
 };
 
@@ -250,6 +258,26 @@ TierResult run_tier(const std::vector<Task>& tasks, const std::vector<Spec>& spe
     TierResult r;
     r.total = tasks.size();
     const auto t0 = clk::now();
+
+    // SEQUENTIAL, AND THAT IS A MEASURED CHOICE RATHER THAN AN OVERSIGHT.
+    //
+    // This loop uses ONE of twenty-four logical processors. Spreading the tier
+    // across the pool was tried twice. One pass against the tier-start library:
+    // 8.5x faster per tier and 53 verified against 61 for the empty control --
+    // the carried library became a net LOSS. Parallel waves with admission
+    // between them, which is the structure solve_all uses: no better.
+    //
+    // The reason is that ADMISSION IS TASK-BY-TASK AND THAT IS WHERE THE VALUE
+    // IS. Task j's certified solution enters the library before task j+1 is
+    // attempted, so a twenty-task tier compounds twenty times. Tier 1 starts
+    // EMPTY and still produced eight answers containing a library call -- every
+    // one of them from a task solved earlier in the same tier. Any scheme that
+    // solves a batch against one snapshot throws that away, and 86 against 65
+    // becomes 53 against 61.
+    //
+    // So the parallelism has to go INSIDE construct(), not around it. Until it
+    // does, this loop stays sequential, because a faster benchmark that verifies
+    // fewer programs is not a faster system.
     for (std::size_t i = 0; i < tasks.size(); ++i) {
         BuildResult b = construct(specs[i], pool_cap, lib);
         if (b.proof != Proof::Generalised) {
@@ -259,6 +287,7 @@ TierResult run_tier(const std::vector<Task>& tasks, const std::vector<Spec>& spe
             BuildResult d = construct_bidir(specs[i], pool_cap, lib);
             if (d.proof == Proof::Generalised) b = std::move(d);
         }
+        r.nodes += b.nodes_considered;
         if (b.proof != Proof::Generalised) continue;
         ++r.solved;
         if (!holds_up(b.recipe, lib, tasks[i].f)) continue;
@@ -300,7 +329,11 @@ int main(int argc, char** argv) {
     std::printf("  curriculum escalates with capability rather than running out.\n");
     std::printf("  Each tier is run TWICE from identical specifications: once with the\n");
     std::printf("  library carried from every earlier tier, once from empty. The gap is\n");
-    std::printf("  the whole result -- without it, \"compounding\" is a word.\n\n");
+    std::printf("  the whole result -- without it, \"compounding\" is a word.\n");
+    std::printf("  It is also the ONLY figure here that compares across runs. Each\n");
+    std::printf("  tier is built from what the previous tier SOLVED, so a change to the\n");
+    std::printf("  engine hands this benchmark a different curriculum. Read the\n");
+    std::printf("  carried-minus-empty gap within ONE run; never a tier time across two.\n\n");
 
     const auto probe = khora::governor::probe();
     std::printf("  governor: ceiling %zu workers, die temperature %s\n\n",
@@ -308,8 +341,8 @@ int main(int argc, char** argv) {
                 probe.die_temp_available ? "available" : "NOT available");
 
     Library carried(32);
-    std::printf("  tier | tasks | carried library | empty library | used lib | chained | seconds\n");
-    std::printf("  -----+-------+-----------------+---------------+----------+---------+--------\n");
+    std::printf("  tier | tasks | carried library | empty library | used lib | chained |    nodes | seconds\n");
+    std::printf("  -----+-------+-----------------+---------------+----------+---------+----------+--------\n");
 
     std::size_t total_carried = 0, total_empty = 0;
     const auto started = clk::now();
@@ -354,9 +387,15 @@ int main(int argc, char** argv) {
         total_carried += with.verified;
         total_empty += without.verified;
 
-        std::printf("  %4zu | %5zu | %6zu verified  | %5zu verified | %8zu | %7zu | %6.1f\n",
+        std::printf("  %4zu | %5zu | %6zu verified  | %5zu verified | %8zu | %7zu | %7.2fM | %6.1f\n",
                     tier, tasks.size(), with.verified, without.verified,
-                    with.used_library, with.chained_calls, with.secs + without.secs);
+                    with.used_library, with.chained_calls,
+                    static_cast<double>(with.nodes) / 1e6, with.secs + without.secs);
+        // FLUSH. Block-buffered stdout on a run this long is a black box: the
+        // last attempt sat past ten minutes with zero bytes written and the only
+        // way to learn anything was to kill it. A benchmark you cannot watch is a
+        // benchmark you cannot diagnose.
+        std::fflush(stdout);
 
         // TWO BARREN TIERS, NOT ONE.
         //
