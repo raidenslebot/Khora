@@ -179,6 +179,40 @@ altneg  negate odd positions
 before the generator gave up at 12. Tier 15 now draws 1,511 to keep 40, where it
 drew 1,611 to keep 11.
 
+### And the instrument that can: 18 to 26 against a bar that cannot move
+
+`fixedbar_bench`. An evaluation set of 96 tasks drawn **once** from a fixed seed
+over the base atoms — never regenerated, never filtered against anything the
+system learns, never admitted to a library. Between measurements the system
+trains on a **disjoint** stream and keeps what it certifies. A control
+re-attempts the identical set with an empty library at every stage.
+
+| stage | trained | library | fixed-set score | empty-library control |
+|-------|---------|---------|-----------------|-----------------------|
+| 0 | 0 | 0 | 18 of 96 | 18 of 96 |
+| 1 | 96 | 30 | 22 of 96 | 18 of 96 |
+| 3 | 288 | 73 | 23 of 96 | 18 of 96 |
+| 6 | 576 | 96 | 25 of 96 | 18 of 96 |
+| 9 | 864 | 96 | **26 of 96** | 18 of 96 |
+| 14 | 1,344 | 96 | 26 of 96 | 18 of 96 |
+
+**Eighteen to twenty-six on problems that never changed**, while the control sits
+at exactly 18 at every stage. The pipeline is deterministic and the flat control
+proves it, so this is not a sample and needs no confidence interval — the
+difference is attributable to the library and to nothing else. The system solved
+things it could not solve before, because of what it taught itself on problems it
+is never scored on.
+
+**And it plateaus.** Flat at 26 from stage 9 while training continues. The
+library hits its budget at stage 5, so the budget is the obvious suspect — and
+raising it to 512 reaches 27, flattens at stage 11, with the library still
+growing at 298 entries. Five times the budget buys one task.
+
+Self-improvement here is real, measurable against a fixed external bar, worth
++44%, and decelerating hard for a reason the budget does not explain. That
+residual is the open question, and it is a better one than "does it improve at
+all".
+
 ### Why this benchmark cannot show unbounded self-improvement
 
 The ascent's loop is: solve a problem, the solution becomes a primitive, deeper
