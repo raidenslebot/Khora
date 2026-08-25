@@ -131,6 +131,7 @@ enum class Op : std::uint8_t {
     // These two do not reintroduce the halting problem. Neither loops, neither
     // branches control flow, and both evaluate both operands: they select
     // between already-computed values. Termination by construction is untouched.
+    Arg,       // dst = argument k        -- a LEAF, like Const
     Guard,     // dst = b.empty() ? [] : a     -- a, but only if b is non-empty
     Else,      // dst = a.empty() ? b : a      -- a, or b when a has nothing
     // ---- THE FOUR THE TEXT BENCH NAMED --------------------------------------
@@ -261,6 +262,13 @@ struct Recipe {
     // same defect the tape machine had, which was a literal 1 at every call
     // site in a module whose whole claim is termination by construction.
     Value apply(const Value& in, const Library* lib, std::size_t depth = 0) const;
+    // The general form. `apply(in, ...)` is this with a single argument, kept
+    // because a library body is always called with exactly one.
+    Value apply_n(const std::vector<Value>& args, const Library* lib,
+                  std::size_t depth = 0) const;
+    // Highest argument index the root can reach. 1 for every recipe built before
+    // multiple arguments existed.
+    std::size_t arity() const;
     std::string render() const;
     std::size_t size() const;      // nodes actually reachable from the root
 
@@ -370,7 +378,38 @@ Value run(const Program& p, const Value& input, const Library* lib = nullptr,
 // ---------------------------------------------------------------------------
 // Specification and certificate.
 // ---------------------------------------------------------------------------
-struct Case { Value in, out; };
+// One example. `in` is the FIRST argument and `extra` carries the rest.
+//
+// Until now this was `Value in, out` and nothing else, which meant every program
+// this system could express was a UNARY function of one integer list. That is
+// the deepest limit in the tree: most programs a person writes take more than one
+// argument, so "can write anything" was false for a reason no amount of search
+// speed touches.
+//
+// `extra` is separate rather than folding the first argument into a vector so
+// that every existing specification, benchmark and test keeps working unchanged;
+// a unary case is one with `extra` empty, which is what all of them are.
+struct Case {
+    Value in, out;
+    std::vector<Value> extra;
+
+    Case() = default;
+    Case(Value a, Value o) : in(std::move(a)), out(std::move(o)) {}
+    Case(Value a, std::vector<Value> rest, Value o)
+        : in(std::move(a)), out(std::move(o)), extra(std::move(rest)) {}
+
+    std::size_t arity() const noexcept { return 1 + extra.size(); }
+    const Value& arg(std::size_t i) const { return i == 0 ? in : extra[i - 1]; }
+
+    // Every argument, in order. The form Recipe::apply_n wants.
+    std::vector<Value> args() const {
+        std::vector<Value> v;
+        v.reserve(arity());
+        v.push_back(in);
+        for (const Value& e : extra) v.push_back(e);
+        return v;
+    }
+};
 
 struct Spec {
     std::string name;

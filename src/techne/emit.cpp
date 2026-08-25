@@ -2265,17 +2265,41 @@ static std::string emit_inlined(const Recipe& r, Lang l, const std::string& fn,
     std::string body;
     std::size_t n = 0;
     const std::string sig = var_sigil(l);
+    // ARGUMENT NODES RESOLVE TO PARAMETERS, and this has to be here rather than
+    // in op_fn, whose default is `kh_id`. An Op::Arg falling through to that
+    // would emit kh_id(x) -- silently returning the FIRST argument wherever the
+    // program asked for the second, in source that compiles and looks right.
     std::function<std::string(int)> ref = [&](int i) -> std::string {
         if (i < 0) return sig + "x";
         const std::size_t u = static_cast<std::size_t>(i);
+        if (u < r.pool.size() && r.pool[u].op == Op::Arg) {
+            return r.pool[u].k == 0 ? (sig + "x")
+                                    : (sig + "x" + std::to_string(r.pool[u].k));
+        }
         if (u < alias.size() && alias[u] != -2) return ref(alias[u]);
         return sig + "t" + std::to_string(u);
+    };
+    // The parameter list, in whatever shape the language spells it.
+    const std::size_t arity = r.arity();
+    auto params = [&](const std::string& type_before, const std::string& type_after) {
+        std::string ps;
+        for (std::size_t k = 0; k < arity; ++k) {
+            if (k) ps += ", ";
+            ps += type_before + sig + "x" + (k ? std::to_string(k) : std::string())
+                + type_after;
+        }
+        return ps;
     };
     auto line = [&](const std::string& text) { body += text; body += '\n'; ++n; };
 
     for (std::size_t i = 0; i < r.pool.size(); ++i) {
         if (!live[i]) continue;
         if (alias[i] != -2) continue;                 // identity: nothing to emit
+        // An argument is a PARAMETER, not a computation. ref() already resolves
+        // it to the parameter name, so emitting a statement here would be dead
+        // code at best -- and at worst the kh_id default, quietly binding the
+        // first argument to a name the program uses for the second.
+        if (r.pool[i].op == Op::Arg) continue;
         const Expr& e = r.pool[i];
         const std::string lhs = sig + "t" + std::to_string(i);
         std::string rhs;
@@ -2396,55 +2420,62 @@ static std::string emit_inlined(const Recipe& r, Lang l, const std::string& fn,
     std::string out;
     switch (l) {
         case Lang::Cpp:
-            out = "V " + fn + "(const V& x) {\n" + body + "    return " + root + ";\n}\n";
+            out = "V " + fn + "(" + params("const V& ", "") + ") {\n" + body + "    return " + root + ";\n}\n";
             break;
         case Lang::Rust:
-            out = "pub fn " + fn + "(x: &V) -> V {\n" + body + "    " + root + "\n}\n";
+            out = "pub fn " + fn + "(" + params("", ": &V") + ") -> V {\n" + body + "    " + root + "\n}\n";
             break;
         case Lang::JavaScript:
-            out = "function " + fn + "(x) {\n" + body + "  return " + root + ";\n}\n";
+            out = "function " + fn + "(" + params("", "") + ") {\n" + body + "  return " + root + ";\n}\n";
             break;
         case Lang::Python:
-            out = "def " + fn + "(x):\n" + body + "    return " + root + "\n";
+            out = "def " + fn + "(" + params("", "") + "):\n" + body + "    return " + root + "\n";
             break;
         case Lang::Go:
-            out = "func " + fn + "(x V) V {\n" + body + "\treturn " + root + "\n}\n";
+            out = "func " + fn + "(" + params("", " V") + ") V {\n" + body + "\treturn " + root + "\n}\n";
             break;
         // Java and C# have no top-level functions, so each emitted function is
         // wrapped in its own non-public class. Several of them per file is legal
         // precisely because none is public.
         case Lang::Java:
-            out = "final class Fn_" + fn + " { static long[] " + fn + "(long[] x) {\n" +
+            out = "final class Fn_" + fn + " { static long[] " + fn + "(" + params("long[] ", "") + ") {\n" +
                   body + "    return " + root + ";\n} }\n";
             break;
         case Lang::CSharp:
             out = "static class Fn_" + fn + " { public static long[] " + fn +
-                  "(long[] x) {\n" + body + "    return " + root + ";\n} }\n";
+                  "(" + params("long[] ", "") + ") {\n" + body + "    return " + root + ";\n} }\n";
             break;
         case Lang::TypeScript:
-            out = "function " + fn + "(x: V): V {\n" + body + "  return " + root + ";\n}\n";
+            out = "function " + fn + "(" + params("", ": V") + "): V {\n" + body + "  return " + root + ";\n}\n";
             break;
         case Lang::Ruby:
-            out = "def " + fn + "(x)\n" + body + "  " + root + "\nend\n";
+            out = "def " + fn + "(" + params("", "") + ")\n" + body + "  " + root + "\nend\n";
             break;
         case Lang::Lua:
-            out = "function " + fn + "(x)\n" + body + "  return " + root + "\nend\n";
+            out = "function " + fn + "(" + params("", "") + ")\n" + body + "  return " + root + "\nend\n";
             break;
         // Haskell has no statements to sequence, so the SSA lines become a `let`
         // group. `let` opens the layout block on the signature line and `in`,
         // outdented, closes it -- the bindings themselves can then be emitted at
         // one fixed indent like every other backend's.
         case Lang::Haskell:
-            out = fn + " :: V -> V\n" + fn + " x = let\n" + body + "  in " + root + "\n";
+            {
+                // Curried and juxtaposed: `V -> V -> V` for two arguments,
+                // applied as `f a b`, never as a tuple.
+                std::string ty; for (std::size_t k = 0; k < arity; ++k) ty += "V -> ";
+                std::string ps; for (std::size_t k = 0; k < arity; ++k)
+                    ps += " " + sig + "x" + (k ? std::to_string(k) : std::string());
+                out = fn + " :: " + ty + "V\n" + fn + ps + " = let\n" + body + "  in " + root + "\n";
+            }
             break;
         case Lang::Swift:
-            out = "func " + fn + "(_ x: V) -> V {\n" + body + "    return " + root + "\n}\n";
+            out = "func " + fn + "(" + params("_ ", ": V") + ") -> V {\n" + body + "    return " + root + "\n}\n";
             break;
         case Lang::Kotlin:
-            out = "fun " + fn + "(x: V): V {\n" + body + "    return " + root + "\n}\n";
+            out = "fun " + fn + "(" + params("", ": V") + "): V {\n" + body + "    return " + root + "\n}\n";
             break;
         case Lang::Php:
-            out = "function " + fn + "($x) {\n" + body + "    return " + root + ";\n}\n";
+            out = "function " + fn + "(" + params("", "") + ") {\n" + body + "    return " + root + ";\n}\n";
             break;
     }
     n += 2;

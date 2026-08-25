@@ -395,6 +395,40 @@ int main() {
               "and Delta with one");
     }
 
+    // -- FUNCTIONS OF MORE THAN ONE ARGUMENT --------------------------------
+    //
+    // Every program this system could express used to be a UNARY function of one
+    // integer list, because a Case held exactly one input. Most programs a person
+    // writes take more than one argument, so this is the difference between
+    // "writes list transformations" and "writes programs".
+    {
+        Spec sp;
+        sp.name = "append_two";
+        auto add2 = [](Value a, Value b, Value o) {
+            return Case(std::move(a), std::vector<Value>{std::move(b)}, std::move(o));
+        };
+        sp.cases.push_back(add2({1, 2}, {3},       {1, 2, 3}));
+        sp.cases.push_back(add2({7},    {8, 9},    {7, 8, 9}));
+        sp.cases.push_back(add2({},     {4},       {4}));
+        sp.cases.push_back(add2({5, 5}, {},        {5, 5}));
+        sp.holdout.push_back(add2({2, 4, 6}, {1, 3}, {2, 4, 6, 1, 3}));
+
+        const BuildResult b = construct(sp, 4000, nullptr);
+        check(b.proof == Proof::Generalised,
+              "a two-argument function is synthesised and generalises");
+        check(b.recipe.arity() == 2, "and the recipe reports arity 2");
+        // The held-out case is the one that matters: it was never searched.
+        const Value got = b.recipe.apply_n({{2, 4, 6}, {1, 3}}, nullptr);
+        check(got == Value({2, 4, 6, 1, 3}), "and it is right on an unseen pair");
+        // SECOND ARGUMENT ACTUALLY READ, not ignored. A recipe that quietly
+        // dropped it would still pass a case whose answer happens to start with
+        // the first argument, so change only the second and require the output
+        // to follow.
+        const Value other = b.recipe.apply_n({{2, 4, 6}, {9}}, nullptr);
+        check(other == Value({2, 4, 6, 9}), "and the second argument is really used");
+        std::printf("  two-arg solution: %s\n", b.recipe.render().c_str());
+    }
+
     // -- Eviction must not change what a surviving recipe computes ----------
     //
     // A recipe names its callee by INDEX. prune() used to sort items_ in place

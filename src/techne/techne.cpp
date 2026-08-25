@@ -80,6 +80,7 @@ const char* op_name(Op o) {
         case Op::Min: return "min";      case Op::Filter: return "filter";
         case Op::MapAdd: return "mapadd";case Op::MapMul: return "mapmul";
         case Op::Count: return "count";  case Op::Call: return "call";
+        case Op::Arg:   return "arg";
         case Op::Guard: return "guard";  case Op::Else: return "else";
         case Op::MapF: return "mapf";    case Op::FoldF: return "foldf";
         case Op::Gt: return "gt";        case Op::Member: return "member";
@@ -879,6 +880,8 @@ Value apply_op(Op op, const Value& A, const Value& B, std::uint8_t k,
             break;
         }
         case Op::Call:  if (lib && lib->size()) out = lib->call(k % lib->size(), A, depth + 1); break;
+        // A leaf: resolved by whoever holds the arguments, never here.
+        case Op::Arg:   out = A; break;
         default: out = A; break;
     }
     clamp_len(out);
@@ -926,12 +929,44 @@ Sig signature(const std::vector<Value>& outs) {
 } // namespace
 
 Value Recipe::apply(const Value& in, const Library* lib, std::size_t depth) const {
-    if (!found || pool.empty()) return in;
+    return apply_n(std::vector<Value>{in}, lib, depth);
+}
+
+std::size_t Recipe::arity() const {
+    if (!found || pool.empty()) return 1;
+    std::size_t n = 1;
+    std::vector<bool> live(pool.size(), false);
+    std::vector<std::size_t> stack{root};
+    while (!stack.empty()) {
+        const std::size_t i = stack.back();
+        stack.pop_back();
+        if (i >= pool.size() || live[i]) continue;
+        live[i] = true;
+        if (pool[i].op == Op::Arg) n = std::max<std::size_t>(n, pool[i].k + 1u);
+        if (pool[i].a >= 0) stack.push_back(static_cast<std::size_t>(pool[i].a));
+        if (pool[i].b >= 0) stack.push_back(static_cast<std::size_t>(pool[i].b));
+    }
+    return n;
+}
+
+Value Recipe::apply_n(const std::vector<Value>& args, const Library* lib,
+                      std::size_t depth) const {
+    static const Value kNone;
+    const Value& first = args.empty() ? kNone : args[0];
+    if (!found || pool.empty()) return first;
     std::vector<Value> vals(pool.size());
     for (std::size_t i = 0; i < pool.size(); ++i) {
         const Expr& e = pool[i];
-        const Value& A = (e.a < 0) ? in : vals[static_cast<std::size_t>(e.a)];
-        const Value& B = (e.b < 0) ? in : vals[static_cast<std::size_t>(e.b)];
+        // Op::Arg is a LEAF and must be read before the operands are, because it
+        // has none. An argument the caller did not supply reads as empty rather
+        // than out of bounds -- a recipe of arity 2 applied to one value is a
+        // caller error, not a crash.
+        if (e.op == Op::Arg) {
+            vals[i] = (e.k < args.size()) ? args[e.k] : kNone;
+            continue;
+        }
+        const Value& A = (e.a < 0) ? first : vals[static_cast<std::size_t>(e.a)];
+        const Value& B = (e.b < 0) ? first : vals[static_cast<std::size_t>(e.b)];
         // A mined literal is carried on the node, not selectable by index, so it
         // has to be read here or the recipe evaluates to a different constant
         // than the one the search chose.
@@ -992,6 +1027,7 @@ std::string Recipe::render() const {
         if (i < 0) return "x";
         const Expr& e = pool[static_cast<std::size_t>(i)];
         if (e.op == Op::Const) return std::to_string(e.has_lit ? e.lit : const_of(e.k));
+        if (e.op == Op::Arg)   return "x" + std::to_string(e.k);
         if (e.op == Op::Call)  return "lib" + std::to_string(e.k) + "(" + go(e.a) + ")";
         // A fold is meaningless without naming its BODY. `foldf(x, x)` printed
         // its operand twice and said nothing about which learned function was
@@ -1047,6 +1083,21 @@ BuildResult construct(const Spec& spec, std::size_t max_pool, const Library* lib
         for (const Case& c : spec.cases) ident.push_back(c.in);
         Expr e; e.op = Op::Mov; e.a = -1;
         consider(e, std::move(ident));
+    }
+    // EVERY OTHER ARGUMENT IS ALSO A LEVEL-0 TERM. Without this the search can
+    // only ever reach the first one, which is what made every program this
+    // system could write a function of exactly one thing.
+    {
+        std::size_t arity = 1;
+        for (const Case& c : spec.cases) arity = std::max(arity, c.arity());
+        for (std::size_t k = 1; k < arity && found_at < 0; ++k) {
+            std::vector<Value> outs(ncase);
+            for (std::size_t c = 0; c < ncase; ++c) {
+                outs[c] = k < spec.cases[c].arity() ? spec.cases[c].arg(k) : Value{};
+            }
+            Expr e; e.op = Op::Arg; e.k = static_cast<std::uint8_t>(k);
+            consider(e, std::move(outs));
+        }
     }
     for (std::uint8_t k = 0; k < 16 && found_at < 0; ++k) {
         std::vector<Value> outs(ncase);
@@ -1328,8 +1379,8 @@ BuildResult construct(const Spec& spec, std::size_t max_pool, const Library* lib
     // recipe, and until now each application walked the entire search pool.
     r.recipe = r.recipe.compact();
 
-    for (const Case& c : spec.cases)   if (r.recipe.apply(c.in, lib) == c.out) ++r.cases_passed;
-    for (const Case& c : spec.holdout) if (r.recipe.apply(c.in, lib) == c.out) ++r.holdout_passed;
+    for (const Case& c : spec.cases)   if (r.recipe.apply_n(c.args(), lib) == c.out) ++r.cases_passed;
+    for (const Case& c : spec.holdout) if (r.recipe.apply_n(c.args(), lib) == c.out) ++r.holdout_passed;
     if (r.cases_passed == r.cases_total) {
         r.proof = (r.holdout_total == 0 || r.holdout_passed == r.holdout_total)
                       ? Proof::Generalised : Proof::Tested;

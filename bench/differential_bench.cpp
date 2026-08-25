@@ -44,8 +44,29 @@ Recipe chain(std::initializer_list<Expr> nodes) {
     return r;
 }
 
+// The arguments a recipe of this arity gets for input i. A second argument is
+// the NEXT input rather than a repeat of the first, so a program that silently
+// ignores it cannot pass by coincidence.
+std::vector<Value> argsfor(const Named& n, const std::vector<Value>& ins, std::size_t i) {
+    std::vector<Value> a{ins[i]};
+    for (std::size_t k = 1; k < n.r.arity(); ++k) a.push_back(ins[(i + k) % ins.size()]);
+    return a;
+}
+
 std::vector<Named> recipes() {
     std::vector<Named> v;
+
+    // TWO-ARGUMENT RECIPES. Every program this system could express used to be a
+    // unary function of one list, so nothing here ever exercised a second
+    // parameter -- and the emitter's op_fn defaults to kh_id, which would have
+    // bound argument 1 to argument 0 in source that compiles and reads correctly.
+    // Argument 1 is INPUTS[(i+1) % n], so a program that ignores it cannot pass
+    // by coincidence.
+    v.push_back({"two_cat",   chain({Expr{Op::Mov, -1, -1, 0}, Expr{Op::Arg, -1, -1, 1},
+                                     Expr{Op::Append, 0, 1, 0}})});
+    v.push_back({"two_gt",    chain({Expr{Op::Mov, -1, -1, 0}, Expr{Op::Arg, -1, -1, 1},
+                                     Expr{Op::Gt, 0, 1, 0}})});
+    v.push_back({"two_rev2",  chain({Expr{Op::Arg, -1, -1, 1}, Expr{Op::Rev, 0, -1, 0}})});
 
     // The three shapes that exposed the alias defect.
     v.push_back({"mov_alone", chain({Expr{Op::Mov, -1, -1, 0}})});
@@ -107,6 +128,22 @@ std::string join(const Value& v) {
 // hard-coded input and print one line per (recipe, input).
 std::string driver(Lang l, const std::vector<Named>& rs, const std::vector<Value>& ins) {
     std::string s;
+    // The call, with however many arguments the recipe takes. Written once
+    // here rather than in six drivers, because six places to forget the
+    // second argument is six chances to emit a program that ignores it.
+    const std::size_t nin = ins.size();
+    // `pre` is what an element must be prefixed with to be passed. Rust takes
+    // &V; everything else passes the element itself.
+    auto call = [&](const Named& n, const std::string& idx, const std::string& arr,
+                    const std::string& pre = "") {
+        auto elem = [&](const std::string& e) { return pre + arr + "[" + e + "]"; };
+        std::string c = std::string(n.name) + "(" + elem(idx);
+        for (std::size_t k = 1; k < n.r.arity(); ++k) {
+            c += ", " + elem("(" + idx + " + " + std::to_string(k) + ") % "
+                            + std::to_string(nin));
+        }
+        return c + ")";
+    };
     auto lit = [&](const Value& v) {
         switch (l) {
             case Lang::Cpp:  return "V{" + join(v) + "}";
@@ -122,26 +159,26 @@ std::string driver(Lang l, const std::vector<Named>& rs, const std::vector<Value
         for (std::size_t i = 0; i < ins.size(); ++i) { if (i) s += ", "; s += lit(ins[i]); }
         s += "]\n";
         for (const Named& n : rs) {
-            s += "for _i, _v in enumerate(INPUTS):\n";
+            s += "for _i in range(len(INPUTS)):\n";
             s += std::string("    print('") + n.name + " %d %s' % (_i, ','.join(str(z) for z in "
-                 + n.name + "(_v))))\n";
+                 + call(n, "_i", "INPUTS") + ")))\n";
         }
     } else if (l == Lang::JavaScript) {
         s += "const INPUTS = [";
         for (std::size_t i = 0; i < ins.size(); ++i) { if (i) s += ", "; s += lit(ins[i]); }
         s += "];\n";
         for (const Named& n : rs) {
-            s += "INPUTS.forEach((v, i) => console.log('" + std::string(n.name) +
-                 " ' + i + ' ' + " + n.name + "(v).join(',')));\n";
+            s += "for (let i = 0; i < INPUTS.length; i++) console.log('" + std::string(n.name) +
+                 " ' + i + ' ' + " + call(n, "i", "INPUTS") + ".join(','));\n";
         }
     } else if (l == Lang::Go) {
         s += "func main() {\n  inputs := []V{";
         for (std::size_t i = 0; i < ins.size(); ++i) { if (i) s += ", "; s += lit(ins[i]); }
         s += "}\n";
         for (const Named& n : rs) {
-            s += "  for i, v := range inputs {\n";
+            s += "  for i := range inputs {\n";
             s += "    parts := []string{}\n";
-            s += "    for _, z := range " + std::string(n.name) + "(v) { parts = append(parts, strconv.FormatInt(z, 10)) }\n";
+            s += "    for _, z := range " + call(n, "i", "inputs") + " { parts = append(parts, strconv.FormatInt(z, 10)) }\n";
             s += "    fmt.Printf(\"" + std::string(n.name) + " %d %s\\n\", i, strings.Join(parts, \",\"))\n";
             s += "  }\n";
         }
@@ -152,7 +189,7 @@ std::string driver(Lang l, const std::vector<Named>& rs, const std::vector<Value
         s += "};\n";
         for (const Named& n : rs) {
             s += "    for (int i = 0; i < INPUTS.Length; i++)\n";
-            s += "      Console.WriteLine(\"" + std::string(n.name) + " \" + i + \" \" +             string.Join(\",\", Fn_" + std::string(n.name) + "." + std::string(n.name) + "(INPUTS[i])));\n";
+            s += "      Console.WriteLine(\"" + std::string(n.name) + " \" + i + \" \" + string.Join(\",\", Fn_" + std::string(n.name) + "." + call(n, "i", "INPUTS") + "));\n";
         }
         s += "  }\n}\n";
     } else if (l == Lang::Php) {
@@ -161,7 +198,7 @@ std::string driver(Lang l, const std::vector<Named>& rs, const std::vector<Value
         s += "];\n";
         for (const Named& n : rs) {
             s += "foreach ($INPUTS as $i => $v) { echo \"" + std::string(n.name) +
-                 " $i \" . implode(',', " + std::string(n.name) + "($v)) . \"\\n\"; }\n";
+                 " $i \" . implode(',', " + call(n, "$i", "$INPUTS") + ") . \"\\n\"; }\n";
         }
     } else if (l == Lang::Cpp) {
         s += "#include <cstdio>\n#include <string>\nint main() {\n  std::vector<V> inputs{";
@@ -169,7 +206,7 @@ std::string driver(Lang l, const std::vector<Named>& rs, const std::vector<Value
         s += "};\n";
         for (const Named& n : rs) {
             s += "  for (std::size_t i = 0; i < inputs.size(); ++i) {\n";
-            s += "    V r = " + std::string(n.name) + "(inputs[i]);\n";
+            s += "    V r = " + call(n, "i", "inputs") + ";\n";
             s += "    std::string t; for (std::size_t k = 0; k < r.size(); ++k) "
                  "{ if (k) t += ','; t += std::to_string(r[k]); }\n";
             s += "    std::printf(\"" + std::string(n.name) + " %zu %s\\n\", i, t.c_str());\n";
@@ -181,8 +218,8 @@ std::string driver(Lang l, const std::vector<Named>& rs, const std::vector<Value
         for (std::size_t i = 0; i < ins.size(); ++i) { if (i) s += ", "; s += lit(ins[i]); }
         s += "];\n";
         for (const Named& n : rs) {
-            s += "  for (i, v) in inputs.iter().enumerate() {\n";
-            s += "    let r = " + std::string(n.name) + "(v);\n";
+            s += "  for i in 0..inputs.len() {\n";
+            s += "    let r = " + call(n, "i", "inputs", "&") + ";\n";
             s += "    let t: Vec<String> = r.iter().map(|z| z.to_string()).collect();\n";
             s += "    println!(\"" + std::string(n.name) + " {} {}\", i, t.join(\",\"));\n";
             s += "  }\n";
@@ -211,7 +248,7 @@ int main(int argc, char** argv) {
         std::ofstream f(out_dir + "/reference.txt");
         for (const Named& n : rs) {
             for (std::size_t i = 0; i < ins.size(); ++i) {
-                f << n.name << ' ' << i << ' ' << join(n.r.apply(ins[i], nullptr)) << '\n';
+                f << n.name << ' ' << i << ' ' << join(n.r.apply_n(argsfor(n, ins, i), nullptr)) << '\n';
             }
         }
     }
@@ -266,6 +303,9 @@ int main(int argc, char** argv) {
     std::printf("  Rust, C++ and C# -- six toolchains, %zu recipes, %zu inputs each.\n", rs.size(), ins.size());
     std::printf("  Go was emitted as `package kh` until now, so it could never run at\n");
     std::printf("  all and this harness printed a line count for it as if it had.\n");
+    std::printf("  Three of the recipes take TWO ARGUMENTS, and the second is the NEXT\n");
+    std::printf("  input rather than a repeat of the first, so a program that quietly\n");
+    std::printf("  ignores it cannot pass by coincidence.\n\n");
     std::printf("  PHP is emitted and NOT executed: no PHP on this machine. Writing a\n");
     std::printf("  file is not evidence that it runs -- see Go.\n");    return 0;
 }

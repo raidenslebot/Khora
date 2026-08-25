@@ -546,8 +546,8 @@ BuildResult construct_bidir(const Spec& spec, std::size_t max_pool, const Librar
 
     // ---- and re-check, because an inverse can be sound on the sample and
     // wrong in general -----------------------------------------------------
-    for (const Case& c : spec.cases)   if (rec.apply(c.in, lib) == c.out) ++r.cases_passed;
-    for (const Case& c : spec.holdout) if (rec.apply(c.in, lib) == c.out) ++r.holdout_passed;
+    for (const Case& c : spec.cases)   if (rec.apply_n(c.args(), lib) == c.out) ++r.cases_passed;
+    for (const Case& c : spec.holdout) if (rec.apply_n(c.args(), lib) == c.out) ++r.holdout_passed;
 
     r.recipe = rec.compact();
     if (r.cases_passed == r.cases_total) {

@@ -72,6 +72,36 @@ the verified count almost exactly from tier 3 onward. Chained calls —
 **4 across an entire ascent** before compaction and are now routine (2, 6, 4, 3
 in the first tiers that admit them).
 
+### Functions of more than one argument
+
+`struct Case { Value in, out; }`. One input. **Every program this system could
+express was a unary function of one integer list** — the deepest limit in the
+tree, and the reason "can write anything" was false for a reason no amount of
+search speed touches. Most programs a person writes take more than one argument.
+
+Arguments are now first-class leaves. `Op::Arg` carries an index, `construct`
+seeds one level-0 term per argument, `Recipe::apply_n` takes a vector, and
+`Recipe::arity()` reports what a recipe actually reaches. `Case` keeps `in` as
+the first argument and adds `extra`, so every existing specification, benchmark
+and test is unchanged — and `techne_bench` confirms it, returning the identical
+16/20 on the identical 115,696 candidates.
+
+From four examples, the search finds `append(x, x1)`, generalises to a held-out
+pair, and — the check that matters — still gets `[2,4,6] ++ [9]` right when only
+the *second* argument changes, so it is genuinely reading it rather than passing
+by coincidence.
+
+It emits with the correct parameter list in all fourteen backends, including
+Haskell's curried `V -> V -> V`. Three two-argument recipes are now permanent
+fixtures of the differential harness, with argument 1 taken as the NEXT input
+rather than a repeat of the first, and all six executable languages still match
+byte for byte.
+
+One trap on the way: the emitter's `op_fn` ends in `default: return "kh_id"`. An
+unhandled argument node would have emitted `kh_id(x)` — binding argument 1 to
+argument 0, in source that compiles and reads correctly. Argument nodes resolve
+to parameters in `ref()` and emit no statement at all.
+
 ### Six languages executed against the certificate, not three
 
 The differential harness builds recipes, runs `Recipe::apply` as the reference,
