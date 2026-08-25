@@ -578,11 +578,16 @@ std::string prelude(Lang l);
 // Splice every library call into the recipe, so the result depends on nothing
 // outside itself.
 //
-// This exists because library indices are NOT STABLE. Library::prune sorts by
-// usage and truncates, which renumbers the survivors -- so a stored recipe
-// holding `Call 3` silently comes to mean a different function after any prune.
-// A self-contained recipe cannot rot that way, and it is also the only form that
-// can be emitted as source that stands alone.
+// A self-contained recipe is the only form that can be emitted as source that
+// stands alone -- emitted code cannot reach back into a Library that exists only
+// in this process.
+//
+// It also used to be the only form that could not ROT. Library::prune sorted
+// items_ in place and truncated, renumbering the survivors, so a stored recipe
+// holding `Call 3` silently came to mean a different function after any prune.
+// That is fixed -- prune keeps the age-ordered prefix and remaps every surviving
+// recipe's indices -- but inlining is still what makes an emitted program depend
+// on nothing outside itself.
 Recipe inline_calls(const Recipe& r, const Library& lib);
 
 // One recipe as one function. `lines` receives the number of body lines, which

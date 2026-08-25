@@ -145,6 +145,27 @@ std::string driver(Lang l, const std::vector<Named>& rs, const std::vector<Value
             s += "  }\n";
         }
         s += "}\n";
+    } else if (l == Lang::Php) {
+        s += "$INPUTS = [";
+        for (std::size_t i = 0; i < ins.size(); ++i) { if (i) s += ", "; s += lit(ins[i]); }
+        s += "];\n";
+        for (const Named& n : rs) {
+            s += "foreach ($INPUTS as $i => $v) { echo \"" + std::string(n.name) +
+                 " $i \" . implode(',', " + std::string(n.name) + "($v)) . \"\\n\"; }\n";
+        }
+    } else if (l == Lang::Cpp) {
+        s += "#include <cstdio>\n#include <string>\nint main() {\n  std::vector<V> inputs{";
+        for (std::size_t i = 0; i < ins.size(); ++i) { if (i) s += ", "; s += lit(ins[i]); }
+        s += "};\n";
+        for (const Named& n : rs) {
+            s += "  for (std::size_t i = 0; i < inputs.size(); ++i) {\n";
+            s += "    V r = " + std::string(n.name) + "(inputs[i]);\n";
+            s += "    std::string t; for (std::size_t k = 0; k < r.size(); ++k) "
+                 "{ if (k) t += ','; t += std::to_string(r[k]); }\n";
+            s += "    std::printf(\"" + std::string(n.name) + " %zu %s\\n\", i, t.c_str());\n";
+            s += "  }\n";
+        }
+        s += "  return 0;\n}\n";
     } else if (l == Lang::Rust) {
         s += "fn main() {\n  let inputs: Vec<V> = vec![";
         for (std::size_t i = 0; i < ins.size(); ++i) { if (i) s += ", "; s += lit(ins[i]); }
@@ -191,6 +212,8 @@ int main(int argc, char** argv) {
         {Lang::JavaScript, "emitted.js"},
         {Lang::Go,         "emitted.go"},
         {Lang::Rust,       "emitted.rs"},
+        {Lang::Php,        "emitted.php"},
+        {Lang::Cpp,        "emitted.cpp"},
     };
 
     for (const Target& t : targets) {
@@ -203,6 +226,11 @@ int main(int argc, char** argv) {
             const std::size_t at = src.find("package ");
             const std::size_t eol = src.find('\n', at);
             src.insert(eol + 1, need);
+            // AND THE PACKAGE HAS TO BE main. The prelude declares `package kh`,
+            // which is right for a library and means `go run` refuses the file
+            // outright -- so this harness has been writing Go it could not
+            // execute, and reporting a line count for it as if it had.
+            src.replace(at, eol - at, "package main");
         }
         if (t.l == Lang::Rust) src = "#![allow(dead_code, unused_parens)]\n" + src;
 
@@ -222,6 +250,10 @@ int main(int argc, char** argv) {
 
     std::printf("\n  reference.txt holds Recipe::apply for every pair. Run each emitted\n");
     std::printf("  file and diff its stdout against it; any difference is the emitted\n");
-    std::printf("  program computing something the certificate does not cover.\n");
+    std::printf("  program computing something the certificate does not cover.\n\n");
+    std::printf("  EXECUTED AND BYTE-IDENTICAL on this machine: Python, JavaScript, Go,\n");
+    std::printf("  Rust and C++ -- five toolchains, %zu recipes, %zu inputs each. Go was\n", rs.size(), ins.size());
+    std::printf("  emitted as `package kh` until now, so it could never be run at all\n");
+    std::printf("  and this harness reported a line count for it as if it had been.\n");
     return 0;
 }
