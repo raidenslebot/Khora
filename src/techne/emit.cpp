@@ -104,9 +104,28 @@ def kh_mulk(a, b): return [kh_cap(x * b[0]) for x in a] if b else []
 def kh_count(a, b): return [sum(1 for x in a if x == b[0])] if b else []
 def kh_guard(a, b): return list(a) if b else []
 def kh_else(a, b): return list(a) if a else list(b)
+
+# HIGHER ORDER. The body is a plain function value, which is what Python hands
+# over for free. The truncation is the reference's, written the same way round:
+# append a whole body result, stop once the total has passed the cap, then cut
+# to it exactly -- cutting first would keep a different prefix.
+def kh_mapf(a, f):
+    o = []
+    for x in a:
+        o.extend(f([x]))
+        if len(o) > 512: break
+    return o[:512]
+def kh_foldf(a, f):
+    if not a: return []
+    acc = [a[0]]
+    for i in range(1, len(a)):
+        acc = f(acc + [a[i]])
+        if not acc: break
+    return acc
 )PY";
 
 const char* kCppPrelude = R"CPP(#include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <numeric>
 #include <vector>
@@ -162,6 +181,31 @@ static V kh_mulk(const V& a, const V& b) { if (b.empty()) return {}; V o; for (a
 static V kh_count(const V& a, const V& b) { if (b.empty()) return {}; std::int64_t n = 0; for (auto x : a) if (x == b[0]) ++n; return { n }; }
 static V kh_guard(const V& a, const V& b) { return b.empty() ? V{} : a; }
 static V kh_else(const V& a, const V& b) { return a.empty() ? b : a; }
+
+// HIGHER ORDER. The body is a bare function POINTER, because an emitted library
+// body is a free function with exactly this signature -- std::function would
+// cost an allocation and buy nothing, since nothing here ever captures.
+using Fn = V (*)(const V&);
+static V kh_mapf(const V& a, Fn f) {
+    V o;
+    for (const auto x : a) {
+        const V r = f(V{ x });
+        o.insert(o.end(), r.begin(), r.end());
+        if (o.size() > 512) break;   // the reference stops AFTER the overshoot
+    }
+    if (o.size() > 512) o.resize(512);
+    return o;
+}
+static V kh_foldf(const V& a, Fn f) {
+    if (a.empty()) return {};
+    V acc{ a[0] };                   // seeded with the first element, not zero
+    for (std::size_t i = 1; i < a.size(); ++i) {
+        V p = acc; p.push_back(a[i]);
+        acc = f(p);
+        if (acc.empty()) break;      // an empty body result ENDS the fold and IS the result
+    }
+    return acc;
+}
 )CPP";
 
 const char* kJsPrelude = R"JS(const CAP = 1000000000;
@@ -193,6 +237,28 @@ const kh_mulk = (a, b) => b.length ? a.map(x => kh_cap(x * b[0])) : [];
 const kh_count = (a, b) => b.length ? [a.filter(x => x === b[0]).length] : [];
 const kh_guard = (a, b) => b.length ? a.slice() : [];
 const kh_else = (a, b) => a.length ? a.slice() : b.slice();
+
+// HIGHER ORDER. A function is a value in JavaScript, so the body is passed by
+// bare name. push(...r) rather than concat so the accumulator is grown in place
+// and the length test sees each body result whole.
+const kh_mapf = (a, f) => {
+  const o = [];
+  for (const x of a) {
+    const r = f([x]);
+    for (let j = 0; j < r.length; j++) o.push(r[j]);
+    if (o.length > 512) break;
+  }
+  return o.length > 512 ? o.slice(0, 512) : o;
+};
+const kh_foldf = (a, f) => {
+  if (!a.length) return [];
+  let acc = [a[0]];
+  for (let i = 1; i < a.length; i++) {
+    acc = f(acc.concat([a[i]]));
+    if (!acc.length) break;
+  }
+  return acc;
+};
 )JS";
 
 const char* kRustPrelude = R"RS(pub type V = Vec<i64>;
@@ -251,6 +317,30 @@ pub fn kh_count(a: &V, b: &V) -> V {
 }
 pub fn kh_guard(a: &V, b: &V) -> V { if b.is_empty() { vec![] } else { a.clone() } }
 pub fn kh_else(a: &V, b: &V) -> V { if a.is_empty() { b.clone() } else { a.clone() } }
+
+// HIGHER ORDER. `fn(&V) -> V` is the bare function-pointer type an emitted
+// library body coerces to. A closure type would force a generic parameter and
+// therefore a fresh monomorphisation per body, for no gain -- nothing captures.
+pub fn kh_mapf(a: &V, f: fn(&V) -> V) -> V {
+    let mut o: V = vec![];
+    for x in a {
+        o.extend(f(&vec![*x]));
+        if o.len() > 512 { break; }
+    }
+    o.truncate(512);
+    o
+}
+pub fn kh_foldf(a: &V, f: fn(&V) -> V) -> V {
+    if a.is_empty() { return vec![]; }
+    let mut acc: V = vec![a[0]];
+    for i in 1..a.len() {
+        let mut p = acc.clone();
+        p.push(a[i]);
+        acc = f(&p);
+        if acc.is_empty() { break; }
+    }
+    acc
+}
 )RS";
 
 const char* kGoPrelude = R"GO(package kh
@@ -479,6 +569,38 @@ func kh_else(a V, b V) V {
 	}
 	return append(V{}, a...)
 }
+
+// HIGHER ORDER. A Go function is a value, so the body is passed by bare name.
+func kh_mapf(a V, f func(V) V) V {
+	o := V{}
+	for _, x := range a {
+		o = append(o, f(V{x})...)
+		if len(o) > 512 {
+			break
+		}
+	}
+	if len(o) > 512 {
+		o = o[:512]
+	}
+	return o
+}
+
+func kh_foldf(a V, f func(V) V) V {
+	if len(a) == 0 {
+		return V{}
+	}
+	acc := V{a[0]}
+	for i := 1; i < len(a); i++ {
+		// append onto a FRESH slice: appending onto acc could write through a
+		// shared backing array and corrupt the value the body was handed.
+		p := append(append(V{}, acc...), a[i])
+		acc = f(p)
+		if len(acc) == 0 {
+			break
+		}
+	}
+	return acc
+}
 )GO";
 
 // JAVA HAS NO TOP-LEVEL FUNCTIONS AND NO LIST LITERALS, which is why this
@@ -491,6 +613,7 @@ func kh_else(a V, b V) V {
 // reference for values outside the -128..127 cache -- exactly the class of
 // wrongness this file exists to prevent.
 const char* kJavaPrelude = R"JAVA(import java.util.Arrays;
+import java.util.function.Function;
 
 class Kh {
     static final long CAP = 1000000000L;
@@ -587,6 +710,35 @@ class Kh {
     static long[] kh_guard(long[] a, long[] b) { return b.length == 0 ? EMPTY : a.clone(); }
     static long[] kh_else(long[] a, long[] b) { return a.length == 0 ? b.clone() : a.clone(); }
 }
+
+    // JAVA HAS NO FIRST-CLASS FUNCTIONS, so a body arrives as a
+    // java.util.function.Function and the emitted call site passes a method
+    // reference. long[] is not a generic type argument problem here because the
+    // array itself is the argument -- but it does rule out every primitive
+    // specialisation (LongFunction and friends take a long, not a long[]).
+    //
+    // ponytail: kh_mapf reallocates per element via kh_cat, which is O(n^2) in
+    // the output length. n is bounded at 512 by the cap below, so the worst case
+    // is a few hundred small copies; a growing buffer would be the upgrade.
+    static long[] kh_mapf(long[] a, Function<long[], long[]> f) {
+        long[] o = EMPTY;
+        for (long x : a) {
+            o = kh_cat(o, f.apply(new long[]{ x }));
+            if (o.length > 512) break;
+        }
+        return o.length > 512 ? Arrays.copyOf(o, 512) : o;
+    }
+    static long[] kh_foldf(long[] a, Function<long[], long[]> f) {
+        if (a.length == 0) return EMPTY;
+        long[] acc = new long[]{ a[0] };
+        for (int i = 1; i < a.length; i++) {
+            long[] p = Arrays.copyOf(acc, acc.length + 1);
+            p[acc.length] = a[i];
+            acc = f.apply(p);
+            if (acc.length == 0) break;
+        }
+        return acc;
+    }
 )JAVA";
 
 // C# has no top-level functions either, so it takes the same shape as Java: a
@@ -700,6 +852,30 @@ static class Kh {
     public static long[] kh_guard(long[] a, long[] b) { return b.Length == 0 ? EMPTY : kh_id(a); }
     public static long[] kh_else(long[] a, long[] b) { return a.Length == 0 ? kh_id(b) : kh_id(a); }
 }
+
+    // C# HAS NO TOP-LEVEL FUNCTIONS EITHER, so a body arrives as a
+    // Func<long[], long[]> and the emitted call site passes a method group,
+    // which converts to it implicitly.
+    //
+    // ponytail: same O(n^2) growth as the Java backend, bounded the same way.
+    public static long[] kh_mapf(long[] a, Func<long[], long[]> f) {
+        long[] o = EMPTY;
+        foreach (long x in a) {
+            o = kh_cat(o, f(new long[]{ x }));
+            if (o.Length > 512) break;
+        }
+        return o.Length > 512 ? kh_cut(o, 0, 512) : o;
+    }
+    public static long[] kh_foldf(long[] a, Func<long[], long[]> f) {
+        if (a.Length == 0) return EMPTY;
+        long[] acc = new long[]{ a[0] };
+        for (int i = 1; i < a.Length; i++) {
+            long[] p = kh_cat(acc, new long[]{ a[i] });
+            acc = f(p);
+            if (acc.Length == 0) break;
+        }
+        return acc;
+    }
 )CS";
 
 // TypeScript is the JavaScript backend with the types written down, so it
@@ -739,6 +915,27 @@ const kh_mulk = (a: V, b: V): V => (b.length ? a.map((x) => kh_cap(x * b[0])) : 
 const kh_count = (a: V, b: V): V => (b.length ? [a.filter((x) => x === b[0]).length] : []);
 const kh_guard = (a: V, b: V): V => (b.length ? a.slice() : []);
 const kh_else = (a: V, b: V): V => (a.length ? a.slice() : b.slice());
+
+// HIGHER ORDER. Same as the JavaScript backend with the body's type written
+// down: (v: V) => V, which is what an emitted library body is.
+const kh_mapf = (a: V, f: (v: V) => V): V => {
+  const o: V = [];
+  for (const x of a) {
+    const r = f([x]);
+    for (let j = 0; j < r.length; j++) o.push(r[j]);
+    if (o.length > 512) break;
+  }
+  return o.length > 512 ? o.slice(0, 512) : o;
+};
+const kh_foldf = (a: V, f: (v: V) => V): V => {
+  if (!a.length) return [];
+  let acc: V = [a[0]];
+  for (let i = 1; i < a.length; i++) {
+    acc = f(acc.concat([a[i]]));
+    if (!acc.length) break;
+  }
+  return acc;
+};
 )TS";
 
 const char* kRubyPrelude = R"RB(CAP = 1_000_000_000
@@ -786,6 +983,29 @@ def kh_mulk(a, b); b.empty? ? [] : a.map { |x| kh_cap(x * b[0]) }; end
 def kh_count(a, b); b.empty? ? [] : [a.count { |x| x == b[0] }]; end
 def kh_guard(a, b); b.empty? ? [] : a.dup; end
 def kh_else(a, b); a.empty? ? b.dup : a.dup; end
+
+# HIGHER ORDER. A bare Ruby name CALLS the method rather than naming it, so a
+# body is handed over as method(:kh_lib0) -- a Method object -- and invoked with
+# .call here. That is Ruby's function value; there is no plainer form that is
+# not a syntax error at the call site.
+def kh_mapf(a, f)
+  o = []
+  a.each do |x|
+    o.concat(f.call([x]))
+    break if o.length > 512
+  end
+  o.length > 512 ? o[0, 512] : o
+end
+
+def kh_foldf(a, f)
+  return [] if a.empty?
+  acc = [a[0]]
+  (1...a.length).each do |i|
+    acc = f.call(acc + [a[i]])
+    break if acc.empty?
+  end
+  acc
+end
 )RB";
 
 // LUA TABLES ARE 1-INDEXED. Every index in this file is therefore shifted by
@@ -943,6 +1163,34 @@ end
 
 function kh_guard(a, b) if #b == 0 then return {} end return kh_id(a) end
 function kh_else(a, b) if #a == 0 then return kh_id(b) end return kh_id(a) end
+
+-- HIGHER ORDER. A Lua function is a value, so the body is passed by bare name.
+-- The 1-indexing shows up once more: the fold seeds from a[1], and the pair the
+-- body receives is written at #acc + 1 rather than at #acc.
+function kh_mapf(a, f)
+  local o, n = {}, 0
+  for i = 1, #a do
+    local r = f({ a[i] })
+    for j = 1, #r do n = n + 1 o[n] = r[j] end
+    if n > 512 then break end
+  end
+  if n <= 512 then return o end
+  local c = {}
+  for j = 1, 512 do c[j] = o[j] end
+  return c
+end
+
+function kh_foldf(a, f)
+  if #a == 0 then return {} end
+  local acc = { a[1] }
+  for i = 2, #a do
+    local p = kh_id(acc)
+    p[#acc + 1] = a[i]
+    acc = f(p)
+    if #acc == 0 then break end
+  end
+  return acc
+end
 )LUA";
 
 // Haskell's div/mod FLOOR; quot/rem are the truncating pair the reference uses.
@@ -1026,6 +1274,29 @@ kh_mulk a b = if null b then [] else map (\x -> kh_cap (x * head b)) a
 kh_count a b = if null b then [] else [fromIntegral (length (filter (== head b) a))]
 kh_guard a b = if null b then [] else a
 kh_else a b = if null a then b else a
+
+-- HIGHER ORDER. Haskell needs no wrapper for a function value at all: the body
+-- is named bare and applied by juxtaposition.
+--
+-- `take 512` over a LAZY concatMap is the reference's rule exactly rather than
+-- an approximation of it. The reference appends whole body results until the
+-- total passes 512 and then resizes to 512, which is the 512-element prefix of
+-- the full concatenation; `take` produces that same prefix and forces nothing
+-- beyond it.
+kh_mapf :: V -> (V -> V) -> V
+kh_mapf a f = take 512 (concatMap (\x -> f [x]) a)
+
+-- An empty body result ENDS the fold and IS its value, so this cannot be foldl:
+-- it needs to stop, and foldl has no way to.
+kh_foldf :: V -> (V -> V) -> V
+kh_foldf a f
+  | null a = []
+  | otherwise = go [head a] (tail a)
+  where
+    go acc [] = acc
+    go acc (y:ys) =
+      let acc2 = f (acc ++ [y])
+      in if null acc2 then [] else go acc2 ys
 )HS";
 
 // Swift TRAPS on signed overflow rather than wrapping, so the elementwise
@@ -1092,6 +1363,29 @@ func kh_count(_ a: V, _ b: V) -> V {
 }
 func kh_guard(_ a: V, _ b: V) -> V { return b.isEmpty ? [] : a }
 func kh_else(_ a: V, _ b: V) -> V { return a.isEmpty ? b : a }
+
+// HIGHER ORDER. A Swift function is a value under its bare name, so the body
+// needs no wrapper at the call site. No &-operator here: the fold moves whole
+// lists around and never does arithmetic itself.
+func kh_mapf(_ a: V, _ f: (V) -> V) -> V {
+    var o = V()
+    for x in a {
+        o.append(contentsOf: f([x]))
+        if o.count > 512 { break }
+    }
+    if o.count > 512 { o = Array(o[0..<512]) }
+    return o
+}
+
+func kh_foldf(_ a: V, _ f: (V) -> V) -> V {
+    if a.isEmpty { return [] }
+    var acc: V = [a[0]]
+    for i in 1..<a.count {
+        acc = f(acc + [a[i]])
+        if acc.isEmpty { break }
+    }
+    return acc
+}
 )SWIFT";
 
 // Kotlin's / and % on Long truncate toward zero like C's, so the division pair
@@ -1144,6 +1438,28 @@ fun kh_count(a: V, b: V): V =
     if (b.isEmpty()) emptyList() else listOf(a.count { it == b[0] }.toLong())
 fun kh_guard(a: V, b: V): V = if (b.isEmpty()) emptyList() else a.toList()
 fun kh_else(a: V, b: V): V = if (a.isEmpty()) b.toList() else a.toList()
+
+// HIGHER ORDER. `::kh_lib0` is Kotlin's function reference -- a bare name there
+// resolves as a property and does not compile. V is an immutable List, so the
+// map accumulates into an ArrayList and hands back a List at the end.
+fun kh_mapf(a: V, f: (V) -> V): V {
+    val o = ArrayList<Long>()
+    for (x in a) {
+        o.addAll(f(listOf(x)))
+        if (o.size > 512) break
+    }
+    return if (o.size > 512) o.subList(0, 512).toList() else o.toList()
+}
+
+fun kh_foldf(a: V, f: (V) -> V): V {
+    if (a.isEmpty()) return emptyList()
+    var acc: V = listOf(a[0])
+    for (i in 1 until a.size) {
+        acc = f(acc + a[i])
+        if (acc.isEmpty()) break
+    }
+    return acc
+}
 )KT";
 
 // PHP's / always produces a FLOAT, so integer division has to be intdiv(),
@@ -1222,6 +1538,32 @@ function kh_count($a, $b) {
 }
 function kh_guard($a, $b) { return count($b) === 0 ? [] : array_values($a); }
 function kh_else($a, $b) { return count($a) === 0 ? array_values($b) : array_values($a); }
+
+// HIGHER ORDER. A bare PHP name is a CONSTANT, not a function, so a body is
+// handed over as the callable string 'kh_lib0', which $f(...) invokes directly.
+// The first-class callable syntax kh_lib0(...) would read better and needs
+// PHP 8.1; a string callable has worked since 5.3 and this file has no reason
+// to demand a version.
+function kh_mapf($a, $f) {
+    $o = [];
+    foreach ($a as $x) {
+        foreach ($f([$x]) as $y) $o[] = $y;
+        if (count($o) > 512) break;
+    }
+    return count($o) > 512 ? array_slice($o, 0, 512) : $o;
+}
+
+function kh_foldf($a, $f) {
+    if (count($a) === 0) return [];
+    $acc = [$a[0]];
+    for ($i = 1; $i < count($a); $i++) {
+        $p = $acc;
+        $p[] = $a[$i];
+        $acc = $f($p);
+        if (count($acc) === 0) break;
+    }
+    return $acc;
+}
 )PHP";
 
 } // namespace

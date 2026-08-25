@@ -69,3 +69,6 @@ target_link_libraries(selfhost_bench PRIVATE khora::techne)
 
 add_executable(bidir_bench bidir_bench.cpp)
 target_link_libraries(bidir_bench PRIVATE khora::techne)
+
+add_executable(text_bench text_bench.cpp)
+target_link_libraries(text_bench PRIVATE khora::techne)
