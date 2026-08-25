@@ -149,6 +149,14 @@ enum class Op : std::uint8_t {
     Member,    // dst = [ x in b ? 1 : 0 for x in a ]     set membership
     Until,     // dst = prefix of a before the first element equal to b[0]
     Delta,     // dst = [ a[i+1] - a[i] ]                 neighbour comparison
+    // Prefix sums: the INVERSE of Delta, which the set had without it.
+    //
+    // Measured on the fixed bar: six of sixteen depth-TWO tasks were unsolved,
+    // which cannot be a search problem at that depth -- it is a function the
+    // operation set could not express at all. `scan` is one such, and an
+    // operation set that carries differences without sums is asymmetric for no
+    // reason beyond nobody having noticed.
+    Scan,
     Call,      // dst = library[b](a)    a learned primitive
     // ---- HIGHER ORDER: operations whose BODY is a learned function ----------
     //

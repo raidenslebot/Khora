@@ -45,6 +45,7 @@ const char* fn_of(Op op) {
         case Op::Guard: return "kh_guard";  case Op::Else: return "kh_else";
         case Op::Gt: return "kh_gt";        case Op::Member: return "kh_member";
         case Op::Until: return "kh_until";  case Op::Delta: return "kh_delta";
+        case Op::Scan: return "kh_scan";
         default: return "kh_id";
     }
 }
@@ -121,6 +122,13 @@ def kh_until(a, b):
         o.append(x)
     return o
 def kh_delta(a): return [kh_cap(a[i] - a[i - 1]) for i in range(1, len(a))]
+def kh_scan(a):
+    o = []
+    s = 0
+    for x in a:
+        s = kh_cap(s + x)
+        o.append(s)
+    return o
 
 # HIGHER ORDER. The body is a plain function value, which is what Python hands
 # over for free. The truncation is the reference's, written the same way round:
@@ -208,6 +216,7 @@ static V kh_member(const V& a, const V& b) {
 }
 static V kh_until(const V& a, const V& b) { if (b.empty()) return {}; V o; for (auto x : a) { if (x == b[0]) break; o.push_back(x); } return o; }
 static V kh_delta(const V& a) { V o; for (std::size_t i = 1; i < a.size(); ++i) o.push_back(kh_cap(a[i] - a[i - 1])); return o; }
+static V kh_scan(const V& a) { V o; std::int64_t s = 0; for (const auto x : a) { s = kh_cap(s + x); o.push_back(s); } return o; }
 
 // HIGHER ORDER. The body is a bare function POINTER, because an emitted library
 // body is a free function with exactly this signature -- std::function would
@@ -282,6 +291,11 @@ const kh_until = (a, b) => {
 const kh_delta = a => {
   const o = [];
   for (let i = 1; i < a.length; i++) o.push(kh_cap(a[i] - a[i - 1]));
+  return o;
+};
+const kh_scan = a => {
+  const o = []; let s = 0;
+  for (const x of a) { s = kh_cap(s + x); o.push(s); }
   return o;
 };
 
@@ -382,6 +396,10 @@ pub fn kh_until(a: &V, b: &V) -> V {
 // erases. Inside the +-1e9 domain the two are identical.
 pub fn kh_delta(a: &V) -> V {
     (1..a.len()).map(|i| kh_cap(a[i].saturating_sub(a[i - 1]))).collect()
+}
+pub fn kh_scan(a: &V) -> V {
+    let mut s: i64 = 0;
+    a.iter().map(|x| { s = kh_cap(s.saturating_add(*x)); s }).collect()
 }
 
 // HIGHER ORDER. `fn(&V) -> V` is the bare function-pointer type an emitted
@@ -687,6 +705,15 @@ func kh_delta(a V) V {
 	}
 	return o
 }
+func kh_scan(a V) V {
+	o := V{}
+	var s int64 = 0
+	for _, x := range a {
+		s = kh_cap(s + x)
+		o = append(o, s)
+	}
+	return o
+}
 
 // HIGHER ORDER. A Go function is a value, so the body is passed by bare name.
 func kh_mapf(a V, f func(V) V) V {
@@ -855,6 +882,12 @@ class Kh {
         if (a.length < 2) return EMPTY;
         long[] o = new long[a.length - 1];
         for (int i = 1; i < a.length; i++) o[i - 1] = kh_cap(a[i] - a[i - 1]);
+        return o;
+    }
+    static long[] kh_scan(long[] a) {
+        long[] o = new long[a.length];
+        long s = 0;
+        for (int i = 0; i < a.length; i++) { s = kh_cap(s + a[i]); o[i] = s; }
         return o;
     }
 
@@ -1026,6 +1059,12 @@ static class Kh {
         for (int i = 1; i < a.Length; i++) o[i - 1] = kh_cap(a[i] - a[i - 1]);
         return o;
     }
+    public static long[] kh_scan(long[] a) {
+        long[] o = new long[a.Length];
+        long s = 0;
+        for (int i = 0; i < a.Length; i++) { s = kh_cap(s + a[i]); o[i] = s; }
+        return o;
+    }
 
     // C# HAS NO TOP-LEVEL FUNCTIONS EITHER, so a body arrives as a
     // Func<long[], long[]> and the emitted call site passes a method group,
@@ -1110,6 +1149,11 @@ const kh_delta = (a: V): V => {
   for (let i = 1; i < a.length; i++) o.push(kh_cap(a[i] - a[i - 1]));
   return o;
 };
+const kh_scan = (a: V): V => {
+  const o: V = []; let s = 0;
+  for (const x of a) { s = kh_cap(s + x); o.push(s); }
+  return o;
+};
 
 // HIGHER ORDER. Same as the JavaScript backend with the body's type written
 // down: (v: V) => V, which is what an emitted library body is.
@@ -1183,6 +1227,7 @@ def kh_gt(a, b); b.empty? ? [] : a.map { |x| x > b[0] ? 1 : 0 }; end
 def kh_member(a, b); b.empty? ? [] : a.map { |x| b.include?(x) ? 1 : 0 }; end
 def kh_until(a, b); b.empty? ? [] : a.take_while { |x| x != b[0] }; end
 def kh_delta(a); (1...a.length).map { |i| kh_cap(a[i] - a[i - 1]) }; end
+def kh_scan(a); s = 0; a.map { |x| s = kh_cap(s + x); s }; end
 
 # HIGHER ORDER. A bare Ruby name CALLS the method rather than naming it, so a
 # body is handed over as method(:kh_lib0) -- a Method object -- and invoked with
@@ -1400,6 +1445,12 @@ function kh_delta(a)
   for i = 2, #a do o[i - 1] = kh_cap(a[i] - a[i - 1]) end
   return o
 end
+function kh_scan(a)
+  local o = {}
+  local s = 0
+  for i = 1, #a do s = kh_cap(s + a[i]); o[i] = s end
+  return o
+end
 
 -- HIGHER ORDER. A Lua function is a value, so the body is passed by bare name.
 -- The 1-indexing shows up once more: the fold seeds from a[1], and the pair the
@@ -1523,6 +1574,8 @@ kh_until a b = if null b then [] else takeWhile (/= head b) a
 -- no guard written.
 kh_delta :: V -> V
 kh_delta a = zipWith (\y x -> kh_cap (y - x)) (drop 1 a) a
+kh_scan :: V -> V
+kh_scan a = drop 1 (scanl (\s x -> kh_cap (s + x)) 0 a)
 
 -- HIGHER ORDER. Haskell needs no wrapper for a function value at all: the body
 -- is named bare and applied by juxtaposition.
@@ -1648,6 +1701,13 @@ func kh_delta(_ a: V) -> V {
     return o
 }
 
+func kh_scan(_ a: V) -> V {
+    var o = V()
+    var s: Int64 = 0
+    for x in a { s = kh_cap(s &+ x); o.append(s) }
+    return o
+}
+
 // HIGHER ORDER. A Swift function is a value under its bare name, so the body
 // needs no wrapper at the call site. No &-operator here: the fold moves whole
 // lists around and never does arithmetic itself.
@@ -1730,6 +1790,7 @@ fun kh_member(a: V, b: V): V =
     if (b.isEmpty()) emptyList() else a.map { if (b.contains(it)) 1L else 0L }
 fun kh_until(a: V, b: V): V = if (b.isEmpty()) emptyList() else a.takeWhile { it != b[0] }
 fun kh_delta(a: V): V = (1 until a.size).map { kh_cap(a[it] - a[it - 1]) }
+fun kh_scan(a: V): V { var s = 0L; return a.map { s = kh_cap(s + it); s } }
 
 // HIGHER ORDER. `::kh_lib0` is Kotlin's function reference -- a bare name there
 // resolves as a property and does not compile. V is an immutable List, so the
@@ -1857,6 +1918,11 @@ function kh_until($a, $b) {
 function kh_delta($a) {
     $o = [];
     for ($i = 1; $i < count($a); $i++) $o[] = kh_cap($a[$i] - $a[$i - 1]);
+    return $o;
+}
+function kh_scan($a) {
+    $o = []; $s = 0;
+    foreach ($a as $x) { $s = kh_cap($s + $x); $o[] = $s; }
     return $o;
 }
 

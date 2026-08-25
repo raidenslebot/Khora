@@ -236,6 +236,56 @@ that is invisible until someone looks.
 
 **And it plateaus** — flat from stage 6 while training continues.
 
+### The residual ceiling, itemised
+
+Breaking the fixed 96-task bar down by depth turns one number into a diagnosis:
+
+| depth | tasks | solved at start | solved at end |
+|-------|-------|-----------------|---------------|
+| 2 | 16 | 10 | 10 |
+| 3 | 16 | 7 | **9** |
+| 4 | 16 | 1 | **3** |
+| 5 | 16 | 0 | **3** |
+| 6 | 16 | 0 | 0 |
+| 7 | 16 | 0 | 0 |
+
+Two walls, not one. Every gain the library produces lives in a narrow band at
+depths 3-5; it adds nothing at depth 2 and nothing at 6-7.
+
+And depth 2 is **10 of 16** — six of the shallowest possible tasks unsolved,
+which cannot be a search problem at two operations. Printing their names settles
+what four cycles of guessing did not: `rev.altneg`, `dec2.altneg`, `idxmul.sq`,
+`dup.idxmul`. **`altneg` and `idxmul` are index-aware and the operation set has
+nothing index-aware in it.** That is an expressibility floor, not a search one.
+
+`Op::Scan` was added on the way to finding that out — prefix sums, the exact
+inverse of the `Delta` already present, and a name-for-name match with a missing
+atom. It changed **nothing**: identical per-depth breakdown. A plausible fix,
+measured, and reported as the negative it is. The operation stays, because an
+operation set carrying differences without sums is asymmetric regardless.
+
+### The +39% is a net: 8 gained, 1 lost
+
+A per-task diff between the empty-library and learned-library runs shows the
+library BREAKING a task it could solve without one:
+
+```
+LOST  d2  sort.delta        -- Delta(Sort(x)). Two operations, both in the set.
+```
+
+Solved with an empty library, unsolved with a 96-entry one, because every entry
+is another level-0 candidate competing for a bounded pool. An isolated probe
+confirms it: the same function synthesises instantly at 10/10 cases and 5/5
+holdout with no library at all. The totals cannot show this — it is masked by
+the eight tasks learning wins.
+
+Two further apparent losses were the instrument, not the system. `holds_up` runs
+only on tasks that were SOLVED, so its probe stream advances a different number
+of times under a different library, and a task was being checked against
+different inputs in each arm. Reseeding per task rather than per call removed
+both. That is the second drift found in this bench by checking it as hard as the
+thing it measures.
+
 ### Why it plateaus: two axes, not one
 
 The library hits its budget first, so the budget is the obvious suspect, and

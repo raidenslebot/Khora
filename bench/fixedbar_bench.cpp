@@ -224,14 +224,20 @@ Drawn draw_set(std::uint64_t seed, std::size_t per_depth, std::size_t lo, std::s
 
 // Attempt every task. `lib` is READ ONLY here -- nothing is admitted, which is
 // what makes this a measurement rather than another round of training.
-std::size_t score(const Drawn& d, const Library* lib, std::size_t pool_cap) {
+// Per-depth, because "26 of 96" cannot distinguish a DEPTH WALL from a set of
+// tasks that are simply not expressible in the operation set. If the shallow
+// depths are solved and the deep ones are not, the ceiling is search reach; if
+// the miss rate is flat across depths, it is expressibility, and no amount of
+// pool or vocabulary will touch it.
+std::size_t score(const Drawn& d, const Library* lib, std::size_t pool_cap,
+                  std::vector<std::size_t>* by_depth = nullptr,
+                  std::vector<char>* solved = nullptr) {
     // THE VERIFIER'S INPUTS ARE FIXED TOO, and that is not a detail. holds_up
     // draws from the same global stream that task generation mutates, so
     // without this the probes a task is checked against differ from stage to
     // stage -- and "solved" would quietly mean something slightly different at
     // every measurement, on a bench whose entire purpose is that nothing about
     // the measurement moves.
-    rs = 0x5C012ULL;
     std::size_t n = 0;
     for (std::size_t i = 0; i < d.tasks.size(); ++i) {
         BuildResult b = construct(d.specs[i], pool_cap, lib);
@@ -240,8 +246,20 @@ std::size_t score(const Drawn& d, const Library* lib, std::size_t pool_cap) {
             if (alt.proof == Proof::Generalised) b = std::move(alt);
         }
         if (b.proof != Proof::Generalised) continue;
+        // RESEEDED PER TASK, not per call. Seeding once at the top of score()
+        // was not enough: holds_up only runs for tasks that were SOLVED, so the
+        // stream advances a different number of times under a different library
+        // and task i is checked against different probes in each configuration.
+        // A task must be checked against the same inputs every time or "solved"
+        // is not comparable between the arms this bench exists to compare.
+        rs = 0x5C012ULL + i * 7919ULL;
         if (!holds_up(b.recipe, lib, d.tasks[i].f)) continue;
         ++n;
+        if (solved != nullptr && i < solved->size()) (*solved)[i] = 1;
+        if (by_depth != nullptr) {
+            if (by_depth->size() <= d.tasks[i].depth) by_depth->resize(d.tasks[i].depth + 1, 0);
+            ++(*by_depth)[d.tasks[i].depth];
+        }
     }
     return n;
 }
@@ -309,7 +327,50 @@ int main(int argc, char** argv) {
     }
 
     const double secs = std::chrono::duration<double>(clk::now() - t0).count();
-    const std::size_t final_score = score(eval, &learned, pool_cap);
+    std::vector<std::size_t> got_by_depth, base_by_depth;
+    std::vector<char> hit(eval.tasks.size(), 0);
+    const std::size_t final_score = score(eval, &learned, pool_cap, &got_by_depth, &hit);
+    std::vector<char> hit0(eval.tasks.size(), 0);
+    score(eval, nullptr, pool_cap, &base_by_depth, &hit0);
+
+    // WHERE THE MISSES ARE.
+    std::vector<std::size_t> total_by_depth;
+    for (const Task& t : eval.tasks) {
+        if (total_by_depth.size() <= t.depth) total_by_depth.resize(t.depth + 1, 0);
+        ++total_by_depth[t.depth];
+    }
+    std::printf("\n  depth | tasks | solved at the start | solved at the end\n");
+    std::printf("  ------+-------+---------------------+-------------------\n");
+    for (std::size_t dpt = 0; dpt < total_by_depth.size(); ++dpt) {
+        if (total_by_depth[dpt] == 0) continue;
+        const std::size_t b0 = dpt < base_by_depth.size() ? base_by_depth[dpt] : 0;
+        const std::size_t b1 = dpt < got_by_depth.size()  ? got_by_depth[dpt]  : 0;
+        std::printf("  %5zu | %5zu | %9zu           | %9zu\n",
+                    dpt, total_by_depth[dpt], b0, b1);
+    }
+
+    // WHICH ONES. Four cycles of guessing which atom blocks the shallow misses
+    // ended with adding Op::Scan -- the exact inverse of an operation already
+    // present, matching an atom by name -- and changing nothing at all. Printing
+    // the names costs one line and settles it.
+    // LOST BY LEARNING. Same task, solvable with no library and not solvable
+    // with one. Every entry is another level-0 candidate, so a big library can
+    // push a two-operation answer out of a bounded pool -- a regression the
+    // totals cannot show, because it is masked by the tasks learning WINS.
+    {
+        std::size_t lost = 0, gained = 0;
+        for (std::size_t i = 0; i < eval.tasks.size(); ++i) {
+            if (hit0[i] && !hit[i]) { ++lost;
+                std::printf("    LOST    d%zu  %s\n", eval.tasks[i].depth, eval.tasks[i].name.c_str()); }
+            if (!hit0[i] && hit[i]) ++gained;
+        }
+        std::printf("  %zu tasks LOST to the library, %zu gained.\n", lost, gained);
+    }
+    std::printf("\n  UNSOLVED at depth 2 and 3, the ones no search depth explains:\n");
+    for (std::size_t i = 0; i < eval.tasks.size(); ++i) {
+        if (hit[i] || eval.tasks[i].depth > 3) continue;
+        std::printf("    d%zu  %s\n", eval.tasks[i].depth, eval.tasks[i].name.c_str());
+    }
 
     std::printf("\n  %.1f s\n\n", secs);
     if (final_score > base) {
