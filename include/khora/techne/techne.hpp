@@ -375,6 +375,43 @@ struct BuildResult {
     bool certified() const noexcept { return proof != Proof::None; }
 };
 
+// ---------------------------------------------------------------------------
+// BIDIRECTIONAL SEARCH — attacking the exponent instead of the constant.
+//
+// Bottom-up construction explores every behaviour reachable from the input, one
+// level at a time. Its cost is exponential in depth, and every previous cycle in
+// this project responded to that by buying a bigger pool: depth 3 needed 36,854
+// entries for `max_minus_min`, so the cap went up. That is optimising the
+// CONSTANT FACTOR ON AN EXPONENTIAL, and it does not end well -- depth 4 needs
+// millions, and the bounded conditionals added for edge cases turned out to be
+// unreachable in principle at any pool size this machine will hold.
+//
+// The way out is not more budget. It is to stop searching in only one direction.
+//
+// OPERATIONS ARE INVERTIBLE. If the target is add(A, B) and one operand is known,
+// the other is DEDUCED: B = sub(target, A). If the target is rev(A) then
+// A = rev(target), exactly. If it is mapmul(A, 3) then A = target/3 wherever
+// that divides. These are not guesses; they are the unique preimages.
+//
+// So run two searches. FORWARD from the input, accumulating behaviours that are
+// reachable. BACKWARD from the target, accumulating GOALS -- behaviours which,
+// if some expression achieved them, would yield the target after a known
+// wrapper. A solution exists the moment a forward behaviour equals a backward
+// goal, and the program is read off by composing the two halves.
+//
+// For a solution of depth d, forward reaches d/2 and backward reaches d/2, so
+// the cost falls from O(b^d) to roughly O(b^(d/2)). That is a win on the
+// EXPONENT, which is a different kind of thing from a bigger pool.
+//
+// SOUNDNESS IS NOT ASSUMED. An inverse that is only partially valid -- division
+// where the target does not divide evenly, sort whose preimage is any
+// permutation -- can propose a goal that is wrong. Every assembled candidate is
+// therefore re-checked against every case before it is returned, so an unsound
+// inverse costs wasted work and can never produce a wrong answer.
+// ---------------------------------------------------------------------------
+BuildResult construct_bidir(const Spec& spec, std::size_t max_pool,
+                            const Library* lib = nullptr);
+
 // Build a program by composition. `max_pool` bounds the number of DISTINCT
 // behaviours retained, which is the real memory cost.
 BuildResult construct(const Spec& spec, std::size_t max_pool, const Library* lib = nullptr);
