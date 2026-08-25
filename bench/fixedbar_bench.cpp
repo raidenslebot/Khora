@@ -244,6 +244,29 @@ Drawn draw_set(std::uint64_t seed, std::size_t per_depth, std::size_t lo, std::s
 // depths are solved and the deep ones are not, the ceiling is search reach; if
 // the miss rate is flat across depths, it is expressibility, and no amount of
 // pool or vocabulary will touch it.
+// `cegis` turns the external check from a REJECT into a REPAIR -- and measured,
+// it changes NOTHING. Off by default for that reason, and kept because the
+// negative is worth being able to reproduce.
+//
+// At equal stages, with and without counterexample refinement: 22, 25, 29, 32,
+// 31 both ways, and the same single task lost to the library. The plausible
+// reason is a compliment to an earlier fix rather than a fault in CEGIS: the
+// overfits it exists to catch were LENGTH overfits, programs like
+// `add(x, mul(x, range(5)))` that are right for every length the cases showed,
+// and widening the case lengths from 1-5 to 1-12 already removed them. A
+// counterexample hunt finds nothing when the specification is already
+// informative enough.
+//
+//
+// holds_up already consults the reference function to throw away a program that
+// certified and is still wrong. That is the same oracle CEGIS wants, used
+// post-hoc instead of constructively: feed the counterexample back as a new case
+// and search again. Both arms get it, so the comparison stays fair, but it is a
+// different question -- "can it be solved from the specification" versus "can it
+// be solved from the specification plus an oracle that answers queries" -- so it
+// is reported separately rather than folded into the headline.
+std::size_t g_cegis_rounds = 0;
+
 std::size_t score(const Drawn& d, const Library* lib, std::size_t pool_cap,
                   std::vector<std::size_t>* by_depth = nullptr,
                   std::vector<char>* solved = nullptr) {
@@ -259,6 +282,23 @@ std::size_t score(const Drawn& d, const Library* lib, std::size_t pool_cap,
         if (b.proof != Proof::Generalised) {
             BuildResult alt = construct_bidir(d.specs[i], pool_cap, lib);
             if (alt.proof == Proof::Generalised) b = std::move(alt);
+        }
+        if (g_cegis_rounds > 0) {
+            const Fn& ref = d.tasks[i].f;
+            std::uint64_t pr = 0xC0FFEEULL + i * 7919ULL;
+            auto prober = [&pr](std::size_t) {
+                Value v; const std::size_t L = (pr = pr * 6364136223846793005ULL + 1442695040888963407ULL,
+                                                (pr >> 33) % 14);
+                for (std::size_t j = 0; j < L; ++j) {
+                    pr = pr * 6364136223846793005ULL + 1442695040888963407ULL;
+                    v.push_back(static_cast<std::int64_t>((pr >> 33) % 40) - 18);
+                }
+                return v;
+            };
+            BuildResult ref_b = synthesise_verified(d.specs[i], pool_cap,
+                                                    [&ref](const Value& in) { return ref(in); },
+                                                    prober, 200, g_cegis_rounds, lib);
+            if (ref_b.proof == Proof::Generalised) b = std::move(ref_b);
         }
         if (b.proof != Proof::Generalised) continue;
         // RESEEDED PER TASK, not per call. Seeding once at the top of score()
@@ -286,6 +326,7 @@ int main(int argc, char** argv) {
     const std::size_t stages    = (argc > 2) ? std::stoul(argv[2]) : 6;
     const std::size_t pool_cap  = (argc > 3) ? std::stoul(argv[3]) : 20000;
     const std::size_t budget    = (argc > 4) ? std::stoul(argv[4]) : 96;
+    g_cegis_rounds              = (argc > 5) ? std::stoul(argv[5]) : 0;
 
     std::printf("Does it get better against a bar that does not move?\n\n");
     std::printf("  An evaluation set drawn ONCE from a fixed seed over the base atoms,\n");

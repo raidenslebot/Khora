@@ -236,6 +236,30 @@ that is invisible until someone looks.
 
 **And it plateaus** — flat from stage 6 while training continues.
 
+### Counterexample refinement changed nothing, and that is a good sign
+
+The one loss that survived `construct_best` is a program that CERTIFIED and was
+still wrong — passed every case and every holdout, failed the external 200-probe
+check. CEGIS is exactly the mechanism for that: `holds_up` already consults the
+reference function to REJECT such a program, and `synthesise_verified` uses the
+same oracle to REPAIR it, feeding the counterexample back as a new case.
+
+It was wired in and measured. At equal stages, with and without:
+
+```
+22, 25, 29, 32, 31   both ways, and the same single task lost
+```
+
+No change, at substantially more cost. It is off by default and the option is
+kept so the negative can be reproduced.
+
+The likely reason is a compliment to the case-length fix rather than a fault in
+CEGIS. The overfits it exists to catch here were LENGTH overfits —
+`add(x, mul(x, range(5)))`, right for every length the cases contained — and
+widening the cases from 1-5 to 1-12 already removed them. A counterexample hunt
+finds nothing when the specification is already informative enough, which is the
+outcome you want from having fixed the specification.
+
 ### Removing the library's regression was worth more than the library
 
 The per-task diff said the library was breaking things it could solve without:
