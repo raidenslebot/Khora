@@ -80,6 +80,7 @@ const char* op_name(Op o) {
         case Op::MapAdd: return "mapadd";case Op::MapMul: return "mapmul";
         case Op::Count: return "count";  case Op::Call: return "call";
         case Op::Guard: return "guard";  case Op::Else: return "else";
+        case Op::MapF: return "mapf";    case Op::FoldF: return "foldf";
         default: return "?";
     }
 }
@@ -394,6 +395,32 @@ Value run(const Program& p, const Value& input, const Library* lib, std::size_t 
             }
             case Op::Guard: if (!B.empty()) out = A; break;
             case Op::Else:  out = A.empty() ? B : A; break;
+            case Op::MapF: {
+                if (lib == nullptr || lib->size() == 0) break;
+                const std::size_t li = c.b % lib->size();
+                for (const auto x : A) {
+                    const Value r1 = lib->call(li, Value{x}, depth + 1);
+                    out.insert(out.end(), r1.begin(), r1.end());
+                    if (out.size() > kMaxListLen) break;
+                }
+                break;
+            }
+            case Op::FoldF: {
+                if (lib == nullptr || lib->size() == 0 || A.empty()) break;
+                const std::size_t li = c.b % lib->size();
+                Value acc{A[0]};
+                for (std::size_t i = 1; i < A.size(); ++i) {
+                    // The body receives the running value and the next element
+                    // as a two-element list, which is how a one-argument machine
+                    // expresses a binary operation with no second input channel.
+                    Value pair = acc;
+                    pair.push_back(A[i]);
+                    acc = lib->call(li, pair, depth + 1);
+                    if (acc.empty()) break;
+                }
+                out = acc;
+                break;
+            }
             case Op::Call: {
                 if (lib == nullptr || lib->size() == 0) break;
                 out = lib->call(c.b % lib->size(), A, depth + 1);
@@ -628,6 +655,32 @@ Value apply_op(Op op, const Value& A, const Value& B, std::uint8_t k,
         case Op::Count: { if (B.empty()) break; std::int64_t n = 0; for (const auto x : A) if (x == B[0]) ++n; out = Value{n}; break; }
         case Op::Guard: if (!B.empty()) out = A; break;
         case Op::Else:  out = A.empty() ? B : A; break;
+        case Op::MapF: {
+            if (lib == nullptr || lib->size() == 0) break;
+            const std::size_t li = k % lib->size();
+            for (const auto x : A) {
+                const Value r1 = lib->call(li, Value{x}, depth + 1);
+                out.insert(out.end(), r1.begin(), r1.end());
+                if (out.size() > kMaxListLen) break;
+            }
+            break;
+        }
+        case Op::FoldF: {
+            if (lib == nullptr || lib->size() == 0 || A.empty()) break;
+            const std::size_t li = k % lib->size();
+            Value acc{A[0]};
+            for (std::size_t i = 1; i < A.size(); ++i) {
+                // The body receives the running value and the next element as a
+                // two-element list, which is how a one-argument machine expresses
+                // a binary operation without a second input channel.
+                Value pair = acc;
+                pair.push_back(A[i]);
+                acc = lib->call(li, pair, depth + 1);
+                if (acc.empty()) break;
+            }
+            out = acc;
+            break;
+        }
         case Op::Call:  if (lib && lib->size()) out = lib->call(k % lib->size(), A, depth + 1); break;
         default: out = A; break;
     }
@@ -711,6 +764,12 @@ std::string Recipe::render() const {
         const Expr& e = pool[static_cast<std::size_t>(i)];
         if (e.op == Op::Const) return std::to_string(const_of(e.k));
         if (e.op == Op::Call)  return "lib" + std::to_string(e.k) + "(" + go(e.a) + ")";
+        // A fold is meaningless without naming its BODY. `foldf(x, x)` printed
+        // its operand twice and said nothing about which learned function was
+        // being folded, which makes the most interesting results this module
+        // produces unreadable.
+        if (e.op == Op::MapF)  return "map[lib" + std::to_string(e.k) + "](" + go(e.a) + ")";
+        if (e.op == Op::FoldF) return "fold[lib" + std::to_string(e.k) + "](" + go(e.a) + ")";
         if (e.op == Op::Mov)   return go(e.a);
         const std::string nm = op_name(e.op);
         for (const Op u : unary_ops()) if (u == e.op) return nm + "(" + go(e.a) + ")";
@@ -776,6 +835,7 @@ BuildResult construct(const Spec& spec, std::size_t max_pool, const Library* lib
             consider(e, std::move(outs));
         }
     }
+    (void)0;
 
     // Grow by size. Every pool entry is already the smallest expression with its
     // behaviour, so composing over the pool composes over BEHAVIOURS rather than
@@ -786,6 +846,61 @@ BuildResult construct(const Spec& spec, std::size_t max_pool, const Library* lib
         const std::size_t end = pool.size();
         if (start >= end) break;
         frontier = end;
+
+        // HIGHER-ORDER EXPANSION. MapF and FoldF are unary in shape but carry a
+        // library index, so each needs one candidate per library ENTRY rather
+        // than one candidate per operation. That is why they get their own loop,
+        // and why the capability only appears once the system has learned
+        // something worth folding with -- with an empty library there is no body
+        // to supply and the loop does nothing.
+        //
+        // BOUNDED, because the unbounded version was unusable. Two operations
+        // times every library entry, applied to every pool node, each invocation
+        // running a whole library recipe over every case -- at a 40,000 pool with
+        // a 32-entry library that is millions of nested evaluations per task, and
+        // the benchmark simply stopped returning.
+        //
+        // The bound is not arbitrary. fold(f, x) applied to the raw input or to
+        // something one step from it is the shape that occurs; folding over a
+        // deeply transformed list is rare and can be reached the other way, by
+        // learning the transformation as a library entry first. Capping the
+        // bodies at the most recent few costs the same way and for the same
+        // reason.
+        const std::size_t kHigherOrderNodes = 256;
+        const std::size_t kHigherOrderBodies = 8;
+        if (lib != nullptr && lib->size() > 0) {
+            const std::size_t node_lim = std::min(end, kHigherOrderNodes);
+            const std::size_t body_lim = std::min(lib->size(), kHigherOrderBodies);
+            for (std::size_t i = start; i < node_lim && found_at < 0 && pool.size() < max_pool; ++i) {
+                // SKIP LARGE OPERANDS. A fold or map invokes its body ONCE PER
+                // ELEMENT, per case, per candidate -- so applying one to a
+                // 512-element list built by Range costs thousands of nested
+                // recipe evaluations for a single candidate, and the benchmark
+                // stopped returning at all.
+                //
+                // This is a search heuristic, not a change of semantics: the
+                // operations still fold over any length when they appear in a
+                // finished program. It only declines to SPECULATE on operands
+                // large enough to make speculation cost more than it can return.
+                std::size_t elems = 0;
+                for (const Value& v : behaviour[i]) elems += v.size();
+                if (elems > 64) continue;
+
+                for (const Op hop : {Op::MapF, Op::FoldF}) {
+                    if (!spec.allows(hop)) continue;
+                    for (std::size_t li = 0; li < body_lim && found_at < 0; ++li) {
+                        std::vector<Value> outs(ncase);
+                        for (std::size_t c = 0; c < ncase; ++c) {
+                            outs[c] = apply_op(hop, behaviour[i][c], {},
+                                               static_cast<std::uint8_t>(li), lib, 0);
+                        }
+                        Expr e; e.op = hop; e.a = static_cast<int>(i);
+                        e.k = static_cast<std::uint8_t>(li);
+                        consider(e, std::move(outs));
+                    }
+                }
+            }
+        }
 
         for (std::size_t i = start; i < end && found_at < 0 && pool.size() < max_pool; ++i) {
             for (const Op op : unary_ops()) {

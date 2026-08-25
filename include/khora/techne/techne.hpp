@@ -134,6 +134,27 @@ enum class Op : std::uint8_t {
     Guard,     // dst = b.empty() ? [] : a     -- a, but only if b is non-empty
     Else,      // dst = a.empty() ? b : a      -- a, or b when a has nothing
     Call,      // dst = library[b](a)    a learned primitive
+    // ---- HIGHER ORDER: operations whose BODY is a learned function ----------
+    //
+    // Every operation above is one I wrote. `sum` is a primitive because I made
+    // it one, and the self-hosting bench duly reported it IRREDUCIBLE -- no
+    // composition of the others reproduces it, because none of the others can
+    // express "combine every element". That is not a fact about arithmetic, it
+    // is a fact about the instruction set having no way to build a LOOP.
+    //
+    // These two take a library function as their body, so the system composes
+    // control structure rather than only values. With FoldF available, `sum` is
+    // a fold whose body adds, `max` is a fold whose body takes the larger, and
+    // the system can reach aggregations nobody enumerated -- including ones I
+    // would not have thought to write.
+    //
+    // Termination is untouched, which is the whole reason the machine had no
+    // loops. A fold visits each element of a list bounded at kMaxListLen exactly
+    // once, and the body is depth-limited by kMaxCallDepth. There is no input on
+    // which either fails to return.
+    MapF,      // dst = [ library[b]([x]) for x in a ]   flattened
+    FoldF,     // dst = left fold of library[b] over a, seeded with a[0];
+               //       the body receives the pair as a two-element list
     kCount
 };
 

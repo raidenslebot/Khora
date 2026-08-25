@@ -1353,6 +1353,23 @@ static std::string emit_inlined(const Recipe& r, Lang l, const std::string& fn,
     if (lines) *lines = 0;
     if (!r.found) return {};
 
+    // REFUSE RATHER THAN EMIT SOMETHING WRONG.
+    //
+    // MapF and FoldF carry a library body in `k`, exactly as Op::Call does, but
+    // inline_calls does not splice them -- a fold is a loop, not a substitution.
+    // Left to fall through, they would reach fn_of(), hit its default, and emit
+    // kh_id: a silent identity where a fold belongs. That is the precise defect
+    // that made three quarters of this module's output a different program from
+    // the one certified, and it is not going to happen twice.
+    //
+    // Until every backend has a fold, a recipe containing one emits NOTHING and
+    // counts as zero lines. A capability the emitter cannot express is a
+    // capability this organ does not yet have, and the throughput figure should
+    // say so by being lower rather than by being wrong.
+    for (const Expr& e : r.pool) {
+        if (e.op == Op::MapF || e.op == Op::FoldF || e.op == Op::Call) return {};
+    }
+
     // Only the nodes the root actually reaches. Emitting the whole pool would
     // pad the output with dead code, and a line count inflated by dead code is
     // the sort of number that makes a throughput claim meaningless.

@@ -29,6 +29,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <functional>
 #include <numeric>
 #include <string>
 #include <vector>
@@ -139,6 +140,58 @@ int main(int argc, char** argv) {
     // available when rebuilding a later one. That is the same compounding the
     // task suite showed, turned on the system itself.
     Library lib(32);
+
+    // ---- WARM-UP: learn two-element combiners first -------------------------
+    //
+    // `sum`, `max` and `min` were all reported IRREDUCIBLE by this bench, and
+    // the reason was never arithmetic. No operation in the set could express
+    // "combine every element", because none of them could express a LOOP.
+    //
+    // FoldF supplies the loop and takes its body from the library, so the
+    // missing piece is a function that combines a PAIR. That is a stepping
+    // stone and it is being handed over deliberately -- what is NOT handed over
+    // is the fold. If the system rebuilds `sum` after this, it has discovered
+    // that repeated pairwise addition is summation, which is a control structure
+    // it composed rather than a primitive it was given.
+    //
+    // The combiners are learned with Sum, Max and Min BANNED, because on a
+    // two-element list `sum(x)` already is pairwise addition and learning the
+    // combiner that way would make the whole demonstration circular.
+    {
+        struct Comb { const char* name; std::function<Value(const Value&)> ref; };
+        const std::vector<Comb> combiners = {
+            {"pair_add", [](const Value& v) {
+                return v.size() < 2 ? Value{} : Value{v[0] + v[1]}; }},
+            {"pair_max", [](const Value& v) {
+                return v.size() < 2 ? Value{} : Value{std::max(v[0], v[1])}; }},
+            {"pair_min", [](const Value& v) {
+                return v.size() < 2 ? Value{} : Value{std::min(v[0], v[1])}; }},
+        };
+        std::printf("  warm-up -- combiners, learned with Sum/Max/Min banned:\n");
+        for (const Comb& cb : combiners) {
+            Spec s2;
+            s2.name = cb.name;
+            s2.banned = {Op::Sum, Op::Max, Op::Min, Op::FoldF, Op::MapF};
+            for (std::size_t i = 0; i < 12; ++i) {
+                Value in{static_cast<std::int64_t>(rnd() % 40) - 18,
+                         static_cast<std::int64_t>(rnd() % 40) - 18};
+                s2.cases.push_back({in, cb.ref(in)});
+            }
+            for (std::size_t i = 0; i < 5; ++i) {
+                Value in{static_cast<std::int64_t>(rnd() % 400) - 200,
+                         static_cast<std::int64_t>(rnd() % 400) - 200};
+                s2.holdout.push_back({in, cb.ref(in)});
+            }
+            const BuildResult b = construct(s2, pool_cap, &lib);
+            if (b.proof == Proof::Generalised) {
+                std::printf("    %-9s %s\n", cb.name, b.recipe.render().c_str());
+                lib.admit_recipe(cb.name, b.recipe, 0);
+            } else {
+                std::printf("    %-9s not found\n", cb.name);
+            }
+        }
+        std::printf("\n");
+    }
 
     for (const Target& t : tgts) {
         Spec s;

@@ -141,6 +141,32 @@ Value fwd_op(Op op, const Value& A, const Value& B, std::uint8_t k,
         case Op::Count: { if (B.empty()) break; std::int64_t n = 0; for (const auto x : A) if (x == B[0]) ++n; out = Value{n}; break; }
         case Op::Guard: if (!B.empty()) out = A; break;
         case Op::Else: out = A.empty() ? B : A; break;
+        case Op::MapF: {
+            if (lib == nullptr || lib->size() == 0) break;
+            const std::size_t li = k % lib->size();
+            for (const auto x : A) {
+                const Value r1 = lib->call(li, Value{x}, depth + 1);
+                out.insert(out.end(), r1.begin(), r1.end());
+                if (out.size() > kMaxListLen) break;
+            }
+            break;
+        }
+        case Op::FoldF: {
+            if (lib == nullptr || lib->size() == 0 || A.empty()) break;
+            const std::size_t li = k % lib->size();
+            Value acc{A[0]};
+            for (std::size_t i = 1; i < A.size(); ++i) {
+                // The body receives the running value and the next element as a
+                // two-element list, which is how a one-argument machine expresses
+                // a binary operation without a second input channel.
+                Value pair = acc;
+                pair.push_back(A[i]);
+                acc = lib->call(li, pair, depth + 1);
+                if (acc.empty()) break;
+            }
+            out = acc;
+            break;
+        }
         case Op::Call: if (lib && lib->size()) out = lib->call(k % lib->size(), A, depth + 1); break;
         default: out = A; break;
     }
