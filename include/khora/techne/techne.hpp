@@ -320,6 +320,20 @@ enum class Proof {
     None,        // no program satisfied the specification
     Tested,      // passes every visible case
     Generalised, // passes every visible case AND every held-out case
+    // EXHAUSTIVE: checked on EVERY input in a stated finite domain, so within
+    // that domain there is nothing left to find.
+    //
+    // This is the only level that is a proof rather than evidence. Verified
+    // below means an adversary searched and failed, which is strong and is still
+    // sampling: it cannot distinguish "no counterexample exists" from "none was
+    // drawn". Enumerating a bounded domain can. Lists of length up to 4 over
+    // five distinct values is 781 inputs -- small enough to check completely,
+    // large enough to contain every shape that breaks a fitted program.
+    //
+    // The domain is part of the claim and is always reported with it. A program
+    // exhaustive over short lists of small integers is proved for short lists of
+    // small integers, and nothing more is asserted.
+    Exhaustive,
     // VERIFIED: an adversary was given the program and could not find an input
     // on which it disagrees with the oracle.
     //
@@ -588,6 +602,36 @@ struct Verification {
     std::size_t rounds = 0;              // counterexamples fed back
     Value counterexample;                // the last one found, if any
 };
+
+// ---------------------------------------------------------------------------
+// EXHAUSTIVE CHECKING over a finite domain.
+//
+// Every input of length 0..max_len drawn from the value range [lo, hi]. The
+// count is (hi-lo+1)^0 + ... + (hi-lo+1)^max_len, reported alongside the result
+// so the strength of the claim is never left implicit.
+//
+// Used as the counterexample hunter this makes refinement COMPLETE over the
+// domain: a round that finds nothing has established that nothing is there,
+// which no amount of random probing can establish.
+// ---------------------------------------------------------------------------
+struct Exhaust {
+    bool clean = false;              // agreed with the oracle on every input
+    std::size_t checked = 0;         // size of the domain actually enumerated
+    Value counterexample;            // the first disagreement, if any
+};
+
+Exhaust check_exhaustive(const Recipe& r, const Library* lib, const Oracle& oracle,
+                         std::int64_t lo, std::int64_t hi, std::size_t max_len);
+
+// Synthesise, then refine against counterexamples drawn from the whole finite
+// domain rather than sampled from it. When it returns Proof::Exhaustive, the
+// program has been checked on every input in that domain.
+BuildResult synthesise_exhaustive(Spec spec, std::size_t pool_cap,
+                                  const Oracle& oracle,
+                                  std::int64_t lo, std::int64_t hi,
+                                  std::size_t max_len, std::size_t rounds,
+                                  const Library* lib = nullptr,
+                                  Exhaust* out = nullptr);
 
 // Synthesise, then refine against counterexamples until none can be found.
 // `probes` bounds the hunt; `rounds` bounds how many counterexamples are fed

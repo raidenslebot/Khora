@@ -1,4 +1,4 @@
-// Solving to fixpoint — the loop in which the system improves itself.
+﻿// Solving to fixpoint â€” the loop in which the system improves itself.
 //
 // One pass over a task suite certifies whatever the current library can reach.
 // Every certified solution enters that library, so the NEXT pass reaches
@@ -225,6 +225,85 @@ BuildResult synthesise_verified(Spec spec, std::size_t pool_cap,
     }
 
     if (out) *out = v;
+    return best;
+}
+
+
+// ---------------------------------------------------------------------------
+// Exhaustive checking
+// ---------------------------------------------------------------------------
+
+Exhaust check_exhaustive(const Recipe& r, const Library* lib, const Oracle& oracle,
+                         std::int64_t lo, std::int64_t hi, std::size_t max_len) {
+    Exhaust e;
+    if (!r.found || hi < lo) return e;
+
+    const std::size_t span = static_cast<std::size_t>(hi - lo + 1);
+
+    // Odometer enumeration: every list of every length up to the bound, in
+    // order, with no allocation per candidate beyond the list itself. Written
+    // as an odometer rather than recursively because the recursion depth would
+    // be the list length and the branching factor the value span, and a stack
+    // frame per element is a needless cost on the hot path of a proof.
+    Value in;
+    for (std::size_t len = 0; len <= max_len; ++len) {
+        in.assign(len, lo);
+        for (;;) {
+            ++e.checked;
+            if (r.apply(in, lib) != oracle(in)) {
+                e.counterexample = in;
+                e.clean = false;
+                return e;
+            }
+            // Advance the odometer. Done when every digit has wrapped.
+            std::size_t d = 0;
+            for (; d < len; ++d) {
+                if (in[d] < hi) { ++in[d]; break; }
+                in[d] = lo;
+            }
+            if (d == len) break;      // wrapped past the last digit
+        }
+    }
+    e.clean = true;
+    return e;
+}
+
+BuildResult synthesise_exhaustive(Spec spec, std::size_t pool_cap,
+                                  const Oracle& oracle,
+                                  std::int64_t lo, std::int64_t hi,
+                                  std::size_t max_len, std::size_t rounds,
+                                  const Library* lib, Exhaust* out) {
+    BuildResult best;
+    Exhaust last;
+    double cap = static_cast<double>(pool_cap);
+
+    for (std::size_t round = 0; round <= rounds; ++round) {
+        BuildResult b = construct(spec, static_cast<std::size_t>(cap), lib);
+        if (!b.certified()) {
+            if (out) *out = last;
+            return (b.cases_passed > best.cases_passed) ? b : best;
+        }
+        best = std::move(b);
+
+        last = check_exhaustive(best.recipe, lib, oracle, lo, hi, max_len);
+        if (last.clean) {
+            // Nothing in the domain disagrees. This is a proof over the domain,
+            // not a failure to find a disagreement.
+            best.proof = Proof::Exhaustive;
+            if (out) *out = last;
+            return best;
+        }
+        if (round == rounds) break;
+
+        // The counterexample becomes a constraint. Unlike a random draw, it is
+        // by construction an input the current program gets WRONG, so the next
+        // search cannot return the same program -- and because the hunt is
+        // complete, the sequence of counterexamples cannot cycle.
+        spec.cases.push_back(Case{last.counterexample, oracle(last.counterexample)});
+        cap *= 2.0;
+    }
+
+    if (out) *out = last;
     return best;
 }
 
