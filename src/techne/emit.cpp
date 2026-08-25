@@ -46,6 +46,8 @@ const char* fn_of(Op op) {
         case Op::Gt: return "kh_gt";        case Op::Member: return "kh_member";
         case Op::Until: return "kh_until";  case Op::Delta: return "kh_delta";
         case Op::Scan: return "kh_scan";
+        case Op::ScanMax: return "kh_scanmax";
+        case Op::ScanMin: return "kh_scanmin";
         default: return "kh_id";
     }
 }
@@ -128,6 +130,20 @@ def kh_scan(a):
     for x in a:
         s = kh_cap(s + x)
         o.append(s)
+    return o
+def kh_scanmax(a):
+    o = []
+    m = None
+    for x in a:
+        m = x if m is None or x > m else m
+        o.append(m)
+    return o
+def kh_scanmin(a):
+    o = []
+    m = None
+    for x in a:
+        m = x if m is None or x < m else m
+        o.append(m)
     return o
 
 # HIGHER ORDER. The body is a plain function value, which is what Python hands
@@ -217,6 +233,8 @@ static V kh_member(const V& a, const V& b) {
 static V kh_until(const V& a, const V& b) { if (b.empty()) return {}; V o; for (auto x : a) { if (x == b[0]) break; o.push_back(x); } return o; }
 static V kh_delta(const V& a) { V o; for (std::size_t i = 1; i < a.size(); ++i) o.push_back(kh_cap(a[i] - a[i - 1])); return o; }
 static V kh_scan(const V& a) { V o; std::int64_t s = 0; for (const auto x : a) { s = kh_cap(s + x); o.push_back(s); } return o; }
+static V kh_scanmax(const V& a) { V o; bool f = true; std::int64_t m = 0; for (const auto x : a) { m = f ? x : (x > m ? x : m); f = false; o.push_back(m); } return o; }
+static V kh_scanmin(const V& a) { V o; bool f = true; std::int64_t m = 0; for (const auto x : a) { m = f ? x : (x < m ? x : m); f = false; o.push_back(m); } return o; }
 
 // HIGHER ORDER. The body is a bare function POINTER, because an emitted library
 // body is a free function with exactly this signature -- std::function would
@@ -298,6 +316,12 @@ const kh_scan = a => {
   for (const x of a) { s = kh_cap(s + x); o.push(s); }
   return o;
 };
+const kh_scanmax = a => { const o = []; let m = null;
+  for (const x of a) { m = (m === null || x > m) ? x : m; o.push(m); }
+  return o; };
+const kh_scanmin = a => { const o = []; let m = null;
+  for (const x of a) { m = (m === null || x < m) ? x : m; o.push(m); }
+  return o; };
 
 // HIGHER ORDER. A function is a value in JavaScript, so the body is passed by
 // bare name. push(...r) rather than concat so the accumulator is grown in place
@@ -400,6 +424,14 @@ pub fn kh_delta(a: &V) -> V {
 pub fn kh_scan(a: &V) -> V {
     let mut s: i64 = 0;
     a.iter().map(|x| { s = kh_cap(s.saturating_add(*x)); s }).collect()
+}
+pub fn kh_scanmax(a: &V) -> V {
+    let mut m: Option<i64> = None;
+    a.iter().map(|x| { m = Some(match m { None => *x, Some(p) => if *x > p { *x } else { p } }); m.unwrap() }).collect()
+}
+pub fn kh_scanmin(a: &V) -> V {
+    let mut m: Option<i64> = None;
+    a.iter().map(|x| { m = Some(match m { None => *x, Some(p) => if *x < p { *x } else { p } }); m.unwrap() }).collect()
 }
 
 // HIGHER ORDER. `fn(&V) -> V` is the bare function-pointer type an emitted
@@ -714,6 +746,32 @@ func kh_scan(a V) V {
 	}
 	return o
 }
+func kh_scanmax(a V) V {
+	o := V{}
+	f := true
+	var m int64 = 0
+	for _, x := range a {
+		if f || x > m {
+			m = x
+		}
+		f = false
+		o = append(o, m)
+	}
+	return o
+}
+func kh_scanmin(a V) V {
+	o := V{}
+	f := true
+	var m int64 = 0
+	for _, x := range a {
+		if f || x < m {
+			m = x
+		}
+		f = false
+		o = append(o, m)
+	}
+	return o
+}
 
 // HIGHER ORDER. A Go function is a value, so the body is passed by bare name.
 func kh_mapf(a V, f func(V) V) V {
@@ -888,6 +946,18 @@ class Kh {
         long[] o = new long[a.length];
         long s = 0;
         for (int i = 0; i < a.length; i++) { s = kh_cap(s + a[i]); o[i] = s; }
+        return o;
+    }
+    static long[] kh_scanmax(long[] a) {
+        long[] o = new long[a.length];
+        long m = 0; boolean f = true;
+        for (int i = 0; i < a.length; i++) { if (f || a[i] > m) m = a[i]; f = false; o[i] = m; }
+        return o;
+    }
+    static long[] kh_scanmin(long[] a) {
+        long[] o = new long[a.length];
+        long m = 0; boolean f = true;
+        for (int i = 0; i < a.length; i++) { if (f || a[i] < m) m = a[i]; f = false; o[i] = m; }
         return o;
     }
 
@@ -1065,6 +1135,18 @@ static class Kh {
         for (int i = 0; i < a.Length; i++) { s = kh_cap(s + a[i]); o[i] = s; }
         return o;
     }
+    public static long[] kh_scanmax(long[] a) {
+        long[] o = new long[a.Length];
+        long m = 0; bool f = true;
+        for (int i = 0; i < a.Length; i++) { if (f || a[i] > m) m = a[i]; f = false; o[i] = m; }
+        return o;
+    }
+    public static long[] kh_scanmin(long[] a) {
+        long[] o = new long[a.Length];
+        long m = 0; bool f = true;
+        for (int i = 0; i < a.Length; i++) { if (f || a[i] < m) m = a[i]; f = false; o[i] = m; }
+        return o;
+    }
 
     // C# HAS NO TOP-LEVEL FUNCTIONS EITHER, so a body arrives as a
     // Func<long[], long[]> and the emitted call site passes a method group,
@@ -1154,6 +1236,12 @@ const kh_scan = (a: V): V => {
   for (const x of a) { s = kh_cap(s + x); o.push(s); }
   return o;
 };
+const kh_scanmax = (a: V): V => { const o: V = []; let m: number | null = null;
+  for (const x of a) { m = (m === null || x > m) ? x : m; o.push(m); }
+  return o; };
+const kh_scanmin = (a: V): V => { const o: V = []; let m: number | null = null;
+  for (const x of a) { m = (m === null || x < m) ? x : m; o.push(m); }
+  return o; };
 
 // HIGHER ORDER. Same as the JavaScript backend with the body's type written
 // down: (v: V) => V, which is what an emitted library body is.
@@ -1228,6 +1316,8 @@ def kh_member(a, b); b.empty? ? [] : a.map { |x| b.include?(x) ? 1 : 0 }; end
 def kh_until(a, b); b.empty? ? [] : a.take_while { |x| x != b[0] }; end
 def kh_delta(a); (1...a.length).map { |i| kh_cap(a[i] - a[i - 1]) }; end
 def kh_scan(a); s = 0; a.map { |x| s = kh_cap(s + x); s }; end
+def kh_scanmax(a); m = nil; a.map { |x| m = (m.nil? || x > m) ? x : m; m }; end
+def kh_scanmin(a); m = nil; a.map { |x| m = (m.nil? || x < m) ? x : m; m }; end
 
 # HIGHER ORDER. A bare Ruby name CALLS the method rather than naming it, so a
 # body is handed over as method(:kh_lib0) -- a Method object -- and invoked with
@@ -1451,6 +1541,18 @@ function kh_scan(a)
   for i = 1, #a do s = kh_cap(s + a[i]); o[i] = s end
   return o
 end
+function kh_scanmax(a)
+  local o = {}
+  local m = nil
+  for i = 1, #a do if m == nil or a[i] > m then m = a[i] end; o[i] = m end
+  return o
+end
+function kh_scanmin(a)
+  local o = {}
+  local m = nil
+  for i = 1, #a do if m == nil or a[i] < m then m = a[i] end; o[i] = m end
+  return o
+end
 
 -- HIGHER ORDER. A Lua function is a value, so the body is passed by bare name.
 -- The 1-indexing shows up once more: the fold seeds from a[1], and the pair the
@@ -1576,6 +1678,10 @@ kh_delta :: V -> V
 kh_delta a = zipWith (\y x -> kh_cap (y - x)) (drop 1 a) a
 kh_scan :: V -> V
 kh_scan a = drop 1 (scanl (\s x -> kh_cap (s + x)) 0 a)
+kh_scanmax :: V -> V
+kh_scanmax a = scanl1 max a
+kh_scanmin :: V -> V
+kh_scanmin a = scanl1 min a
 
 -- HIGHER ORDER. Haskell needs no wrapper for a function value at all: the body
 -- is named bare and applied by juxtaposition.
@@ -1707,6 +1813,16 @@ func kh_scan(_ a: V) -> V {
     for x in a { s = kh_cap(s &+ x); o.append(s) }
     return o
 }
+func kh_scanmax(_ a: V) -> V {
+    var o = V(); var m: Int64? = nil
+    for x in a { if m == nil || x > m! { m = x }; o.append(m!) }
+    return o
+}
+func kh_scanmin(_ a: V) -> V {
+    var o = V(); var m: Int64? = nil
+    for x in a { if m == nil || x < m! { m = x }; o.append(m!) }
+    return o
+}
 
 // HIGHER ORDER. A Swift function is a value under its bare name, so the body
 // needs no wrapper at the call site. No &-operator here: the fold moves whole
@@ -1791,6 +1907,8 @@ fun kh_member(a: V, b: V): V =
 fun kh_until(a: V, b: V): V = if (b.isEmpty()) emptyList() else a.takeWhile { it != b[0] }
 fun kh_delta(a: V): V = (1 until a.size).map { kh_cap(a[it] - a[it - 1]) }
 fun kh_scan(a: V): V { var s = 0L; return a.map { s = kh_cap(s + it); s } }
+fun kh_scanmax(a: V): V { var m: Long? = null; return a.map { if (m == null || it > m!!) m = it; m!! } }
+fun kh_scanmin(a: V): V { var m: Long? = null; return a.map { if (m == null || it < m!!) m = it; m!! } }
 
 // HIGHER ORDER. `::kh_lib0` is Kotlin's function reference -- a bare name there
 // resolves as a property and does not compile. V is an immutable List, so the
@@ -1923,6 +2041,16 @@ function kh_delta($a) {
 function kh_scan($a) {
     $o = []; $s = 0;
     foreach ($a as $x) { $s = kh_cap($s + $x); $o[] = $s; }
+    return $o;
+}
+function kh_scanmax($a) {
+    $o = []; $m = null;
+    foreach ($a as $x) { if ($m === null || $x > $m) $m = $x; $o[] = $m; }
+    return $o;
+}
+function kh_scanmin($a) {
+    $o = []; $m = null;
+    foreach ($a as $x) { if ($m === null || $x < $m) $m = $x; $o[] = $m; }
     return $o;
 }
 

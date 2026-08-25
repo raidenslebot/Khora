@@ -83,6 +83,8 @@ const char* op_name(Op o) {
         case Op::Count: return "count";  case Op::Call: return "call";
         case Op::Arg:   return "arg";
         case Op::Scan:  return "scan";
+        case Op::ScanMax: return "scanmax";
+        case Op::ScanMin: return "scanmin";
         case Op::Guard: return "guard";  case Op::Else: return "else";
         case Op::MapF: return "mapf";    case Op::FoldF: return "foldf";
         case Op::Gt: return "gt";        case Op::Member: return "member";
@@ -549,6 +551,10 @@ Value run(const Program& p, const Value& input, const Library* lib, std::size_t 
                 break;
             case Op::Scan: { std::int64_t acc = 0;
                 for (const auto x : A) { acc = cap(acc + x); out.push_back(acc); } } break;
+            case Op::ScanMax: { bool f = true; std::int64_t m = 0;
+                for (const auto x : A) { m = f ? x : (x > m ? x : m); f = false; out.push_back(m); } } break;
+            case Op::ScanMin: { bool f = true; std::int64_t m = 0;
+                for (const auto x : A) { m = f ? x : (x < m ? x : m); f = false; out.push_back(m); } } break;
             }
         case Op::MapF: {
                 if (lib == nullptr || lib->size() == 0) break;
@@ -747,7 +753,7 @@ namespace {
 const std::vector<Op>& unary_ops() {
     static const std::vector<Op> v{Op::Len, Op::Head, Op::Tail, Op::Rev, Op::Sort,
                                    Op::Range, Op::Sum, Op::Max, Op::Min, Op::Delta,
-                                   Op::Scan};
+                                   Op::Scan, Op::ScanMax, Op::ScanMin};
     return v;
 }
 const std::vector<Op>& binary_ops() {
@@ -851,6 +857,16 @@ Value apply_op(Op op, const Value& A, const Value& B, std::uint8_t k,
         case Op::Scan: {
             std::int64_t acc = 0;
             for (const auto x : A) { acc = cap(acc + x); out.push_back(acc); }
+            break;
+        }
+        case Op::ScanMax: {
+            bool first = true; std::int64_t m = 0;
+            for (const auto x : A) { m = first ? x : (x > m ? x : m); first = false; out.push_back(m); }
+            break;
+        }
+        case Op::ScanMin: {
+            bool first = true; std::int64_t m = 0;
+            for (const auto x : A) { m = first ? x : (x < m ? x : m); first = false; out.push_back(m); }
             break;
         }
         case Op::MapF: {

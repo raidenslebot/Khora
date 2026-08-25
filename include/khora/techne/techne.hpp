@@ -157,7 +157,18 @@ enum class Op : std::uint8_t {
     // operation set that carries differences without sums is asymmetric for no
     // reason beyond nobody having noticed.
     Scan,
-    Call,      // dst = library[b](a)    a learned primitive
+    // Running maximum and minimum. The set had Sum, Max and Min as aggregators
+    // and Scan as the running form of Sum, and no running form of the other two
+    // -- the same asymmetry Delta had before Scan existed.
+    //
+    // These are here to test a criterion rather than to tune a number: an atom
+    // helps the curriculum only if it is outside the span of the other ATOMS and
+    // inside the span of the OPERATIONS. `cummax` was measured on the wrong side
+    // of that line and cost a third of the ascent. This is the operation that
+    // moves it to the right side, added together with the atom, because the
+    // conclusion was that depth and reach have to move together.
+    ScanMax,
+    ScanMin,    Call,      // dst = library[b](a)    a learned primitive
     // ---- HIGHER ORDER: operations whose BODY is a learned function ----------
     //
     // Every operation above is one I wrote. `sum` is a primitive because I made

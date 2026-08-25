@@ -287,6 +287,40 @@ widening the cases from 1-5 to 1-12 already removed them. A counterexample hunt
 finds nothing when the specification is already informative enough, which is the
 outcome you want from having fixed the specification.
 
+### Raising reach is free; raising the curriculum is not
+
+The previous entry concluded that curriculum depth and solver reach have to move
+together, and that this was a larger piece of work than adding functions to a
+list. The smallest honest test of that: `cummax` failed because `Scan` sums and
+nothing takes a running maximum. So add the operation AND the atom, and see
+whether the criterion predicts correctly.
+
+`Op::ScanMax` and `Op::ScanMin` are the running forms of `Max` and `Min` — the
+same asymmetry `Delta` had before `Scan` existed. Implemented in the VM and in
+all fourteen preludes.
+
+| config | carried | empty | depth |
+|--------|---------|-------|-------|
+| baseline | **232** | 192 | **tier 29**, stopping rule |
+| + ScanMax/ScanMin, operations only | **232** | 192 | **tier 29**, stopping rule |
+| + `cummax` atom, no operations | 137 | 118 | tier 25, budget out |
+| + `cummax` atom + operations | 211 | 170 | tier 25, budget out |
+
+**The operations are free.** Two more operations in every level of every search,
+and the ascent does not move by a single program. **The atom is not free**, even
+when expressible: 232 down to 211.
+
+Making it expressible recovers **74 of the 95** lost, which confirms the
+criterion — an atom must be outside the span of the other atoms and inside the
+span of the operations — and shows the criterion is necessary rather than
+sufficient. The residual 21 is the intrinsic cost of a harder curriculum, paid
+whether or not the solver can reach it.
+
+The operations are kept and the atom is not. The system can now write a running
+maximum in all fourteen languages, verified byte-identical, even though nothing
+in its curriculum asks for one — which is the right way round: reach costs
+nothing, so take it whenever it is offered.
+
 ### What an atom has to be, which took a negative result to state
 
 At tier 29 the generator draws about 1,610 tasks to keep two, so the ascent ends
