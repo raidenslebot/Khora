@@ -50,6 +50,7 @@
 #include "khora/lexicon/lexicon.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <fstream>
 #include <functional>
@@ -99,11 +100,42 @@ std::vector<Category> load_categories(const std::string& path) {
     return out;
 }
 
-struct Result {
-    const char* name;
-    double accuracy;
-    const char* note;
+// A PERCENTAGE WITHOUT A COUNT IS NOT A MEASUREMENT.
+//
+// This bench printed a comparison table to three decimal places over 1,133
+// held-out pairs, where "3.18% versus 3.44%" is 36 correct answers against 39
+// (two-proportion z = 0.35, p = 0.72) and an earlier "win" of 0.353 against
+// 0.177 was 4 answers against 2 (p = 0.41). Nothing it reported was
+// distinguishable from anything else it reported, and three separate wrong
+// conclusions survived because the interval was never printed beside the point
+// estimate.
+struct Rate {
+    std::size_t hits = 0, n = 0;
+    double pct() const { return n ? 100.0 * static_cast<double>(hits) / n : 0.0; }
+    // Wilson score interval at 95%, which behaves at the tiny proportions and
+    // small counts that a normal approximation gets badly wrong.
+    std::pair<double, double> wilson() const {
+        if (n == 0) return {0.0, 0.0};
+        const double z = 1.96, nn = static_cast<double>(n);
+        const double p = static_cast<double>(hits) / nn;
+        const double d = 1.0 + z * z / nn;
+        const double c = p + z * z / (2 * nn);
+        const double h = z * std::sqrt(p * (1 - p) / nn + z * z / (4 * nn * nn));
+        return {100.0 * (c - h) / d, 100.0 * (c + h) / d};
+    }
 };
+
+// Do two rates differ at all? Two-proportion z-test, so the table can say
+// "indistinguishable" instead of implying a ranking it cannot support.
+inline bool separable(const Rate& a, const Rate& b) {
+    if (a.n == 0 || b.n == 0) return false;
+    const double p1 = static_cast<double>(a.hits) / a.n;
+    const double p2 = static_cast<double>(b.hits) / b.n;
+    const double p = static_cast<double>(a.hits + b.hits) / (a.n + b.n);
+    const double se = std::sqrt(p * (1 - p) * (1.0 / a.n + 1.0 / b.n));
+    if (se <= 0.0) return false;
+    return std::abs(p1 - p2) / se > 1.96;
+}
 
 } // namespace
 
@@ -235,6 +267,7 @@ int main(int argc, char** argv) {
         for (const auto& m : usable[ci].members) cat_of[slot[m]] = static_cast<int>(ci);
     }
 
+    for (std::size_t i = 0; i < cb.size(); ++i) cb.set_class(i, cat_of[i]);
     cb.precompute_kin();
     std::size_t with_edges = 0;
     for (std::size_t i = 0; i < cb.size(); ++i) if (!cb.links(i).empty()) ++with_edges;
@@ -261,6 +294,7 @@ int main(int argc, char** argv) {
             h.from = cb.at(m);
             h.to = cb.at(cat_slot);
             h.to_index = cat_slot;
+            h.from_index = m;
             (is_held ? hyper.held : hyper.train).push_back(h);
 
             // Co-hyponymy: the target is another member of the same category.
@@ -273,6 +307,13 @@ int main(int argc, char** argv) {
             o.from = cb.at(m);
             o.to = cb.at(sib);
             o.to_index = sib;
+            o.from_index = m;
+            // SET-VALUED, at last. The chamber now optimises the same thing the
+            // bench reports. Selecting on one designated sibling while reporting
+            // same-category accuracy meant the two objectives were
+            // anti-correlated: the instruction the chamber preferred scored
+            // 1.62% on the reported metric, the one it rejected scored 3.36%.
+            o.to_class = cat_of[m];
             (is_held ? cohyp.held : cohyp.train).push_back(o);
             if (is_held) cohyp_held_from.push_back(m);
         }
@@ -283,12 +324,12 @@ int main(int argc, char** argv) {
     // ---- baselines ----------------------------------------------------------
     auto score_direct = [&](const std::vector<Assay>& pairs,
                             const std::function<Glyph(const Glyph&)>& f) {
-        if (pairs.empty()) return 0.0;
-        std::size_t right = 0;
+        Rate r;
+        r.n = pairs.size();
         for (const Assay& a : pairs) {
-            if (cb.nearest_index(f(a.from)) == a.to_index) ++right;
+            if (cb.nearest_index(f(a.from)) == a.to_index) ++r.hits;
         }
-        return 100.0 * static_cast<double>(right) / static_cast<double>(pairs.size());
+        return r;
     };
 
     // The textbook VSA answer, built from the TRAINING pairs only.
@@ -305,29 +346,65 @@ int main(int argc, char** argv) {
     auto score_category = [&](const std::vector<Assay>& pairs,
                               const std::function<Glyph(const Glyph&)>& f,
                               const std::vector<std::size_t>& from_slots) {
-        if (pairs.empty()) return 0.0;
-        std::size_t right = 0;
+        Rate r;
+        r.n = pairs.size();
         for (std::size_t k = 0; k < pairs.size(); ++k) {
             const std::size_t out = cb.nearest_index(f(pairs[k].from));
             const int want = cat_of[from_slots[k]];
             if (want >= 0 && out < cat_of.size() && cat_of[out] == want &&
                 out != from_slots[k]) {
-                ++right;
+                ++r.hits;
             }
         }
-        return 100.0 * static_cast<double>(right) / static_cast<double>(pairs.size());
+        return r;
+    };
+
+    // BALANCED over source categories, and it is not the same number.
+    //
+    // Plain same-category accuracy has its own majority-class optimum: an
+    // exhaustive scan of every one-instruction program found that the top
+    // scorers on it are CONSTANTS, reaching 3.97% and beating both the evolved
+    // champion (3.18%) and the top-associate baseline (3.44%). The bench printed
+    // a majority-class row next to the exact metric, where it reads 0.000% and
+    // looks harmless, and printed nothing beside the metric that actually had
+    // the problem. Averaging over source categories puts a constant back at 1/k.
+    auto score_category_balanced = [&](const std::vector<Assay>& pairs,
+                                       const std::function<Glyph(const Glyph&)>& f,
+                                       const std::vector<std::size_t>& from_slots) {
+        std::unordered_map<int, std::pair<std::size_t, std::size_t>> per;
+        for (std::size_t k = 0; k < pairs.size(); ++k) {
+            const int want = cat_of[from_slots[k]];
+            if (want < 0) continue;
+            const std::size_t out = cb.nearest_index(f(pairs[k].from));
+            auto& c = per[want];
+            ++c.second;
+            if (out < cat_of.size() && cat_of[out] == want && out != from_slots[k]) ++c.first;
+        }
+        if (per.empty()) return 0.0;
+        double acc = 0.0;
+        for (const auto& kv : per) {
+            acc += static_cast<double>(kv.second.first) / static_cast<double>(kv.second.second);
+        }
+        return 100.0 * acc / static_cast<double>(per.size());
     };
 
     auto run_relation = [&](const char* label, Split& sp,
                             const std::vector<std::size_t>& held_from) {
         std::printf("  %s\n", label);
-        std::printf("    predictor            | held-out accuracy | what it is\n");
-        std::printf("    ---------------------+-------------------+------------\n");
+        std::printf("    %-20s | %7s | %10s | %11s | %s\n",
+                    "predictor", "held-out", "hits/n", "95%% Wilson", "what it is");
+        std::printf("    ---------------------+---------+------------+-------------+-----------\n");
         std::printf("    chance               |       %6.3f%%     | 1 / %zu\n",
                     100.0 / static_cast<double>(cb.size()), cb.size());
 
-        const double id = score_direct(sp.held, [](const Glyph& g) { return g; });
-        std::printf("    identity             |       %6.3f%%     | output = input\n", id);
+        auto row = [&](const char* name, const Rate& r, const char* note) {
+            const auto ci = r.wilson();
+            std::printf("    %-20s | %6.3f%% | %4zu/%-5zu | %5.2f-%5.2f | %s\n",
+                        name, r.pct(), r.hits, r.n, ci.first, ci.second, note);
+        };
+
+        const Rate id = score_direct(sp.held, [](const Glyph& g) { return g; });
+        row("identity", id, "output = input");
 
         // MAJORITY CLASS -- the baseline missing from the first run of this
         // bench, and its absence produced a number that looked like a discovery.
@@ -341,19 +418,18 @@ int main(int argc, char** argv) {
         for (const Assay& a : sp.train) ++freq[a.to_index];
         std::size_t majority = 0, mc = 0;
         for (const auto& kv : freq) if (kv.second > mc) { mc = kv.second; majority = kv.first; }
-        std::size_t maj_right = 0;
-        for (const Assay& a : sp.held) if (a.to_index == majority) ++maj_right;
-        const double maj = sp.held.empty() ? 0.0
-            : 100.0 * static_cast<double>(maj_right) / static_cast<double>(sp.held.size());
-        std::printf("    majority class       |       %6.3f%%     | always answer \"%s\"\n",
-                    maj, std::string(cb.name_at(majority)).c_str());
+        Rate maj;
+        maj.n = sp.held.size();
+        for (const Assay& a : sp.held) if (a.to_index == majority) ++maj.hits;
+        row("majority class", maj, std::string("always \"" +
+            std::string(cb.name_at(majority)) + "\"").c_str());
 
-        const double top = score_direct(sp.held, [&](const Glyph& g) {
+        const Rate top = score_direct(sp.held, [&](const Glyph& g) {
             const std::size_t i = cb.nearest_index(g);
             const auto& l = cb.links(i);
             return l.empty() ? g : cb.at(l[0]);
         });
-        std::printf("    top Plexus associate |       %6.3f%%     | no search at all\n", top);
+        row("top Plexus associate", top, "no search at all");
 
         // KIN AS A BASELINE, not only as an opcode. Second-order neighbourhood
         // similarity is a strong primitive and the organism is now handed it.
@@ -361,18 +437,18 @@ int main(int argc, char** argv) {
         // and the honest report is "evolution found a primitive it was given",
         // not "the composition works". A powerful primitive must be its own
         // control, or adding it is just writing the answer into the machine.
-        const double kinb = score_direct(sp.held, [&](const Glyph& g) {
+        const Rate kinb = score_direct(sp.held, [&](const Glyph& g) {
             const std::size_t i = cb.nearest_index(g);
             const std::size_t k = cb.kin(i);
             return (k == static_cast<std::size_t>(-1)) ? g : cb.at(k);
         });
-        std::printf("    second-order kin     |       %6.3f%%     | the Kin opcode, ALONE\n", kinb);
+        row("second-order kin", kinb, "the Kin opcode, ALONE");
 
         const Glyph role = vsa_role(sp.train);
-        const double vsa = score_direct(sp.held, [&](const Glyph& g) {
+        const Rate vsa = score_direct(sp.held, [&](const Glyph& g) {
             return khora::lattice::bind(g, role);
         });
-        std::printf("    VSA role vector      |       %6.3f%%     | THE textbook answer\n", vsa);
+        row("VSA role vector", vsa, "THE textbook answer");
 
         ChamberConfig cfg;
         cfg.population = 300;
@@ -381,7 +457,7 @@ int main(int argc, char** argv) {
         Chamber ch(cfg, &cb, 20260824);
         const Vm scorer(&cb);
         const Genome seed_genome = Genome::random(5, 7);
-        const double rand0 = score_direct(sp.held, [&](const Glyph& g) {
+        const Rate rand0 = score_direct(sp.held, [&](const Glyph& g) {
             return scorer.run(seed_genome, g);
         });
         for (std::size_t g = 0; g < generations; ++g) (void)ch.step(sp.train);
@@ -390,36 +466,68 @@ int main(int argc, char** argv) {
         // different number and is printed separately -- quoting the training
         // measure inside the comparison table would be scoring the champion on
         // a yardstick none of the baselines ever faced.
-        const double evolved = score_direct(sp.held, [&](const Glyph& g) {
+        const Rate evolved = score_direct(sp.held, [&](const Glyph& g) {
             return scorer.run(ch.best().genome, g);
         });
         const double balanced = 100.0 * ch.evaluate(ch.best().genome, sp.held);
 
-        std::printf("    random genome        |       %6.3f%%     | the floor for this method\n", rand0);
-        std::printf("    Ribosome (evolved)   |       %6.3f%%     | %zu births, %zu generations\n",
-                    evolved, ch.births(), ch.generations());
-        std::printf("    (balanced accuracy, the measure it was selected on: %.3f%%)\n", balanced);
+        row("random genome", rand0, "the floor for this method");
+        char note[64];
+        std::snprintf(note, sizeof note, "%zu births, %zu gens", ch.births(), ch.generations());
+        row("Ribosome (evolved)", evolved, note);
+        std::printf("    (selected on balanced accuracy: %.3f%%)\n", balanced);
 
         // SET-VALUED SCORE. The table above demands one specific sibling; this
         // asks the question the relation actually poses -- did the answer land
         // in the right category at all. Only meaningful where the target is a
         // set, so it is reported for co-hyponymy alone.
         if (!held_from.empty()) {
-            const double c_top = score_category(sp.held, [&](const Glyph& g) {
+            auto f_top = [&](const Glyph& g) {
                 const std::size_t i = cb.nearest_index(g);
                 const auto& l = cb.links(i);
                 return l.empty() ? g : cb.at(l[0]);
-            }, held_from);
-            const double c_kin = score_category(sp.held, [&](const Glyph& g) {
+            };
+            auto f_kin = [&](const Glyph& g) {
                 const std::size_t i = cb.nearest_index(g);
                 const std::size_t k = cb.kin(i);
                 return (k == static_cast<std::size_t>(-1)) ? g : cb.at(k);
-            }, held_from);
-            const double c_evo = score_category(sp.held, [&](const Glyph& g) {
-                return scorer.run(ch.best().genome, g);
-            }, held_from);
-            std::printf("    SAME-CATEGORY (any sibling counts): top assoc %.2f%%, kin %.2f%%,"
-                        " Ribosome %.2f%%\n", c_top, c_kin, c_evo);
+            };
+            auto f_evo = [&](const Glyph& g) { return scorer.run(ch.best().genome, g); };
+            // THE CONSTANT, which is what an exhaustive scan says actually wins
+            // this metric. Without it printed here the same trap that caught the
+            // hypernym run is still open on the co-hyponym one.
+            const Glyph konst = cb.at(0);
+            auto f_const = [&](const Glyph&) { return konst; };
+
+            const Rate c_top = score_category(sp.held, f_top, held_from);
+            const Rate c_kin = score_category(sp.held, f_kin, held_from);
+            const Rate c_evo = score_category(sp.held, f_evo, held_from);
+            const Rate c_con = score_category(sp.held, f_const, held_from);
+
+            std::printf("\n    SAME-CATEGORY -- any sibling counts, which is how the relation\n");
+            std::printf("    is actually posed. Balanced averages over SOURCE categories, so a\n");
+            std::printf("    constant scores 1/k instead of the size of the largest class.\n");
+            std::printf("    %-20s | %6s%% | %4s/%-5s | %11s | balanced\n",
+                        "predictor", "plain", "hits", "n", "95%% Wilson");
+            auto crow = [&](const char* name, const Rate& r,
+                            const std::function<Glyph(const Glyph&)>& f) {
+                const auto ci = r.wilson();
+                std::printf("    %-20s | %6.3f%% | %4zu/%-5zu | %5.2f-%5.2f | %6.3f%%\n",
+                            name, r.pct(), r.hits, r.n, ci.first, ci.second,
+                            score_category_balanced(sp.held, f, held_from));
+            };
+            crow("constant", c_con, f_const);
+            crow("top Plexus associate", c_top, f_top);
+            crow("second-order kin", c_kin, f_kin);
+            crow("Ribosome (evolved)", c_evo, f_evo);
+
+            // AND WHETHER ANY OF IT IS DISTINGUISHABLE. Three separate wrong
+            // conclusions survived in this file because a point estimate was
+            // reported without asking whether the sample could support it.
+            std::printf("    Ribosome vs top associate: %s (%zu hits vs %zu of %zu)\n",
+                        separable(c_evo, c_top) ? "SEPARABLE at 95%%"
+                                                : "INDISTINGUISHABLE -- the sample cannot rank them",
+                        c_evo.hits, c_top.hits, c_evo.n);
         }
 
         // DOES THE EVOLVED OPERATOR ACTUALLY READ ITS INPUT?
@@ -443,15 +551,21 @@ int main(int argc, char** argv) {
             std::printf(",\n       so it is a function OF the input rather than a constant.\n");
         }
 
-        const double best_baseline = std::max({id, top, vsa, maj, kinb});
-        if (evolved > best_baseline) {
-            std::printf("    -> evolution BEATS every baseline, by %.2f points over the best.\n",
-                        evolved - best_baseline);
+        const Rate* best_b = &id;
+        const std::vector<const Rate*> others{&top, &vsa, &maj, &kinb};
+        for (const Rate* r : others) if (r->pct() > best_b->pct()) best_b = r;
+        if (evolved.pct() > best_b->pct()) {
+            std::printf("    -> evolution leads the best baseline by %.2f points, and that is\n",
+                        evolved.pct() - best_b->pct());
+            std::printf("       %s.\n", separable(evolved, *best_b)
+                        ? "SEPARABLE at 95%%" : "INSIDE THE NOISE -- not a win");
         } else {
-            std::printf("    -> evolution LOSES to the best baseline by %.2f points.\n",
-                        best_baseline - evolved);
+            std::printf("    -> evolution trails the best baseline by %.2f points (%s).\n",
+                        best_b->pct() - evolved.pct(),
+                        separable(evolved, *best_b) ? "separable" : "inside the noise");
         }
-        std::printf("    what it found:\n");
+        std::printf("    what it found -- %zu instructions, %zu live:\n",
+                    ch.best().genome.codons(), ch.best().genome.effective_length());
         std::string dis = ch.best().genome.disassemble();
         std::istringstream ds(dis);
         std::string ln;

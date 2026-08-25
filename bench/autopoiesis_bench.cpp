@@ -90,6 +90,7 @@ int main(int argc, char** argv) {
     const std::size_t cap     = (argc > 2) ? std::stoul(argv[2]) : 1500000;
     const std::size_t vocab_n = (argc > 3) ? std::stoul(argv[3]) : 3000;
     const std::size_t gens    = (argc > 4) ? std::stoul(argv[4]) : 60;
+    const std::size_t min_cooc = (argc > 5) ? std::stoul(argv[5]) : 4;
 
     std::printf("Can Khora discover structure with no answer key at all?\n\n");
 
@@ -192,7 +193,15 @@ int main(int argc, char** argv) {
                 known.size());
 
     // ---- THE FUTURE: which pairs actually co-occur in unseen text ----------
-    std::unordered_set<std::uint64_t> future;
+    //
+    // AND IT HAS TO BE A HARD EXAM, which the first version was not. Counting a
+    // pair as true after ONE co-occurrence inside a 4-word window over 300,000
+    // tokens made 5.42% of all pairs "true", so a random guess scored 5.000%
+    // and every heuristic was crowded into a point or two above noise. A single
+    // co-occurrence between two frequent words is not structure, it is traffic.
+    //
+    // Requiring several independent co-occurrences makes "true" mean something.
+    std::unordered_map<std::uint64_t, std::uint32_t> future_count;
     {
         const std::size_t window = 4;
         std::vector<std::size_t> recent;
@@ -201,14 +210,18 @@ int main(int argc, char** argv) {
             if (it == slot.end()) continue;
             for (const std::size_t j : recent) {
                 if (j != it->second) {
-                    future.insert(pair_key(static_cast<std::uint32_t>(j),
-                                           static_cast<std::uint32_t>(it->second)));
+                    ++future_count[pair_key(static_cast<std::uint32_t>(j),
+                                            static_cast<std::uint32_t>(it->second))];
                 }
             }
             recent.push_back(it->second);
             if (recent.size() > window) recent.erase(recent.begin());
         }
     }
+    std::unordered_set<std::uint64_t> future;
+    for (const auto& kv : future_count) if (kv.second >= min_cooc) future.insert(kv.first);
+    std::printf("  a pair counts as true only after >= %zu independent co-occurrences\n",
+                min_cooc);
     // The pairs that matter: true in the future, and NOT already known.
     std::size_t novel_true = 0;
     for (const std::uint64_t k : future) if (!known.count(k)) ++novel_true;
@@ -223,26 +236,36 @@ int main(int argc, char** argv) {
     // A proposal counts only if it is BOTH true in the future AND absent from
     // what the model already had. Proposing a known edge scores nothing, however
     // true it is.
+    struct Score { double yield; double precision; std::size_t novel; };
     auto score = [&](const std::function<std::size_t(std::size_t)>& propose) {
-        std::size_t asked = 0, novel = 0, hit = 0;
+        std::size_t novel = 0, hit = 0;
         for (std::size_t i = 0; i < cb.size(); ++i) {
             const std::size_t j = propose(i);
             if (j == static_cast<std::size_t>(-1) || j == i || j >= cb.size()) continue;
-            ++asked;
             const std::uint64_t k = pair_key(static_cast<std::uint32_t>(i),
                                              static_cast<std::uint32_t>(j));
-            if (known.count(k)) continue;
+            if (known.count(k)) continue;   // knowing a thing is not discovering it
             ++novel;
             if (future.count(k)) ++hit;
         }
-        // Reported over EVERY word, not over the ones it chose to answer: a
-        // predictor that abstains on the hard cases has not solved them.
-        return std::make_pair(100.0 * static_cast<double>(hit) / static_cast<double>(cb.size()),
-                              novel);
+        // BOTH numbers, because either one alone can be gamed and the first
+        // version of this bench reported only the first.
+        //
+        //   yield      hits per WORD ASKED. Rewards a predictor that answers
+        //              often, so a random guesser scores well simply by never
+        //              proposing anything the model already has.
+        //   precision  hits per NOVEL PROPOSAL. Rewards being right when it
+        //              speaks, and is the number that says whether the
+        //              proposals are worth adding to the graph.
+        Score s;
+        s.yield = 100.0 * static_cast<double>(hit) / static_cast<double>(cb.size());
+        s.precision = novel ? 100.0 * static_cast<double>(hit) / static_cast<double>(novel) : 0.0;
+        s.novel = novel;
+        return s;
     };
 
-    std::printf("  predictor           | true & NEW | proposals that were new | what it is\n");
-    std::printf("  --------------------+------------+-------------------------+-----------\n");
+    std::printf("  predictor           |  yield  | precision | novel | what it is\n");
+    std::printf("  --------------------+---------+-----------+-------+-----------\n");
 
     std::uint64_t rs = 0xBEEF1234ULL;
     auto rnd = [&]() {
@@ -253,15 +276,15 @@ int main(int argc, char** argv) {
     };
 
     const auto rnd_s = score([&](std::size_t) { return rnd() % cb.size(); });
-    std::printf("  random pair         |   %6.3f%%  |        %7zu          | the floor\n",
-                rnd_s.first, rnd_s.second);
+    std::printf("  random pair         | %6.3f%% |  %6.2f%%  | %5zu | the floor\n",
+                rnd_s.yield, rnd_s.precision, rnd_s.novel);
 
     const auto top_s = score([&](std::size_t i) {
         const auto& l = cb.links(i);
         return l.empty() ? static_cast<std::size_t>(-1) : static_cast<std::size_t>(l[0]);
     });
-    std::printf("  top existing edge   |   %6.3f%%  |        %7zu          | proposes what it knows\n",
-                top_s.first, top_s.second);
+    std::printf("  top existing edge   | %6.3f%% |  %6.2f%%  | %5zu | proposes what it knows\n",
+                top_s.yield, top_s.precision, top_s.novel);
 
     const auto fof_s = score([&](std::size_t i) {
         const auto& l = cb.links(i);
@@ -269,12 +292,12 @@ int main(int argc, char** argv) {
         const auto& l2 = cb.links(l[0]);
         return l2.empty() ? static_cast<std::size_t>(-1) : static_cast<std::size_t>(l2[0]);
     });
-    std::printf("  friend-of-a-friend  |   %6.3f%%  |        %7zu          | two hops out\n",
-                fof_s.first, fof_s.second);
+    std::printf("  friend-of-a-friend  | %6.3f%% |  %6.2f%%  | %5zu | two hops out\n",
+                fof_s.yield, fof_s.precision, fof_s.novel);
 
     const auto kin_s = score([&](std::size_t i) { return cb.kin(i); });
-    std::printf("  common neighbours   |   %6.3f%%  |        %7zu          | THE strong heuristic\n",
-                kin_s.first, kin_s.second);
+    std::printf("  common neighbours   | %6.3f%% |  %6.2f%%  | %5zu | THE strong heuristic\n",
+                kin_s.yield, kin_s.precision, kin_s.novel);
 
     // ---- Ribosome, selected with no answer key -----------------------------
     //
@@ -292,20 +315,29 @@ int main(int argc, char** argv) {
     const auto evo_s = score([&](std::size_t i) {
         return cb.nearest_index(vm.run(ch.best().genome, cb.at(i)));
     });
-    std::printf("  Ribosome (evolved)  |   %6.3f%%  |        %7zu          | %zu births\n",
-                evo_s.first, evo_s.second, ch.births());
+    std::printf("  Ribosome (evolved)  | %6.3f%% |  %6.2f%%  | %5zu | %zu births\n",
+                evo_s.yield, evo_s.precision, evo_s.novel, ch.births());
 
-    const double best_baseline = std::max({rnd_s.first, top_s.first, fof_s.first, kin_s.first});
-    std::printf("\n");
-    if (evo_s.first > best_baseline) {
-        std::printf("  Evolution BEATS every heuristic by %.3f points, with no answer key\n",
-                    evo_s.first - best_baseline);
-        std::printf("  anywhere in the loop.\n");
+    const double by_yield = std::max({rnd_s.yield, top_s.yield, fof_s.yield, kin_s.yield});
+    const double by_prec  = std::max({rnd_s.precision, top_s.precision,
+                                      fof_s.precision, kin_s.precision});
+    std::printf("\n  yield:     evolution %s the best heuristic by %.3f points\n",
+                evo_s.yield > by_yield ? "BEATS" : "loses to",
+                evo_s.yield > by_yield ? evo_s.yield - by_yield : by_yield - evo_s.yield);
+    std::printf("  precision: evolution %s the best heuristic by %.2f points\n",
+                evo_s.precision > by_prec ? "BEATS" : "loses to",
+                evo_s.precision > by_prec ? evo_s.precision - by_prec : by_prec - evo_s.precision);
+    if (evo_s.yield > by_yield && evo_s.precision > by_prec) {
+        std::printf("  BOTH -- and with no answer key anywhere in the loop.\n");
     } else {
-        std::printf("  Evolution LOSES to the best heuristic by %.3f points.\n",
-                    best_baseline - evo_s.first);
+        std::printf("  Not both, so this is a TRADE and not a win. A predictor that speaks\n");
+        std::printf("  more often leads on yield while being worse per proposal, and only\n");
+        std::printf("  precision says whether what it proposes is worth writing into the\n");
+        std::printf("  graph. The first version of this bench reported yield alone.\n");
     }
-    std::printf("  what it found:\n%s", ch.best().genome.disassemble().c_str());
+    std::printf("  what it found -- %zu instructions, %zu of them live:\n%s",
+                ch.best().genome.codons(), ch.best().genome.effective_length(),
+                ch.best().genome.disassemble().c_str());
 
     std::printf("\n  WHAT THIS MEASURES THAT THE WORDNET BENCH DOES NOT\n");
     std::printf("    Nothing here was labelled by a person. The world model was built\n");

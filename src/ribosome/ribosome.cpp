@@ -60,7 +60,13 @@ std::vector<Codon> Genome::decode() const {
     out.reserve(tape_.size() / 4);
     for (std::size_t i = 0; i + 3 < tape_.size(); i += 4) {
         Codon c;
-        c.op  = static_cast<Op>(tape_[i] % static_cast<std::uint8_t>(Op::kCount));
+        // Rejection-free debias. 256 % 13 == 9, so a plain modulo gives opcodes
+        // 0-8 a 20/256 share and 9-12 only 19/256 — and 9-12 are exactly
+        // {Assoc, Neigh, Common, Kin}, the only four opcodes with a gradient.
+        // Scaling instead of wrapping spreads the remainder evenly rather than
+        // dropping it all on the tail of the enum.
+        c.op  = static_cast<Op>((static_cast<std::uint32_t>(tape_[i]) *
+                                 static_cast<std::uint32_t>(Op::kCount)) >> 8);
         c.dst = tape_[i + 1] % kRegisters;
         c.a   = tape_[i + 2] % kRegisters;
         // `b` stays a full byte: Perm reads it as a signed shift and Role as a
@@ -116,9 +122,51 @@ Genome Genome::cross(const Genome& x, const Genome& y, std::uint64_t seed) {
     return Genome(std::move(t));
 }
 
+// BACKWARD LIVENESS. Start with r0 live at the end and walk backwards: an
+// instruction is live only if its destination is live at that point, and if it
+// is, its sources become live before it. Everything else is non-coding.
+//
+// This is not cosmetic. Only r0 is read out, so most instructions in an evolved
+// genome never reach the answer, and reading a champion without the marking is
+// how a program that ignores its own input gets mistaken for an operator --
+// which happened here, on the first hypernym run.
+std::vector<bool> Genome::live_mask() const {
+    const auto code = decode();
+    std::vector<bool> live(code.size(), false);
+    std::array<bool, kRegisters> reg{};
+    reg[0] = true;                     // only r0 is read out
+    for (std::size_t k = code.size(); k-- > 0;) {
+        const Codon& c = code[k];
+        if (c.op == Op::Nop) continue;
+        if (!reg[c.dst]) continue;     // result is never read: non-coding
+        live[k] = true;
+        // The destination is redefined here, so anything earlier writing it is
+        // only needed if this instruction also reads it.
+        const bool reads_dst = (c.a == c.dst) ||
+            (c.b % kRegisters == c.dst &&
+             (c.op == Op::Bind || c.op == Op::Bundle || c.op == Op::And ||
+              c.op == Op::Or || c.op == Op::Common));
+        if (!reads_dst) reg[c.dst] = false;
+        reg[c.a] = true;
+        if (c.op == Op::Bind || c.op == Op::Bundle || c.op == Op::And ||
+            c.op == Op::Or || c.op == Op::Common) {
+            reg[c.b % kRegisters] = true;
+        }
+    }
+    return live;
+}
+
+std::size_t Genome::effective_length() const {
+    const auto m = live_mask();
+    std::size_t n = 0;
+    for (const bool b : m) if (b) ++n;
+    return n;
+}
+
 std::string Genome::disassemble() const {
     std::string out;
-    char line[96];
+    char line[112];
+    const auto live = live_mask();
     std::size_t i = 0;
     for (const Codon& c : decode()) {
         switch (c.op) {
@@ -132,7 +180,7 @@ std::string Genome::disassemble() const {
                 break;
             case Op::Assoc:
                 std::snprintf(line, sizeof line, "%2zu  assoc  r%u <- associate[%u] of r%u\n",
-                              i, c.dst, c.b, c.a);
+                              i, c.dst, static_cast<unsigned>(c.b % 8), c.a);
                 break;
             case Op::Neigh:
                 std::snprintf(line, sizeof line, "%2zu  neigh  r%u <- bundle top %u of r%u\n",
@@ -150,7 +198,13 @@ std::string Genome::disassemble() const {
                               i, op_name(c.op), c.dst, c.a, c.b % kRegisters);
                 break;
         }
-        out += line;
+        // Strip the trailing newline so the liveness marker can be appended.
+        std::string l(line);
+        while (!l.empty() && (l.back() == 0x0A || l.back() == 0x0D)) l.pop_back();
+        while (l.size() < 44) l += ' ';
+        out += l;
+        out += (i < live.size() && live[i]) ? "  <- LIVE" : "  (dead)";
+        out.push_back(0x0A);
         ++i;
     }
     return out;
@@ -174,6 +228,15 @@ std::uint64_t glyph_digest(const lattice::Glyph& g) noexcept {
 void Codebook::add(std::string name, const lattice::Glyph& g) {
     exact_.emplace(glyph_digest(g), static_cast<std::uint32_t>(items_.size()));
     items_.emplace_back(std::move(name), g);
+}
+
+void Codebook::set_class(std::size_t i, int c) {
+    if (class_.size() < items_.size()) class_.resize(items_.size(), -1);
+    if (i < class_.size()) class_[i] = c;
+}
+
+int Codebook::class_of(std::size_t i) const {
+    return (i < class_.size()) ? class_[i] : -1;
 }
 
 void Codebook::link(std::size_t from, std::size_t to) {
@@ -226,14 +289,27 @@ std::size_t Codebook::kin(std::size_t i) const {
     return kin_[i];
 }
 
+// The item in BOTH neighbourhoods with the best combined rank.
+//
+// The first version returned the first element of a's list found anywhere in
+// b's, which is not an intersection operator at all -- it is a's ordering with a
+// membership filter, and it made common(i, i) identical to assoc(i, 0). An
+// exhaustive scan confirmed that: common r0<-r0,r0 and assoc[0] r0<-r0 produced
+// bit-identical results, so a quarter of all Common codons were a redundant
+// re-spelling of an opcode that already existed.
 std::size_t Codebook::common(std::size_t i, std::size_t j) const {
     const auto& a = links(i);
     const auto& b = links(j);
     if (a.empty() || b.empty()) return static_cast<std::size_t>(-1);
-    for (const std::uint32_t x : a) {
-        for (const std::uint32_t y : b) if (x == y) return x;
+    std::size_t best = static_cast<std::size_t>(-1), best_rank = static_cast<std::size_t>(-1);
+    for (std::size_t x = 0; x < a.size(); ++x) {
+        for (std::size_t y = 0; y < b.size(); ++y) {
+            if (a[x] != b[y]) continue;
+            if (x + y < best_rank) { best_rank = x + y; best = a[x]; }
+            break;
+        }
     }
-    return static_cast<std::size_t>(-1);
+    return best;
 }
 
 std::size_t Codebook::nearest_index(const lattice::Glyph& q) const {
@@ -286,15 +362,24 @@ const lattice::Glyph& Vm::role(std::uint8_t i) {
 }
 
 lattice::Glyph Vm::run(const Genome& g, const lattice::Glyph& input) const {
-    std::array<lattice::Glyph, kRegisters> r;
+    // The non-input registers start as distinct fixed constants rather than
+    // zero: a zero Glyph is an identity under XOR and absorbing under AND, so a
+    // register file of zeros hands the search a cliff of degenerate programs
+    // that all compute the same thing.
+    //
+    // Hoisted to a static because regenerating three 10,000-bit vectors per call
+    // was measured at 88% of this function's runtime, alongside re-decoding the
+    // tape on every single input.
+    static const std::array<lattice::Glyph, kRegisters> kInit = [] {
+        std::array<lattice::Glyph, kRegisters> a;
+        for (std::size_t i = 1; i < kRegisters; ++i) {
+            a[i] = lattice::Glyph::random(0xC0FFEEULL * (i + 1));
+        }
+        return a;
+    }();
+
+    std::array<lattice::Glyph, kRegisters> r = kInit;
     r[0] = input;
-    // The other registers start as distinct fixed constants rather than zero.
-    // A zero Glyph is an identity under XOR and an absorbing element under AND,
-    // so a register file of zeros hands the search a cliff of degenerate
-    // programs that all compute the same thing.
-    for (std::size_t i = 1; i < kRegisters; ++i) {
-        r[i] = lattice::Glyph::random(0xC0FFEEULL * (i + 1));
-    }
 
     for (const Codon& c : g.decode()) {
         switch (c.op) {
@@ -318,7 +403,17 @@ lattice::Glyph Vm::run(const Genome& g, const lattice::Glyph& input) const {
                 if (i == static_cast<std::size_t>(-1)) break;
                 const auto& l = cleanup_->links(i);
                 if (l.empty()) break;
-                r[c.dst] = cleanup_->at(l[c.b % l.size()]);
+                // A STABLE RANK, not b modulo the item's degree.
+                //
+                // Degree varies from 0 to 32 across the codebook, so `b % degree`
+                // meant a different associate rank for every input word: the same
+                // codon had no consistent semantics and therefore nothing to
+                // generalise. Worse, only b == 0 denoted "top associate" for all
+                // words, probability 1/256 per codon -- expected copies in a
+                // 300-organism, 5-codon starting population: 0.027. The single
+                // best-performing primitive in the machine was effectively
+                // unreachable by mutation.
+                r[c.dst] = cleanup_->at(l[std::min<std::size_t>(c.b % 8, l.size() - 1)]);
                 break;
             }
             case Op::Neigh: {
@@ -405,16 +500,36 @@ double Chamber::evaluate_(const Genome& g, const std::vector<Assay>& pairs,
     const std::size_t n_eval = (sample == 0 || sample >= pairs.size()) ? pairs.size() : sample;
     std::uint64_t s = seed | 1ULL;
 
-    std::unordered_map<std::size_t, std::pair<std::uint32_t, std::uint32_t>> per_class;
+    // Grouped by CLASS when the target is set-valued, otherwise by target item.
+    // With a set-valued target this also makes the balancing bite: the class is
+    // a real category with many members, so a constant answer is right for one
+    // class out of every class it faces and scores 1/k. Grouping by target ITEM
+    // made balancing a no-op on co-hyponymy — 3,307 of 3,718 target classes were
+    // singletons, so the per-class rate was just the per-pair rate wearing a
+    // different name, and the long justification for it only ever bit on
+    // hypernymy.
+    std::unordered_map<int, std::pair<std::uint32_t, std::uint32_t>> per_class;
     for (std::size_t k = 0; k < n_eval; ++k) {
         const Assay& a = (n_eval == pairs.size()) ? pairs[k]
                                                   : pairs[splitmix(s) % pairs.size()];
         const lattice::Glyph out = vm.run(g, a.from);
         sim += out.similarity(a.to);
-        const bool hit = (cleanup_ && a.to_index != static_cast<std::size_t>(-1))
-                             ? (cleanup_->nearest_index(out) == a.to_index)
-                             : (out == a.to);
-        auto& c = per_class[a.to_index];
+
+        bool hit;
+        if (cleanup_ && a.to_class >= 0) {
+            // SET-VALUED: any member of the class is correct, except echoing the
+            // input back, which is never a discovery.
+            const std::size_t oi = cleanup_->nearest_index(out);
+            hit = (oi != static_cast<std::size_t>(-1)) && oi != a.from_index &&
+                  cleanup_->class_of(oi) == a.to_class;
+        } else if (cleanup_ && a.to_index != static_cast<std::size_t>(-1)) {
+            hit = (cleanup_->nearest_index(out) == a.to_index);
+        } else {
+            hit = (out == a.to);
+        }
+
+        const int key = (a.to_class >= 0) ? a.to_class : static_cast<int>(a.to_index);
+        auto& c = per_class[key];
         ++c.second;
         if (hit) ++c.first;
     }
@@ -452,13 +567,20 @@ double Chamber::step(const std::vector<Assay>& train) {
         ++o.age;
     }
 
-    // The champion is re-scored on the FULL training set before it is allowed
-    // to replace the incumbent. A sampled score is noisy, and keeping the
-    // luckiest sample rather than the best organism is how a sampled fitness
-    // quietly turns into a random search.
-    for (const Organism& o : pop_) {
-        if (o.fitness <= best_.fitness) continue;
-        Organism c = o;
+    // The champion is re-scored on the FULL training set before it is allowed to
+    // replace the incumbent, because keeping the luckiest sample rather than the
+    // best organism is how a sampled fitness quietly becomes a random search.
+    //
+    // ONLY the round's best organism, not everyone who beat the incumbent. That
+    // earlier test compared a SAMPLED score against the incumbent's FULL-SET
+    // score, and measured on the real round-1 population 98 of 300 organisms
+    // passed it — each triggering a full 4,194-pair re-evaluation, 411,012 extra
+    // VM runs against the 28,800 it took to score the entire population. A 14x
+    // front-loaded cost, and it is why runs stopped at 60 generations.
+    if (!pop_.empty()) {
+        const auto top = std::max_element(pop_.begin(), pop_.end(),
+            [](const Organism& x, const Organism& y) { return x.fitness < y.fitness; });
+        Organism c = *top;
         c.fitness = evaluate(c.genome, train);
         if (c.fitness > best_full_) { best_full_ = c.fitness; best_ = c; }
     }
@@ -485,6 +607,18 @@ double Chamber::step(const std::vector<Assay>& train) {
         pop_[worst].fitness = evaluate_(pop_[worst].genome, train, cfg_.sample, env);
         pop_[worst].age = 1;
         ++births_;
+    }
+
+    // ELITISM. The best genome found is put back into the breeding population.
+    //
+    // Without this the champion survives only as a reporting artefact: it is
+    // never re-inserted, its lineage sits in the evictable mass whenever a noisy
+    // round scores it zero, and 75 evictions per round can breed a discovered
+    // operator straight out of existence.
+    if (!pop_.empty() && best_full_ > -1e8) {
+        auto worst = std::min_element(pop_.begin(), pop_.end(),
+            [](const Organism& x, const Organism& y) { return x.fitness < y.fitness; });
+        *worst = best_;
     }
 
     ++generations_;

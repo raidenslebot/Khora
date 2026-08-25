@@ -196,7 +196,18 @@ public:
     // Human-readable disassembly. The point of evolving a program rather than
     // fitting weights is that the result can be READ, so this is part of the
     // contract, not a debugging aid.
+    //
+    // Every line is marked live or dead. Only register 0 is the output, so an
+    // instruction matters only if its result reaches r0 -- and in practice most
+    // do not. Reading an evolved genome WITHOUT that marking is how a champion
+    // that ignores its own input gets mistaken for an operator: the first
+    // hypernym winner here looked like eight instructions of machinery and was
+    // a constant. Liveness is computed by walking backwards from r0.
     std::string disassemble() const;
+
+    // Which instructions actually reach the output, and how many there are.
+    std::vector<bool> live_mask() const;
+    std::size_t effective_length() const;
 
 private:
     std::vector<std::uint8_t> tape_;
@@ -227,6 +238,11 @@ public:
     // Second-order neighbours: for each item, the item whose neighbourhood most
     // overlaps it. Built once from the reverse index, so it costs
     // O(edges * average in-degree) rather than O(items^2).
+    // Class labels, used only for set-valued scoring. The codebook already owns
+    // the item table, so it is the natural place to hang them.
+    void set_class(std::size_t i, int c);
+    int  class_of(std::size_t i) const;
+
     void precompute_kin();
     std::size_t kin(std::size_t i) const;
 
@@ -261,6 +277,7 @@ private:
     // would cost one mis-scored pair, never a structurally wrong result.
     mutable std::unordered_map<std::uint64_t, std::uint32_t> memo_;
     std::vector<std::uint32_t> kin_;
+    std::vector<int> class_;
 };
 
 // ---------------------------------------------------------------------------
@@ -299,7 +316,14 @@ struct ChamberConfig {
     // rewards operators that happen to suit that set, and resampling makes the
     // pressure be about the relation rather than about the sample. Held-out
     // scoring always uses every pair.
-    std::size_t sample = 96;
+    // MEASURED: 96 was catastrophic. 294 of 300 initial organisms score ZERO
+    // hits out of 96 sampled pairs, so their entire fitness is a 1e-6
+    // similarity tiebreak of random sign and the tournament is a coin flip.
+    // Even the best available operator draws zero hits 81% of the time.
+    // Separating the difference this experiment cares about at 2 sigma needs
+    // ~34,000 samples; 96 is a 350-fold shortfall. 0 means the full training
+    // set, which after the VM was profiled is also the CHEAPER option.
+    std::size_t sample = 0;
 };
 
 // One (input, target) pair the population is selected against. `to_index` is
@@ -308,6 +332,20 @@ struct Assay {
     lattice::Glyph from;
     lattice::Glyph to;
     std::size_t    to_index = static_cast<std::size_t>(-1);
+    std::size_t    from_index = static_cast<std::size_t>(-1);
+
+    // SET-VALUED TARGET. When >= 0, an answer is correct if it lands on ANY
+    // item of this class rather than on one designated item.
+    //
+    // This field exists because its absence made the whole experiment measure
+    // the wrong thing. Co-hyponymy is set-valued -- any sibling is right -- but
+    // the chamber was selecting on one designated sibling while the bench
+    // REPORTED same-category accuracy. An exhaustive scan of all 384
+    // one-instruction programs showed the two objectives are anti-correlated
+    // over the range that matters: the instruction the chamber preferred scored
+    // 1.62% on the reported metric, while the one it rejected scored 3.36%.
+    // Selection was working perfectly on a target nobody wanted.
+    int            to_class = -1;
 };
 
 struct Organism {
