@@ -176,6 +176,34 @@ std::string driver(Lang l, const std::vector<Named>& rs, const std::vector<Value
             s += "for (let i = 0; i < INPUTS.length; i++) console.log('" + std::string(n.name) +
                  " ' + i + ' ' + " + call(n, "i", "INPUTS") + ".join(','));\n";
         }
+    } else if (l == Lang::Haskell) {
+        // Curried application by juxtaposition, and every emitted function is a
+        // top-level binding, so the driver is a plain main.
+        s += "khjoin :: [String] -> String\nkhjoin [] = \"\"\nkhjoin [x] = x\nkhjoin (x:xs) = x ++ \",\" ++ khjoin xs\n\ninputs :: [V]\ninputs = [";
+        for (std::size_t i = 0; i < ins.size(); ++i) { if (i) s += ", "; s += lit(ins[i]); }
+        s += "]\n\nmain :: IO ()\nmain = do\n";
+        for (const Named& nm : rs) {
+            std::string args = "(inputs !! i)";
+            for (std::size_t k = 1; k < nm.r.arity(); ++k) {
+                args += " (inputs !! ((i + " + std::to_string(k) + ") `mod` "
+                      + std::to_string(nin) + "))";
+            }
+            s += "  mapM_ (\\i -> putStrLn (\"" + std::string(nm.name)
+               + " \" ++ show i ++ \" \" ++ khjoin (map show ("
+               + std::string(nm.name) + " " + args + "))))\n";
+            s += "        [0 .. length inputs - 1]\n";
+        }
+    } else if (l == Lang::Swift) {
+        // Top-level code in a file named main.swift is the program entry point.
+        s += "let INPUTS: [V] = [";
+        for (std::size_t i = 0; i < ins.size(); ++i) { if (i) s += ", "; s += lit(ins[i]); }
+        s += "]\n";
+        for (const Named& nm : rs) {
+            s += "for i in 0..<INPUTS.count {\n";
+            s += "  let r = " + call(nm, "i", "INPUTS") + "\n";
+            s += "  print(\"" + std::string(nm.name) + " \" + String(i) + \" \" + r.map { String($0) }.joined(separator: \",\"))\n";
+            s += "}\n";
+        }
     } else if (l == Lang::Kotlin) {
         // Kotlin emits top-level functions over List<Long>, so the driver is a
         // plain main() in the same file.
@@ -342,6 +370,8 @@ int main(int argc, char** argv) {
         {Lang::Ruby,       "emitted.rb"},
         {Lang::Java,       "Main.java"},
         {Lang::Kotlin,     "emitted.kt"},
+        {Lang::Swift,      "main.swift"},
+        {Lang::Haskell,    "emitted.hs"},
     };
 
     for (const Target& t : targets) {
@@ -379,16 +409,18 @@ int main(int argc, char** argv) {
     std::printf("\n  reference.txt holds Recipe::apply for every pair. Run each emitted\n");
     std::printf("  file and diff its stdout against it; any difference is the emitted\n");
     std::printf("  program computing something the certificate does not cover.\n\n");
-    std::printf("  EXECUTED AND BYTE-IDENTICAL on this machine: Python, JavaScript,\n");
-    std::printf("  TypeScript, Go, Rust, C++, C#, Java, Kotlin, PHP, Lua and Ruby --\n");
-    std::printf("  TWELVE of the fourteen backends, %zu recipes x %zu inputs each. Three\n", rs.size(), ins.size());
-    std::printf("  of the recipes take TWO ARGUMENTS, and argument 1 is the NEXT input\n");
-    std::printf("  rather than a repeat of the first, so a program that quietly ignores\n");
-    std::printf("  it cannot pass by coincidence. Lua and Ruby run as real Lua 5.4 and\n");
-    std::printf("  real CRuby 3.4 compiled to WebAssembly -- the implementations, not\n");
-    std::printf("  reimplementations of them.\n\n");
-    std::printf("  Swift and Haskell are EMITTED AND NOT EXECUTED: no toolchain here yet.\n");
-    std::printf("  They are not counted. Writing a file is not evidence that it runs,\n");
-    std::printf("  which is exactly what Go proved -- emitted as `package kh`, it could\n");
-    std::printf("  never run at all while this harness printed a body-line count for it.\n");    return 0;
-}
+    std::printf("  ALL FOURTEEN BACKENDS EXECUTED AND BYTE-IDENTICAL on this machine:\n\n");
+    std::printf("    Python  JavaScript  TypeScript  Go     Rust    C++   C#\n");
+    std::printf("    Java    Kotlin      Swift       PHP    Haskell Lua   Ruby\n\n");
+    std::printf("  %zu recipes x %zu inputs each. Three of the recipes take TWO\n", rs.size(), ins.size());
+    std::printf("  ARGUMENTS, and argument 1 is the NEXT input rather than a repeat of\n");
+    std::printf("  the first, so a program that quietly ignores it cannot pass by\n");
+    std::printf("  coincidence. Three of the inputs are longer than the 512-element\n");
+    std::printf("  bound where the interpreter clamps every operation.\n\n");
+    std::printf("  Lua and Ruby run as real Lua 5.4 and real CRuby 3.4 compiled to\n");
+    std::printf("  WebAssembly -- the implementations, not reimplementations of them.\n");
+    std::printf("  Everything else runs on its native toolchain.\n\n");
+    std::printf("  Nothing here is counted for being emitted. Go was written as\n");
+    std::printf("  `package kh` and could never run at all, while this harness printed\n");
+    std::printf("  a body-line count for it as though it had -- and the php on PATH was\n");
+    std::printf("  a different tool wearing the name. Run it or do not claim it.\n");}

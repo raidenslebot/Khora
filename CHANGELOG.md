@@ -102,15 +102,15 @@ unhandled argument node would have emitted `kh_id(x)` — binding argument 1 to
 argument 0, in source that compiles and reads correctly. Argument nodes resolve
 to parameters in `ref()` and emit no statement at all.
 
-### Twelve of fourteen backends executed against the certificate, not three
+### All fourteen backends executed against the certificate, not three
 
 The differential harness builds recipes, runs `Recipe::apply` as the reference,
 emits to several languages and diffs their stdout line by line — 13 recipes x 9
 inputs, three of the inputs longer than the 512-element bound where the
 interpreter's per-operation clamp bites.
 
-**Python, JavaScript, TypeScript, Go, Rust, C++, C#, Java, Kotlin, PHP, Lua and
-Ruby all match byte for byte.**
+**All fourteen match byte for byte:** Python, JavaScript, TypeScript, Go, Rust,
+C++, C#, Java, Kotlin, Swift, PHP, Haskell, Lua, Ruby.
 
 The standing goal says the machine's hardware is the only restriction and grants
 100 GB, so the missing toolchains were installed rather than treated as a wall:
@@ -126,9 +126,12 @@ CRuby's WASI stdout is not wired up here, so the Ruby driver returns its
 transcript as a value instead of printing it; the semantics under test are
 identical either way.
 
-Swift and Haskell are emitted and deliberately not counted: no toolchain
-installed for them yet. Twelve of fourteen is the honest number, and the twelve
-that are claimed are claimed because they ran.
+Swift needed both its runtime bin on PATH and `SDKROOT` pointing at
+`Platforms\6.3.3\Windows.platform`, inside the MSVC environment, before it would
+link — it failed with `0xC0000135` and then an empty stdlib until all three were
+right. Haskell's prelude imports `sort` but not `intercalate`, and a driver
+appended after the declarations cannot add an import, so the driver defines its
+own joiner.
 
 A note on the PHP that was already on PATH: it was a different tool entirely,
 shadowing the real thing. Every earlier report correctly refused to count PHP
