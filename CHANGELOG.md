@@ -72,6 +72,44 @@ the verified count almost exactly from tier 3 onward. Chained calls —
 **4 across an entire ascent** before compaction and are now routine (2, 6, 4, 3
 in the first tiers that admit them).
 
+### The ceiling is the curriculum, not the solver
+
+The ascent stops at tier 15. Three attempts to push that from the solver side,
+all measured as the carried-minus-empty gap inside a single run:
+
+| change | result |
+|--------|--------|
+| search pool 30,000 → 60,000 | 185 → 192 verified, gap 47 → 44 |
+| admit each answer's largest proper subexpression | 185 → 186, gap 47 → 48 |
+| mine subexpressions recurring in ≥2 certified answers | 185 → 184, gap 47 → 46 |
+
+All inside noise. Neither the search budget nor the vocabulary is what binds —
+and the mining attempt found a second thing on the way: admitted with a later
+birth, mined chunks are discarded by age-ordered eviction the same tier they are
+found, and the totals came out identical to the digit. Given eviction priority
+they survived and still changed nothing.
+
+What binds is visible once the generator is instrumented. A task is a random
+composition of atoms, and it only counts if it does not collapse to something an
+existing atom already computes:
+
+| tier | drawn | kept | keep rate |
+|------|-------|------|-----------|
+| 5 | 176 | 40 | 23% |
+| 8 | 558 | 40 | 7.2% |
+| 11 | 1,363 | 40 | 2.9% |
+| 13 | 1,618 | 18 | 1.1% |
+| 15 | 1,611 | 11 | **0.7%** |
+
+From tier 12 the generator exhausts its rejection budget and cannot fill a tier
+at all. **99.3% of depth-15 compositions collapse.** The solver is not
+plateauing; the problem generator is running out of genuinely new problems to
+pose from this atom set. Going deeper needs a richer primitive set, which is a
+different piece of work from anything tried here.
+
+The mining code is reverted — the negative result is worth recording, fifty lines
+of dead machinery is not.
+
 ### Three dormant defects in the library
 
 1. **Twenty-four of every thirty-two learned entries were unreachable.**

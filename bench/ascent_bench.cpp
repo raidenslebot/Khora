@@ -45,6 +45,8 @@
 #include <functional>
 #include <numeric>
 #include <string>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
 using namespace khora::techne;
@@ -379,6 +381,7 @@ int main(int argc, char** argv) {
             if (!genuinely_deep(t, probes)) { ++rejected; continue; }
             tasks.push_back(std::move(t));
         }
+        const std::size_t drawn = tasks.size() + rejected;
         if (tasks.empty()) {
             std::printf("  -- tier %zu: every draw collapsed to something shallower.\n", tier);
             std::printf("     Depth %zu is not reachable by chaining this atom set.\n", tier);
@@ -403,9 +406,9 @@ int main(int argc, char** argv) {
         // last attempt sat past ten minutes with zero bytes written and the only
         // way to learn anything was to kill it. A benchmark you cannot watch is a
         // benchmark you cannot diagnose.
-        std::printf("       |       | forward %6.1f s | bidir %6.1f s | verify %6.1f s\n",
+        std::printf("       |       | forward %6.1f s | bidir %6.1f s | verify %6.1f s | drew %5zu, kept %2zu\n",
                     with.t_fwd + without.t_fwd, with.t_bidir + without.t_bidir,
-                    with.t_check + without.t_check);
+                    with.t_check + without.t_check, drawn, tasks.size());
         std::fflush(stdout);
 
         // TWO BARREN TIERS, NOT ONE.
