@@ -236,6 +236,45 @@ that is invisible until someone looks.
 
 **And it plateaus** — flat from stage 6 while training continues.
 
+### The benchmark's own case lengths were hiding a fifth of the capability
+
+`make()` drew ten training cases at lengths 1-5 and five holdout cases at 7-11.
+**Disjoint ranges.** Any program whose behaviour depends on length passed every
+visible case and failed the holdout by construction, and the search had no way to
+learn otherwise.
+
+`idxmul` is the clean demonstration. The search returns:
+
+```
+add(x, mul(x, range(5)))        =  x * [1,2,3,4,5]
+```
+
+which is exactly right for every length the cases contained, and wrong for every
+length the holdout used. Quadrupling the number of cases changed nothing, because
+they were all short. Widening the case lengths to 1-12:
+
+```
+add(x, mul(x, range(100)))      =  x * [1..100]     20/20 cases, 5/5 holdout
+```
+
+Solved outright. Cases now span 1-12 with the holdout at 14-18 — the holdout
+stays LONGER than anything shown, because extrapolation past the training regime
+is the property worth testing; what it may not do is test a length regime the
+cases never sampled at all.
+
+| | before | after |
+|---|--------|-------|
+| fixed bar, no library | 18 of 96 | **22 of 96** |
+| fixed bar, best | 25 | **28** |
+| depth 2, no library | 10 of 16 | **12 of 16** |
+| depth 6 | 0 | **1** |
+| ascent, carried vs empty | 220 vs 191 | **221 vs 184** |
+
+Tasks this benchmark reported as beyond the ceiling were never beyond it. Three
+separate diagnoses of that ceiling — an expressibility floor, a missing inverse
+operation, a search-reach wall — were all partly measuring a defect in the
+instrument that generates the specifications.
+
 ### Solving for the operand instead of enumerating it
 
 The wall was named precisely enough to attack: bottom-up enumeration cannot reach

@@ -175,8 +175,23 @@ Spec make(const Task& t) {
         for (std::size_t i = 0; i < len; ++i) v.push_back(static_cast<std::int64_t>(rnd() % 24) - 10);
         return v;
     };
-    for (std::size_t i = 0; i < 10; ++i) { Value in = draw(1 + i % 5); s.cases.push_back({in, t.f(in)}); }
-    for (std::size_t i = 0; i < 5; ++i)  { Value in = draw(7 + i);     s.holdout.push_back({in, t.f(in)}); }
+    // CASE LENGTHS MUST SPAN THE HOLDOUT'S, and they did not.
+    //
+    // This drew ten cases at lengths 1..5 and five holdout cases at 7..11 --
+    // DISJOINT RANGES. Any program whose behaviour depends on length therefore
+    // passed every visible case and failed the holdout by construction, and the
+    // search had no way to learn otherwise. Measured on idxmul: it produced
+    // `add(x, mul(x, range(5)))`, which is exactly x*[1..5] and exactly right for
+    // every length the cases contained. Adding more cases did not help, because
+    // they were all short. Widening the case lengths to 1..12 solved it outright
+    // -- `add(x, mul(x, range(100)))`, 20/20 and 5/5.
+    //
+    // So tasks this benchmark reported as out of reach were not out of reach.
+    // The holdout stays LONGER than any case, because extrapolation past what
+    // was shown is the property worth testing; what it may not do is test a
+    // length regime the cases never sampled at all.
+    for (std::size_t i = 0; i < 14; ++i) { Value in = draw(1 + i % 12); s.cases.push_back({in, t.f(in)}); }
+    for (std::size_t i = 0; i < 5; ++i)  { Value in = draw(14 + i);     s.holdout.push_back({in, t.f(in)}); }
     return s;
 }
 
