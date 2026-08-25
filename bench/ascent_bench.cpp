@@ -65,16 +65,51 @@ using Fn = std::function<Value(const Value&)>;
 // "tier" mean something rather than being a label.
 struct Atom { const char* name; Fn f; };
 
+// WHY THESE, AND WHY MOSTLY NOT IDEMPOTENT.
+//
+// The first set had eight entries and the ascent died at tier 7 because most
+// deep draws COLLAPSED to something shallow. That was the atom set's fault, in
+// two ways worth naming.
+//
+// `tail` and `drop1` were LITERALLY THE SAME FUNCTION, written twice. A pair of
+// identical atoms does nothing but make collapse more likely, and I did not
+// notice until the collapse filter started rejecting almost everything.
+//
+// And half the remainder were idempotent or involutions: sort of sort is sort,
+// pos of pos is pos, rev of rev is identity. Chains built mostly from those
+// normalise to a handful of behaviours no matter how long they are, which is
+// exactly why "tier 104" was solvable by everything.
+//
+// So the set is now dominated by operations that do NOT collapse under
+// repetition -- shifts and scalings by different constants, takes and drops of
+// different lengths, and reductions that change the shape of the value. Two
+// idempotent operations are kept deliberately, because a generator that cannot
+// produce them is not modelling real composition either.
 std::vector<Atom> atoms() {
     return {
+        // Shape-changing, non-idempotent: the workhorses of genuine depth.
+        {"inc1",   [](const Value& v) { Value o; for (auto x : v) o.push_back(x + 1); return o; }},
+        {"inc3",   [](const Value& v) { Value o; for (auto x : v) o.push_back(x + 3); return o; }},
+        {"dec2",   [](const Value& v) { Value o; for (auto x : v) o.push_back(x - 2); return o; }},
+        {"dbl",    [](const Value& v) { Value o; for (auto x : v) o.push_back(x * 2); return o; }},
+        {"tri",    [](const Value& v) { Value o; for (auto x : v) o.push_back(x * 3); return o; }},
+        {"neg",    [](const Value& v) { Value o; for (auto x : v) o.push_back(-x); return o; }},
+        {"sq",     [](const Value& v) { Value o; for (auto x : v) o.push_back(x * x); return o; }},
+        {"tail",   [](const Value& v) { return v.size() > 1 ? Value(v.begin()+1, v.end()) : Value{}; }},
+        {"init",   [](const Value& v) { return v.size() > 1 ? Value(v.begin(), v.end()-1) : Value{}; }},
+        {"take3",  [](const Value& v) { return Value(v.begin(),
+                        v.begin() + static_cast<std::ptrdiff_t>(std::min<std::size_t>(3, v.size()))); }},
+        {"drop2",  [](const Value& v) { return v.size() > 2 ? Value(v.begin()+2, v.end()) : Value{}; }},
+        {"dup",    [](const Value& v) { Value o = v; o.insert(o.end(), v.begin(), v.end()); return o; }},
+        {"prepend0", [](const Value& v) { Value o{0}; o.insert(o.end(), v.begin(), v.end()); return o; }},
+        {"len",    [](const Value& v) { return Value{static_cast<std::int64_t>(v.size())}; }},
+        {"sum",    [](const Value& v) { std::int64_t s = 0; for (auto x : v) s += x; return Value{s}; }},
+        {"delta",  [](const Value& v) { Value o; for (std::size_t i = 1; i < v.size(); ++i)
+                        o.push_back(v[i] - v[i-1]); return o; }},
+        // Involution and idempotents, kept because real composition contains them.
         {"rev",    [](const Value& v) { return Value(v.rbegin(), v.rend()); }},
         {"sort",   [](const Value& v) { Value o = v; std::sort(o.begin(), o.end()); return o; }},
-        {"tail",   [](const Value& v) { return v.size() > 1 ? Value(v.begin()+1, v.end()) : Value{}; }},
-        {"dbl",    [](const Value& v) { Value o; for (auto x : v) o.push_back(x * 2); return o; }},
-        {"inc3",   [](const Value& v) { Value o; for (auto x : v) o.push_back(x + 3); return o; }},
         {"pos",    [](const Value& v) { Value o; for (auto x : v) if (x > 0) o.push_back(x); return o; }},
-        {"sq",     [](const Value& v) { Value o; for (auto x : v) o.push_back(x * x); return o; }},
-        {"drop1",  [](const Value& v) { return v.size() > 1 ? Value(v.begin()+1, v.end()) : Value{}; }},
     };
 }
 
@@ -290,12 +325,27 @@ int main(int argc, char** argv) {
                     tier, tasks.size(), with.verified, without.verified,
                     carried.size(), with.secs + without.secs);
 
-        // FIXPOINT. A tier that verifies nothing new cannot be followed by one
-        // that does, because the library did not change and the tasks only got
-        // harder. Stopping there is the honest end of the ascent, not a give-up.
+        // TWO BARREN TIERS, NOT ONE.
+        //
+        // A single depth can be unlucky in a way the next is not -- tier 6
+        // verified 2 while tier 7 verified 3 in the run that motivated this --
+        // so stopping on the first empty tier reports a ceiling that is really a
+        // sampling artefact.
+        //
+        // The previous commit's message described exactly this rule while the
+        // code stopped on the FIRST barren tier and left `barren` unused. That is
+        // a commit message describing an intention rather than a program, which
+        // is the same defect as a benchmark reporting a number it did not
+        // measure, and it is corrected here rather than quietly aligned.
         if (with.verified == 0 && without.verified == 0) {
-            std::printf("  -- tier %zu verified nothing in either arm; the ascent ends here.\n", tier);
-            break;
+            if (++barren >= 2) {
+                std::printf("  -- two consecutive tiers verified nothing; the ascent ends "
+                            "at tier %zu.\n", tier);
+                break;
+            }
+            std::printf("  -- tier %zu barren; continuing in case the depth was unlucky.\n", tier);
+        } else {
+            barren = 0;
         }
     }
 
