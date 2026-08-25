@@ -122,6 +122,7 @@ def kh_foldf(a, f):
         acc = f(acc + [a[i]])
         if not acc: break
     return acc
+def kh_lim(a): return list(a[:512])
 )PY";
 
 const char* kCppPrelude = R"CPP(#include <algorithm>
@@ -206,6 +207,7 @@ static V kh_foldf(const V& a, Fn f) {
     }
     return acc;
 }
+static V kh_lim(const V& a) { return a.size() > 512 ? V(a.begin(), a.begin() + 512) : a; }
 )CPP";
 
 const char* kJsPrelude = R"JS(const CAP = 1000000000;
@@ -259,6 +261,7 @@ const kh_foldf = (a, f) => {
   }
   return acc;
 };
+const kh_lim = a => a.length > 512 ? a.slice(0, 512) : a;
 )JS";
 
 const char* kRustPrelude = R"RS(pub type V = Vec<i64>;
@@ -341,6 +344,7 @@ pub fn kh_foldf(a: &V, f: fn(&V) -> V) -> V {
     }
     acc
 }
+pub fn kh_lim(a: V) -> V { let mut o = a; o.truncate(512); o }
 )RS";
 
 const char* kGoPrelude = R"GO(package kh
@@ -601,6 +605,7 @@ func kh_foldf(a V, f func(V) V) V {
 	}
 	return acc
 }
+func kh_lim(a V) V { if len(a) > 512 { return a[:512] }; return a }
 )GO";
 
 // JAVA HAS NO TOP-LEVEL FUNCTIONS AND NO LIST LITERALS, which is why this
@@ -709,7 +714,6 @@ class Kh {
     }
     static long[] kh_guard(long[] a, long[] b) { return b.length == 0 ? EMPTY : a.clone(); }
     static long[] kh_else(long[] a, long[] b) { return a.length == 0 ? b.clone() : a.clone(); }
-}
 
     // JAVA HAS NO FIRST-CLASS FUNCTIONS, so a body arrives as a
     // java.util.function.Function and the emitted call site passes a method
@@ -739,6 +743,8 @@ class Kh {
         }
         return acc;
     }
+}
+  static long[] kh_lim(long[] a) { return a.length > 512 ? java.util.Arrays.copyOf(a, 512) : a; }
 )JAVA";
 
 // C# has no top-level functions either, so it takes the same shape as Java: a
@@ -851,7 +857,6 @@ static class Kh {
     }
     public static long[] kh_guard(long[] a, long[] b) { return b.Length == 0 ? EMPTY : kh_id(a); }
     public static long[] kh_else(long[] a, long[] b) { return a.Length == 0 ? kh_id(b) : kh_id(a); }
-}
 
     // C# HAS NO TOP-LEVEL FUNCTIONS EITHER, so a body arrives as a
     // Func<long[], long[]> and the emitted call site passes a method group,
@@ -876,6 +881,8 @@ static class Kh {
         }
         return acc;
     }
+}
+  public static long[] kh_lim(long[] a) { if (a.Length <= 512) return a; var o = new long[512]; System.Array.Copy(a, o, 512); return o; }
 )CS";
 
 // TypeScript is the JavaScript backend with the types written down, so it
@@ -936,6 +943,7 @@ const kh_foldf = (a: V, f: (v: V) => V): V => {
   }
   return acc;
 };
+const kh_lim = (a: number[]): number[] => a.length > 512 ? a.slice(0, 512) : a;
 )TS";
 
 const char* kRubyPrelude = R"RB(CAP = 1_000_000_000
@@ -1006,6 +1014,7 @@ def kh_foldf(a, f)
   end
   acc
 end
+def kh_lim(a); a.length > 512 ? a[0, 512] : a; end
 )RB";
 
 // LUA TABLES ARE 1-INDEXED. Every index in this file is therefore shifted by
@@ -1191,6 +1200,7 @@ function kh_foldf(a, f)
   end
   return acc
 end
+function kh_lim(a) if #a <= 512 then return a end local o = {} for i = 1, 512 do o[i] = a[i] end return o end
 )LUA";
 
 // Haskell's div/mod FLOOR; quot/rem are the truncating pair the reference uses.
@@ -1297,6 +1307,8 @@ kh_foldf a f
     go acc (y:ys) =
       let acc2 = f (acc ++ [y])
       in if null acc2 then [] else go acc2 ys
+kh_lim :: V -> V
+kh_lim a = take 512 a
 )HS";
 
 // Swift TRAPS on signed overflow rather than wrapping, so the elementwise
@@ -1386,6 +1398,7 @@ func kh_foldf(_ a: V, _ f: (V) -> V) -> V {
     }
     return acc
 }
+func kh_lim(_ a: V) -> V { return a.count > 512 ? Array(a[0..<512]) : a }
 )SWIFT";
 
 // Kotlin's / and % on Long truncate toward zero like C's, so the division pair
@@ -1460,6 +1473,7 @@ fun kh_foldf(a: V, f: (V) -> V): V {
     }
     return acc
 }
+fun kh_lim(a: V): V = if (a.size > 512) a.subList(0, 512).toList() else a
 )KT";
 
 // PHP's / always produces a FLOAT, so integer division has to be intdiv(),
@@ -1564,6 +1578,7 @@ function kh_foldf($a, $f) {
     }
     return $acc;
 }
+function kh_lim($a) { return count($a) > 512 ? array_slice($a, 0, 512) : $a; }
 )PHP";
 
 } // namespace
@@ -1629,8 +1644,14 @@ std::string prelude(Lang l) {
 }
 
 // Defined below: the real emitter, which requires a call-free recipe.
+//
+// `lib_n` is the library's SIZE, not the library. MapF and FoldF name their
+// body as `k % lib->size()`, so the modulus is the only thing the per-line
+// emitter needs -- and passing it rather than guessing is what keeps the
+// emitted `kh_lib3` the same body the interpreter would have run. Zero means
+// no library, which is emit()'s case and refuses every higher-order node.
 static std::string emit_inlined(const Recipe& r, Lang l, const std::string& fn,
-                                std::size_t* lines);
+                                std::size_t* lines, std::size_t lib_n);
 
 // Splice a library body in place of each call, remapping its node indices and
 // routing its input to the call's argument. Recursive, because a library recipe
@@ -1679,6 +1700,119 @@ Recipe inline_calls(const Recipe& r, const Library& lib) {
     return out;
 }
 
+// Which library bodies a unit needs, in dependency order, and whether it can be
+// built at all.
+//
+// THE DEPTH ACCOUNTING IS THE INTERPRETER'S, step for step. A higher-order node
+// evaluated at depth d reaches its body through Library::call(li, .., d + 1),
+// and Library::call returns EMPTY the moment that argument reaches
+// kMaxCallDepth. So bodies live at depth 1 and depth 2, and nothing lives at 3.
+//
+// Op::Call is WALKED BUT NOT COLLECTED. inline_calls splices it into its caller
+// so it produces no function of its own -- but the spliced body still executes
+// one level down, and a fold inside it is bounded by that deeper level rather
+// than by the caller's.
+//
+// AT THE BOUND, REFUSE THE WHOLE UNIT. The interpreter yields an empty list
+// there, and one emitted function cannot both fold and yield empty depending on
+// who called it. Refusing is also what makes one function per library index
+// correct at all: an index reached at two different depths is the same function
+// only when neither of them is near the bound, which is exactly what this
+// guarantees.
+static bool plan_unit(const Recipe& r, const Library& lib, std::size_t depth,
+                      std::vector<std::size_t>& need,
+                      std::vector<char>& seen, std::vector<char>& taken) {
+    if (!r.found || r.pool.empty()) return false;
+
+    // Only what the root reaches. Those are the nodes emit_inlined emits and the
+    // nodes inline_calls splices, so a DEAD fold is not in the output and must
+    // not be able to refuse the unit either.
+    std::vector<bool> live(r.pool.size(), false);
+    {
+        std::vector<std::size_t> stack{r.root};
+        while (!stack.empty()) {
+            const std::size_t i = stack.back();
+            stack.pop_back();
+            if (i >= r.pool.size() || live[i]) continue;
+            live[i] = true;
+            if (r.pool[i].a >= 0) stack.push_back(static_cast<std::size_t>(r.pool[i].a));
+            if (r.pool[i].b >= 0) stack.push_back(static_cast<std::size_t>(r.pool[i].b));
+        }
+    }
+
+    for (std::size_t i = 0; i < r.pool.size(); ++i) {
+        if (!live[i]) continue;
+        const Expr& e = r.pool[i];
+        if (e.op != Op::MapF && e.op != Op::FoldF && e.op != Op::Call) continue;
+        if (lib.size() == 0) return false;
+        const std::size_t nd = depth + 1;
+        if (nd >= kMaxCallDepth) return false;
+        const std::size_t li = e.k % lib.size();
+        // A tape-form primitive has no recipe to emit as source. inline_calls
+        // quietly substitutes an identity for one, which is a different program;
+        // here it stops the unit instead.
+        if (!lib.at(li).recipe.found) return false;
+        const std::size_t key = li * kMaxCallDepth + nd;
+        if (!seen[key]) {
+            seen[key] = 1;
+            if (!plan_unit(lib.at(li).recipe, lib, nd, need, seen, taken)) return false;
+        }
+        // Pushed AFTER its own dependencies, so `need` comes out in an order
+        // C++ and Rust will accept and nothing else objects to.
+        if (e.op != Op::Call && !taken[li]) { taken[li] = 1; need.push_back(li); }
+    }
+    return true;
+}
+
+std::string emit_unit(const Recipe& r, Lang l, const std::string& fn,
+                      const Library* lib, std::size_t* lines) {
+    if (lines) *lines = 0;
+    if (!r.found) return {};
+
+    const std::size_t n = (lib != nullptr) ? lib->size() : 0;
+    std::vector<std::size_t> need;
+    if (n == 0) {
+        // With no library the interpreter's own answer for these is an empty
+        // list, not an identity, and there is no honest source for that.
+        for (const Expr& e : r.pool)
+            if (e.op == Op::MapF || e.op == Op::FoldF || e.op == Op::Call) return {};
+    } else {
+        std::vector<char> seen(n * kMaxCallDepth, 0);
+        std::vector<char> taken(n, 0);
+        if (!plan_unit(r, *lib, 0, need, seen, taken)) return {};
+    }
+
+    std::string out = prelude(l);
+    out += "\n";
+    std::size_t total = 0;
+
+    for (const std::size_t li : need) {
+        std::size_t k = 0;
+        // The name is the LIBRARY INDEX, because that is what MapF and FoldF
+        // resolve to at every call site in this unit.
+        const std::string body =
+            emit_inlined(inline_calls(lib->at(li).recipe, *lib), l,
+                         "kh_lib" + std::to_string(li), &k, n);
+        if (body.empty()) return {};          // partial source is worse than none
+        out += body;
+        out += "\n";
+        total += k;
+    }
+
+    std::size_t k = 0;
+    const std::string top =
+        emit_inlined((lib != nullptr) ? inline_calls(r, *lib) : r, l, fn, &k, n);
+    if (top.empty()) return {};
+    out += top;
+    total += k;
+
+    // The prelude is fixed cost and is not counted, exactly as emit() does not
+    // count it. Every synthesised body IS counted, bodies included -- they are
+    // code this organ wrote and code the unit needs.
+    if (lines) *lines = total;
+    return out;
+}
+
 std::string emit(const Recipe& r, Lang l, const std::string& fn, std::size_t* lines,
                  const Library* lib) {
     if (lines) *lines = 0;
@@ -1687,11 +1821,14 @@ std::string emit(const Recipe& r, Lang l, const std::string& fn, std::size_t* li
     // standalone source, and dropping the calls -- which is what this function
     // used to do -- produces a program that is not the one that was certified.
     const Recipe inlined = (lib != nullptr) ? inline_calls(r, *lib) : r;
-    return emit_inlined(inlined, l, fn, lines);
+    // lib_n = 0: this entry point hands back ONE function. A fold names a
+    // library body, and one function cannot carry the body it calls, so the
+    // higher-order refusal stays here. emit_unit is the entry point that can.
+    return emit_inlined(inlined, l, fn, lines, 0);
 }
 
 static std::string emit_inlined(const Recipe& r, Lang l, const std::string& fn,
-                                std::size_t* lines) {
+                                std::size_t* lines, std::size_t lib_n) {
     if (lines) *lines = 0;
     if (!r.found) return {};
 
@@ -1704,12 +1841,20 @@ static std::string emit_inlined(const Recipe& r, Lang l, const std::string& fn,
     // that made three quarters of this module's output a different program from
     // the one certified, and it is not going to happen twice.
     //
-    // Until every backend has a fold, a recipe containing one emits NOTHING and
-    // counts as zero lines. A capability the emitter cannot express is a
-    // capability this organ does not yet have, and the throughput figure should
-    // say so by being lower rather than by being wrong.
+    // They now emit -- as kh_mapf/kh_foldf over a named body -- but ONLY when a
+    // library size came with them, because `k % lib->size()` is how the
+    // interpreter picks the body and an emitter that guessed the modulus would
+    // name a different one. Without it the recipe still emits NOTHING and counts
+    // as zero lines: a capability the emitter cannot express is a capability
+    // this organ does not have here, and the throughput figure should say so by
+    // being lower rather than by being wrong.
+    //
+    // Op::Call refuses unconditionally and always will. This function runs after
+    // inline_calls, so a surviving Call means there was no library to splice
+    // from, and emitting the argument in its place is the exact defect above.
     for (const Expr& e : r.pool) {
-        if (e.op == Op::MapF || e.op == Op::FoldF || e.op == Op::Call) return {};
+        if (e.op == Op::Call) return {};
+        if ((e.op == Op::MapF || e.op == Op::FoldF) && lib_n == 0) return {};
     }
 
     // Only the nodes the root actually reaches. Emitting the whole pool would
@@ -1789,6 +1934,34 @@ static std::string emit_inlined(const Recipe& r, Lang l, const std::string& fn,
                 case Lang::Lua:    rhs = "{" + k + "}"; break;
                 default:           rhs = "[" + k + "]"; break;
             }
+        } else if (e.op == Op::MapF || e.op == Op::FoldF) {
+            // The body is resolved the way the interpreter resolves it and no
+            // other way: k % lib->size(). A different modulus is a different
+            // function, which is a different program.
+            const std::string h = std::string(call_prefix(l)) +
+                                  (e.op == Op::MapF ? "kh_mapf" : "kh_foldf");
+            const std::string b = "kh_lib" + std::to_string(e.k % lib_n);
+            // The body AS A VALUE. Six of the fourteen targets cannot spell that
+            // with a bare name, and each refuses differently.
+            std::string fv;
+            switch (l) {
+                // Java and C# have no top-level functions, so emit_inlined puts
+                // every emitted function in its own class -- the reference has
+                // to name that class rather than the Kh the operations live on.
+                case Lang::Java:   fv = "Fn_" + b + "::" + b; break;
+                case Lang::CSharp: fv = "Fn_" + b + "." + b; break;
+                // A bare Ruby name CALLS the method; Method objects are how
+                // Ruby hands one over uncalled.
+                case Lang::Ruby:   fv = "method(:" + b + ")"; break;
+                // A bare PHP name is a constant. A string is a callable.
+                case Lang::Php:    fv = "'" + b + "'"; break;
+                // A bare Kotlin name resolves as a property and does not build.
+                case Lang::Kotlin: fv = "::" + b; break;
+                default:           fv = b; break;
+            }
+            if (l == Lang::Haskell)   rhs = h + " " + ref(e.a) + " " + fv;
+            else if (l == Lang::Rust) rhs = h + "(&" + ref(e.a) + ", " + fv + ")";
+            else                      rhs = h + "(" + ref(e.a) + ", " + fv + ")";
         } else {
             const std::string f = std::string(call_prefix(l)) + fn_of(e.op);
             if (l == Lang::Haskell) {
@@ -1803,6 +1976,25 @@ static std::string emit_inlined(const Recipe& r, Lang l, const std::string& fn,
                 rhs = is_binary(e.op) ? f + "(" + ref(e.a) + ", " + ref(e.b) + ")"
                                       : f + "(" + ref(e.a) + ")";
             }
+        }
+        // EVERY RESULT IS LENGTH-LIMITED, because the interpreter limits every
+        // result and the two must not disagree.
+        //
+        // apply_op ends with clamp_len(out) on EVERY operation, truncating to
+        // kMaxListLen. No prelude reproduced that, so a fold whose accumulator
+        // grows -- or any operation on an input longer than the limit -- diverged:
+        // measured, foldf over 600 elements gave 512 from the interpreter and 600
+        // from the emitted Python. That is the certified program and the emitted
+        // program computing different things, which is the one failure this file
+        // exists to prevent.
+        //
+        // Wrapping at the single point where a statement is formed is the whole
+        // fix. Doing it inside twenty-five helpers across fourteen backends would
+        // be three hundred and fifty chances to miss one.
+        if (e.op != Op::Const) {
+            rhs = (l == Lang::Haskell) ? ("kh_lim (" + rhs + ")")
+                : (l == Lang::Rust)    ? ("kh_lim(" + rhs + ")")
+                                       : ("kh_lim(" + rhs + ")");
         }
         switch (l) {
             case Lang::Cpp:        line("    const V " + lhs + " = " + rhs + ";"); break;

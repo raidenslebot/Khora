@@ -251,6 +251,67 @@ int main() {
               "AND the library body, rather than silently dropping the call");
     }
 
+    // --- A HIGHER-ORDER RECIPE EMITS A UNIT THAT IS THE SAME PROGRAM ---------
+    //
+    // MapF and FoldF name a library BODY rather than a value, so the thing that
+    // has to be checked is not that a fold appears in the source -- it is that
+    // the body it names is in the same file, under the index the interpreter
+    // would resolve, and defined before the function that folds over it.
+    {
+        Library lib(8);
+        // 0: sum whatever it is handed. As a fold body that is "+", because the
+        //    body receives the running value and the next element as a pair.
+        Recipe pairsum;
+        pairsum.pool.push_back(Expr{Op::Sum, -1, -1, 0});
+        pairsum.root = 0; pairsum.found = true;
+        lib.admit_recipe("pairsum", pairsum, 0);
+        // 1 and 2 stack a further higher-order level each, so a fold over 2
+        // reaches depth 3 -- where the interpreter stops and returns nothing.
+        Recipe m1;
+        m1.pool.push_back(Expr{Op::MapF, -1, -1, 0});
+        m1.root = 0; m1.found = true;
+        lib.admit_recipe("map_pairsum", m1, 0);
+        Recipe m2;
+        m2.pool.push_back(Expr{Op::MapF, -1, -1, 1});
+        m2.root = 0; m2.found = true;
+        lib.admit_recipe("map_map", m2, 0);
+        check(lib.size() == 3, "three library bodies admitted");
+
+        Recipe fold;
+        fold.pool.push_back(Expr{Op::FoldF, -1, -1, 0});
+        fold.root = 0; fold.found = true;
+
+        const Value got = fold.apply(Value{1, 2, 3, 4}, &lib);
+        std::printf("  fold of + over [1,2,3,4] -> [%lld]\n",
+                    got.empty() ? -1LL : static_cast<long long>(got[0]));
+        check(got == Value{10}, "a fold with an adding body sums the list");
+        check(fold.apply(Value{}, &lib).empty(), "an empty list folds to nothing");
+        check(fold.apply(Value{9}, &lib) == Value{9}, "a singleton folds to itself");
+
+        std::size_t lines = 0;
+        const std::string unit = emit_unit(fold, Lang::Python, "f", &lib, &lines);
+        std::printf("%s", unit.c_str());
+        const std::size_t body = unit.find("def kh_lib0");
+        const std::size_t user = unit.find("kh_foldf(x, kh_lib0)");
+        check(body != std::string::npos, "the unit carries the library body it folds over");
+        check(user != std::string::npos, "and the fold names that body rather than an identity");
+        check(body < user, "with the body defined before the function that folds over it");
+        check(lines > 0, "and the synthesised lines are counted");
+
+        // emit() hands back one function, which cannot carry a body, so it
+        // refuses -- and still emits everything that is not higher order.
+        check(emit(fold, Lang::Python, "f", nullptr, &lib).empty(),
+              "emit() refuses a fold rather than emitting a dangling call");
+
+        // AT THE DEPTH BOUND, REFUSE. The interpreter yields empty there, and
+        // one emitted kh_lib0 cannot be a fold at one depth and empty at another.
+        Recipe deep;
+        deep.pool.push_back(Expr{Op::FoldF, -1, -1, 2});
+        deep.root = 0; deep.found = true;
+        check(emit_unit(deep, Lang::Python, "f", &lib).empty(),
+              "and a nesting that reaches kMaxCallDepth refuses the whole unit");
+    }
+
     std::printf("\n");
     if (failures == 0) std::printf("ALL PASS\n");
     else               std::printf("%d FAILURE(S)\n", failures);

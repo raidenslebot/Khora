@@ -489,6 +489,29 @@ Recipe inline_calls(const Recipe& r, const Library& lib);
 std::string emit(const Recipe& r, Lang l, const std::string& fn,
                  std::size_t* lines = nullptr, const Library* lib = nullptr);
 
+// A COMPLETE COMPILABLE UNIT: the operation set, then every library body the
+// recipe transitively needs, then the recipe itself.
+//
+// This exists because emit() hands back ONE function, and a higher-order node
+// does not name a value -- it names a BODY. `fold[lib3](x)` is only meaningful
+// beside the source of lib3, so emit() refuses MapF and FoldF and this does not.
+// Each needed body is emitted as `kh_lib<i>`, where i is the library index the
+// interpreter would resolve (`k % lib->size()`), and the bodies come out before
+// anything that folds over them.
+//
+// `lines` receives the synthesised line count -- every emitted body plus the
+// recipe, prelude excluded, on the same terms emit() counts by.
+//
+// Returns the EMPTY STRING rather than partial source when the unit cannot be
+// built honestly:
+//   * a needed primitive is a tape program rather than a recipe, which has no
+//     source form here;
+//   * or the nesting reaches kMaxCallDepth, where the interpreter yields an
+//     empty list and no single emitted function can reproduce a result that
+//     depends on how deep its caller was.
+std::string emit_unit(const Recipe& r, Lang l, const std::string& fn,
+                      const Library* lib, std::size_t* lines = nullptr);
+
 // ---------------------------------------------------------------------------
 // SOLVING TO FIXPOINT: the loop that makes the system improve itself.
 //
