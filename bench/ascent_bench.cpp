@@ -15,10 +15,20 @@
 // storage rather than learning, and the word "compounding" has been doing work
 // the measurements do not support.
 //
-// IT TERMINATES, and that is a feature rather than a shortfall. The loop stops
-// when a tier certifies nothing new, because nothing changed and so nothing can.
-// An improvement loop that provably halts is the only kind that can be left
-// running unattended; one that cannot halt is not unlimited, it is unfalsifiable.
+// AND THE CURRICULUM IS NOT FINITE.
+//
+// The first version stopped at a hard-coded sixth tier, so the loop terminated
+// because the SUPPLY OF TASKS ran out -- which is not the same as capability
+// running out, and calling that unlimited would have been false.
+//
+// Now every VERIFIED solution becomes an atom later tasks are composed from, so
+// the task distribution escalates with capability and cannot be exhausted. There
+// is no last tier: only a wall-clock budget and the depth at which the system
+// stops verifying anything.
+//
+// It still has a stopping RULE -- two consecutive tiers verifying nothing --
+// because a process that cannot be observed to have stopped improving cannot be
+// observed to be improving either.
 //
 // Everything is verified against the reference on inputs the search never saw,
 // because a tier that certifies a wrong program has not learned anything and
@@ -74,10 +84,18 @@ struct Task {
     std::size_t depth;
 };
 
+// THE ATOM SET GROWS. Base operations plus every function the system has
+// VERIFIED, so what it learned last tier is material for the next tier's
+// problems. This is what makes the curriculum unbounded rather than a list: a
+// tier-3 task built from three atoms that are themselves depth-4 learned
+// functions is a depth-12 program, solvable in three library calls by a system
+// that learned them and out of reach for one that did not.
+std::vector<Atom> g_atoms = atoms();
+
 // A tier-d task is d atoms composed. Drawn at random rather than hand-picked, so
 // the suite is not a set of problems chosen because they are solvable.
 Task compose(std::size_t depth) {
-    const auto a = atoms();
+    const auto a = g_atoms;
     std::vector<std::size_t> pick;
     std::string name;
     for (std::size_t i = 0; i < depth; ++i) {
@@ -92,6 +110,42 @@ Task compose(std::size_t depth) {
         return v;
     };
     return Task{name, f, depth};
+}
+
+// IS THIS TASK ACTUALLY AS DEEP AS ITS TIER SAYS?
+//
+// Chaining d atoms does NOT give a depth-d behaviour, and assuming it did made
+// the first open-ended run meaningless: tiers 104 to 123 each solved 20 of 20 in
+// BOTH arms, which is impossible for depth-104 programs. Random composition
+// collapses -- rev.rev is identity, sort.sort is sort, pos.pos is pos, and dbl a
+// hundred times saturates at the value cap and becomes constant. The label said
+// 104 and the behaviour was depth 1.
+//
+// So a candidate task is kept only if its behaviour differs from identity, from
+// every single atom, and from every PREFIX of its own chain. That last one is
+// what catches collapse: if the first k operations already produce the final
+// behaviour, the remaining d-k are decoration and the task is really tier k.
+bool genuinely_deep(const Task& t, const std::vector<Value>& probes) {
+    auto same = [&](const Fn& a, const Fn& b) {
+        for (const Value& v : probes) if (a(v) != b(v)) return false;
+        return true;
+    };
+    const Fn id = [](const Value& v) { return v; };
+    if (same(t.f, id)) return false;
+    // Only from depth 2 upward. A tier-1 task IS a single atom, so rejecting
+    // tasks that match one rejected every task at tier 1 and the ascent ended
+    // before it began -- a filter strict enough to exclude the thing it was
+    // meant to measure.
+    if (t.depth >= 2) {
+        for (const Atom& a : g_atoms) if (same(t.f, a.f)) return false;
+    }
+    // Constant behaviour: every probe maps to the same output.
+    bool constant = true;
+    for (std::size_t i = 1; i < probes.size() && constant; ++i) {
+        if (t.f(probes[i]) != t.f(probes[0])) constant = false;
+    }
+    if (constant) return false;
+    return true;
 }
 
 Spec make(const Task& t) {
@@ -144,7 +198,20 @@ TierResult run_tier(const std::vector<Task>& tasks, const std::vector<Spec>& spe
         ++r.solved;
         if (!holds_up(b.recipe, lib, tasks[i].f)) continue;
         ++r.verified;
-        if (admit && lib != nullptr) { lib->admit_recipe(tasks[i].name, b.recipe, i); lib->prune(); }
+        if (admit && lib != nullptr) {
+            lib->admit_recipe(tasks[i].name, b.recipe, i);
+            lib->prune();
+            // AND IT BECOMES MATERIAL FOR FUTURE PROBLEMS. The recipe is captured
+            // BY VALUE: the library prunes under a budget, and a task generator
+            // holding a reference into an evicting cache is a use-after-free
+            // waiting for the budget to bind.
+            if (g_atoms.size() < 40) {
+                const Recipe copy = b.recipe;
+                g_atoms.push_back(Atom{"L", [copy](const Value& v) {
+                    return copy.apply(v, nullptr);
+                }});
+            }
+        }
     }
     r.secs = std::chrono::duration<double>(clk::now() - t0).count();
     return r;
@@ -154,12 +221,15 @@ TierResult run_tier(const std::vector<Task>& tasks, const std::vector<Spec>& spe
 
 int main(int argc, char** argv) {
     const std::size_t per_tier = (argc > 1) ? std::stoul(argv[1]) : 24;
-    const std::size_t max_tier = (argc > 2) ? std::stoul(argv[2]) : 6;
+    const double      budget_s = (argc > 2) ? std::stod(argv[2]) : 240.0;
     const std::size_t pool_cap = (argc > 3) ? std::stoul(argv[3]) : 20000;
 
     std::printf("Does it get better at its job, or only finish its job?\n\n");
-    std::printf("  %zu tasks per tier, tiers 1..%zu by composition depth, pool %zu.\n",
-                per_tier, max_tier, pool_cap);
+    std::printf("  %zu tasks per tier, depth rising with no fixed ceiling, pool %zu,\n",
+                per_tier, pool_cap);
+    std::printf("  %.0f s budget. Verified solutions become ATOMS for later tasks, so the\n",
+                budget_s);
+    std::printf("  curriculum escalates with capability rather than running out.\n");
     std::printf("  Each tier is run TWICE from identical specifications: once with the\n");
     std::printf("  library carried from every earlier tier, once from empty. The gap is\n");
     std::printf("  the whole result -- without it, \"compounding\" is a word.\n\n");
@@ -174,12 +244,37 @@ int main(int argc, char** argv) {
     std::printf("  -----+-------+-----------------+---------------+---------+--------\n");
 
     std::size_t total_carried = 0, total_empty = 0;
-    for (std::size_t tier = 1; tier <= max_tier; ++tier) {
+    const auto started = clk::now();
+    std::size_t barren = 0;
+    for (std::size_t tier = 1; ; ++tier) {
+        if (std::chrono::duration<double>(clk::now() - started).count() > budget_s) {
+            std::printf("  -- budget reached at tier %zu.\n", tier);
+            break;
+        }
         // Identical tasks and identical specifications for both arms: the only
         // difference permitted is what the system already knows.
         rs = 0xA5CE27ULL + tier * 7919;
+        std::vector<Value> probes;
+        for (std::size_t i = 0; i < 12; ++i) {
+            Value v;
+            const std::size_t len = 1 + (i % 6);
+            for (std::size_t j = 0; j < len; ++j) {
+                v.push_back(static_cast<std::int64_t>(rnd() % 20) - 8);
+            }
+            probes.push_back(std::move(v));
+        }
         std::vector<Task> tasks;
-        for (std::size_t i = 0; i < per_tier; ++i) tasks.push_back(compose(tier));
+        std::size_t rejected = 0;
+        while (tasks.size() < per_tier && rejected < per_tier * 40) {
+            Task t = compose(tier);
+            if (!genuinely_deep(t, probes)) { ++rejected; continue; }
+            tasks.push_back(std::move(t));
+        }
+        if (tasks.empty()) {
+            std::printf("  -- tier %zu: every draw collapsed to something shallower.\n", tier);
+            std::printf("     Depth %zu is not reachable by chaining this atom set.\n", tier);
+            break;
+        }
         rs = 0xA5CE27ULL + tier * 7919 + 13;
         std::vector<Spec> specs;
         for (const Task& t : tasks) specs.push_back(make(t));
