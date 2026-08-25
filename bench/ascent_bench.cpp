@@ -371,6 +371,24 @@ TierResult run_tier(const std::vector<Task>& tasks, const std::vector<Spec>& spe
             // external task set hard enough to reward a richer vocabulary, and
             // techne_bench -- the fixed set that exists -- is not that: its
             // hand-picked list transformations are solved 16/20 either way.
+            // RE-TESTED AND STILL REJECTED, which is worth recording because the
+            // reason for re-testing was sound. Gating admission on behavioural
+            // novelty and on not collapsing lost to admitting whatever came
+            // first when it was first measured (tier 18 / 175 against tier 20 /
+            // 220), and that measurement predated the case-length fix,
+            // construct_best and solve_one -- all of which moved this bench a
+            // long way. A rejection carries a profile with it and expires when
+            // the profile does, so it was measured again:
+            //
+            //   admit first-come | carried 232 | empty 192 | gap 40 | tier 29
+            //   novelty-gated    | carried 231 | empty 175 | gap 56 | tier 26
+            //
+            // The gate WIDENS THE GAP and that is exactly why it is still
+            // rejected. The widening is entirely the control getting worse --
+            // 192 down to 175 -- while the carried arm does not move at all, and
+            // three tiers of depth are lost to the extra search a more diverse
+            // atom set costs. A library that looks more valuable because the
+            // baseline got worse is not more valuable.
             if (g_atoms.size() < 40) {
                 const Recipe copy = b.recipe;
                 g_atoms.push_back(Atom{"L", [copy](const Value& v) {

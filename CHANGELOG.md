@@ -287,6 +287,33 @@ widening the cases from 1-5 to 1-12 already removed them. A counterexample hunt
 finds nothing when the specification is already informative enough, which is the
 outcome you want from having fixed the specification.
 
+### A rejection re-tested, and a gap that widened for the wrong reason
+
+The lesson from parallel search — a rejected idea carries a profile with it, and
+when the profile changes the rejection expires — got applied immediately, to the
+next thing the ascent was blocked on. At tier 29 the generator draws about 1,610
+tasks to keep two, so the curriculum saturates again, and the known lever for
+that is a richer atom set.
+
+Gating learned atoms on behavioural novelty and on not collapsing was measured
+before and lost: tier 18 and 175 verified against tier 20 and 220. That predated
+the case-length fix, `construct_best` and `solve_one`. Measured again:
+
+| | carried | empty | gap | depth |
+|---|---------|-------|-----|-------|
+| admit first-come | **232** | 192 | 40 | **tier 29**, stopping rule |
+| novelty-gated | 231 | 175 | **56** | tier 26, budget out |
+
+**The gate widens the gap by sixteen and is still rejected.** The widening is
+entirely the control falling from 192 to 175 while the carried arm does not move
+at all, and three tiers of depth are lost to the extra search a more diverse atom
+set costs.
+
+That is worth keeping as a warning about the headline figure this bench prints.
+"The library is worth 56 additional verified programs" is true and would read as
+a 40% improvement over 40, and it means the baseline got worse. A gap is a
+difference, and a difference can be widened from either end.
+
 ### Three searches at once: tier 17 to tier 29, and the last regression to zero
 
 Forward, bidirectional, and library-free were attempted one after another —
