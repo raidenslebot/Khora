@@ -445,6 +445,40 @@ maximum in all fourteen languages, verified byte-identical, even though nothing
 in its curriculum asks for one — which is the right way round: reach costs
 nothing, so take it whenever it is offered.
 
+### "The curriculum saturates" was the generator giving up
+
+The ascent has ended on curriculum saturation for many cycles: the generator
+could not fill a tier, drawing about 1,610 tasks to keep two by tier 29. That was
+measured correctly every time and diagnosed wrongly every time.
+
+The budget was `per_tier * 40` — 1,600 draws for forty tasks. At a keep rate of
+two in sixteen hundred it was hitting the cap, not exhausting the space. And a
+draw is a composition plus twelve probe evaluations: **microseconds**, against
+the tens of seconds the tier then spends being solved. Filling a tier at that
+keep rate needs about thirty-two thousand draws, which is a fraction of a second.
+
+Raised to 80,000:
+
+| | before | after |
+|---|--------|-------|
+| depth | tier 29, stopping rule | **tier 40**, stopping rule |
+| carried | 232 | **271** |
+| empty | 191 | 223 |
+| gap | 40 | **48** |
+| tiers still full at 40 tasks | to tier 11 | **to tier 34** |
+
+Eleven more tiers and thirty-nine more verified programs, from raising a constant
+that was never measured. Three cycles went into attacking this block from the
+atom side — non-absorbing atoms, novelty-gated learned atoms, atoms outside the
+span, an operation added to bring one inside — and produced a criterion worth
+keeping and no depth. The block was the generator's patience.
+
+It needs the time to spend: at a 300 s budget the run is now time-limited at tier
+23 with the same total, because full deep tiers cost full solve time. Tier 40
+takes about 1,000 s. That is the honest shape of it — the depth is real and it is
+bought with wall clock, on a machine where CPU is the resource the goal says to
+spend.
+
 ### What an atom has to be, which took a negative result to state
 
 At tier 29 the generator draws about 1,610 tasks to keep two, so the ascent ends

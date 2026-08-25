@@ -469,7 +469,21 @@ int main(int argc, char** argv) {
         }
         std::vector<Task> tasks;
         std::size_t rejected = 0;
-        while (tasks.size() < per_tier && rejected < per_tier * 40) {
+        // THE GENERATOR WAS GIVING UP, not running out.
+        //
+        // This budget was per_tier * 40 -- 1,600 draws for forty tasks -- and at
+        // tier 29 the keep rate is about two in sixteen hundred, so it was
+        // hitting the cap and reporting a saturated curriculum. But a draw is a
+        // composition and twelve probe evaluations: microseconds. Filling a tier
+        // at a 0.12% keep rate needs about thirty-two thousand draws, which is a
+        // fraction of a second against the tens of seconds the tier then spends
+        // being SOLVED.
+        //
+        // "The curriculum saturates" has been the standing block for several
+        // cycles and was measured, correctly, as the generator failing to fill a
+        // tier. What was never checked is whether it was failing because deep
+        // tasks do not exist or because it stopped looking.
+        while (tasks.size() < per_tier && rejected < per_tier * 2000) {
             Task t = compose(tier);
             if (!genuinely_deep(t, probes)) { ++rejected; continue; }
             tasks.push_back(std::move(t));
