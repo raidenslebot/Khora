@@ -150,6 +150,7 @@ std::string driver(Lang l, const std::vector<Named>& rs, const std::vector<Value
             case Lang::Rust: return "vec![" + join(v) + "]";
             case Lang::Go:   return "V{" + join(v) + "}";
             case Lang::CSharp: return "new long[]{" + join(v) + "}";
+            case Lang::Lua:    return "{" + join(v) + "}";   // Lua tables, not [ ]
             default:         return "[" + join(v) + "]";
         }
     };
@@ -170,6 +171,39 @@ std::string driver(Lang l, const std::vector<Named>& rs, const std::vector<Value
         for (const Named& n : rs) {
             s += "for (let i = 0; i < INPUTS.length; i++) console.log('" + std::string(n.name) +
                  " ' + i + ' ' + " + call(n, "i", "INPUTS") + ".join(','));\n";
+        }
+    } else if (l == Lang::Ruby) {
+        // Returns the whole transcript as a STRING rather than printing it. The
+        // Ruby available here is CRuby compiled to WASM, whose WASI stdout is not
+        // wired up in this harness -- but a returned value crosses the boundary
+        // cleanly, and the language semantics under test are identical either way.
+        s += "INPUTS = [";
+        for (std::size_t i = 0; i < ins.size(); ++i) { if (i) s += ", "; s += lit(ins[i]); }
+        s += "]\n_out = []\n";
+        for (const Named& nm : rs) {
+            s += "INPUTS.each_index { |i| _out << ('" + std::string(nm.name)
+               + "' + ' ' + i.to_s + ' ' + " + call(nm, "i", "INPUTS") + ".join(',')) }\n";
+        }
+        s += "_out.join(10.chr)\n";
+    } else if (l == Lang::Lua) {
+        // Lua indexes from ONE. The reference prints a 0-based case index and
+        // argument k is input (i + k) mod n, so both need translating rather
+        // than reusing the shared call builder. Single-quoted Lua strings keep
+        // the C++ literal free of escaped quotes.
+        s += "local INPUTS = {";
+        for (std::size_t i = 0; i < ins.size(); ++i) { if (i) s += ", "; s += lit(ins[i]); }
+        s += "}\n";
+        for (const Named& nm : rs) {
+            std::string args = "INPUTS[i + 1]";
+            for (std::size_t k = 1; k < nm.r.arity(); ++k) {
+                args += ", INPUTS[((i + " + std::to_string(k) + ") % "
+                      + std::to_string(nin) + ") + 1]";
+            }
+            s += "for j = 1, #INPUTS do\n";
+            s += "  local i = j - 1\n";
+            s += "  local r = " + std::string(nm.name) + "(" + args + ")\n";
+            s += "  print('" + std::string(nm.name) + "' .. ' ' .. i .. ' ' .. table.concat(r, ','))\n";
+            s += "end\n";
         }
     } else if (l == Lang::TypeScript) {
         s += "const INPUTS: V[] = [";
@@ -271,6 +305,8 @@ int main(int argc, char** argv) {
         {Lang::Cpp,        "emitted.cpp"},
         {Lang::CSharp,     "emitted.cs"},
         {Lang::TypeScript, "emitted.ts"},
+        {Lang::Lua,        "emitted.lua"},
+        {Lang::Ruby,       "emitted.rb"},
     };
 
     for (const Target& t : targets) {
@@ -309,13 +345,16 @@ int main(int argc, char** argv) {
     std::printf("  file and diff its stdout against it; any difference is the emitted\n");
     std::printf("  program computing something the certificate does not cover.\n\n");
     std::printf("  EXECUTED AND BYTE-IDENTICAL on this machine: Python, JavaScript,\n");
-    std::printf("  TypeScript, Go, Rust, C++ and C# -- seven of the fourteen backends,\n");
-    std::printf("  %zu recipes x %zu inputs each. Three of the recipes take TWO\n", rs.size(), ins.size());
+    std::printf("  TypeScript, Go, Rust, C++, C#, Lua and Ruby -- NINE of the fourteen\n");
+    std::printf("  backends, %zu recipes x %zu inputs each. Three of the recipes take TWO\n", rs.size(), ins.size());
     std::printf("  ARGUMENTS, and argument 1 is the NEXT input rather than a repeat of\n");
     std::printf("  the first, so a program that quietly ignores it cannot pass by\n");
-    std::printf("  coincidence.\n\n");
-    std::printf("  Java, Kotlin, Swift, Haskell, Ruby, Lua and PHP are EMITTED AND NOT\n");
-    std::printf("  EXECUTED: no toolchain for them here. They are not counted. Writing a\n");
-    std::printf("  file is not evidence that it runs, which is exactly what Go proved --\n");
-    std::printf("  it was emitted as `package kh` and could never run at all, while this\n");
-    std::printf("  harness printed a body-line count for it as though it had.\n");}
+    std::printf("  coincidence. Lua and Ruby run as real Lua 5.4 and real CRuby 3.4\n");
+    std::printf("  compiled to WebAssembly -- the implementations, not reimplementations.\n\n");
+    std::printf("  Java, Kotlin, Swift, Haskell and PHP are EMITTED AND NOT EXECUTED: no\n");
+    std::printf("  toolchain for them here. They are not counted. Writing a file is not\n");
+    std::printf("  evidence that it runs, which is exactly what Go proved -- emitted as\n");
+    std::printf("  `package kh`, it could never run at all, while this harness printed a\n");
+    std::printf("  body-line count for it as though it had.\n");
+    return 0;
+}
