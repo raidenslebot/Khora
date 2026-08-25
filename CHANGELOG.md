@@ -236,6 +236,33 @@ that is invisible until someone looks.
 
 **And it plateaus** — flat from stage 6 while training continues.
 
+### "Provably irreducible" was too strong, and the same defect proved it
+
+`selfhost_bench` drew training cases at lengths `i % 7` — 0 to 6 — and held out
+lengths `7 + i` — 7 to 12. **Disjoint, exactly like the other two benches.** The
+third instrument with the same hole in it.
+
+Fixing it (cases 0-13, holdout 15-20) does not change the count, which stays at
+13 of 22, and five times the search budget does not change it either. What it
+changes is the SET:
+
+```
+sort      irreducible  ->  rebuilt:  append(min(x), lib1(x))
+count_0   rebuilt      ->  irreducible
+```
+
+`sort` came off the list purely from repairing the specification generator. A
+label that moves when you fix the harness is a fact about the harness, so the
+nine are no longer described as *provably irreducible* — they are what this
+search did not find, at this budget, under this generator. That is a weaker and
+true statement in place of a stronger and false one.
+
+The thirteen that are rebuilt are still rebuilt, still agreeing with the real
+implementation on 1000 of 1000 probes, and several still go through learned
+library entries — the system reusing what it taught itself in order to rebuild
+what it is made of. `sort = append(min(x), lib1(x))` is new to that list and is
+the most interesting one on it.
+
 ### Counterexample refinement changed nothing, and that is a good sign
 
 The one loss that survived `construct_best` is a program that CERTIFIED and was

@@ -116,7 +116,7 @@ std::vector<Target> targets() {
 
 int main(int argc, char** argv) {
     const std::size_t pool_cap = (argc > 1) ? std::stoul(argv[1]) : 40000;
-    const std::size_t visible  = (argc > 2) ? std::stoul(argv[2]) : 14;
+    const std::size_t visible  = (argc > 2) ? std::stoul(argv[2]) : 28;
     const std::size_t probes   = (argc > 3) ? std::stoul(argv[3]) : 1000;
 
     std::printf("Can Khora rebuild its own primitives?\n\n");
@@ -199,8 +199,15 @@ int main(int argc, char** argv) {
         s.banned.push_back(t.op);
         // Banning Call too: a library entry that already IS this primitive would
         // make the reconstruction circular.
+        // CASE LENGTHS MUST SPAN THE HOLDOUT'S. This drew cases at lengths 0-6 and
+        // held out 7-12 -- disjoint, so any reconstruction whose behaviour
+        // depends on length passed every visible case and failed the holdout by
+        // construction. The identical defect in the other two benches was hiding
+        // a fifth of the measured capability, and "provably irreducible" is far
+        // too strong a claim to rest on a specification generator with a hole in
+        // it.
         for (std::size_t i = 0; i < visible; ++i) {
-            const std::size_t len = i % 7;
+            const std::size_t len = i % 14;
             Value in;
             for (std::size_t k = 0; k < len; ++k) {
                 in.push_back(static_cast<std::int64_t>(rnd() % 30) - 12);
@@ -209,7 +216,7 @@ int main(int argc, char** argv) {
         }
         for (std::size_t i = 0; i < 6; ++i) {
             Value in;
-            const std::size_t len = 7 + i;
+            const std::size_t len = 15 + i;
             for (std::size_t k = 0; k < len; ++k) {
                 in.push_back(static_cast<std::int64_t>(rnd() % 30) - 12);
             }
