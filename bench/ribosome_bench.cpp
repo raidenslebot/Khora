@@ -392,10 +392,12 @@ int main(int argc, char** argv) {
                             const std::vector<std::size_t>& held_from) {
         std::printf("  %s\n", label);
         std::printf("    %-20s | %7s | %10s | %11s | %s\n",
-                    "predictor", "held-out", "hits/n", "95%% Wilson", "what it is");
+                    "predictor", "held-out", "hits/n", "95% Wilson", "what it is");
         std::printf("    ---------------------+---------+------------+-------------+-----------\n");
-        std::printf("    chance               |       %6.3f%%     | 1 / %zu\n",
-                    100.0 / static_cast<double>(cb.size()), cb.size());
+        char chance_note[48];
+        std::snprintf(chance_note, sizeof chance_note, "1 / %zu", cb.size());
+        std::printf("    %-20s | %6.3f%% | %10s | %11s | %s\n",
+                    "chance", 100.0 / static_cast<double>(cb.size()), "-", "-", chance_note);
 
         auto row = [&](const char* name, const Rate& r, const char* note) {
             const auto ci = r.wilson();
@@ -508,7 +510,7 @@ int main(int argc, char** argv) {
             std::printf("    is actually posed. Balanced averages over SOURCE categories, so a\n");
             std::printf("    constant scores 1/k instead of the size of the largest class.\n");
             std::printf("    %-20s | %6s%% | %4s/%-5s | %11s | balanced\n",
-                        "predictor", "plain", "hits", "n", "95%% Wilson");
+                        "predictor", "plain", "hits", "n", "95% Wilson");
             auto crow = [&](const char* name, const Rate& r,
                             const std::function<Glyph(const Glyph&)>& f) {
                 const auto ci = r.wilson();
@@ -525,7 +527,7 @@ int main(int argc, char** argv) {
             // conclusions survived in this file because a point estimate was
             // reported without asking whether the sample could support it.
             std::printf("    Ribosome vs top associate: %s (%zu hits vs %zu of %zu)\n",
-                        separable(c_evo, c_top) ? "SEPARABLE at 95%%"
+                        separable(c_evo, c_top) ? "SEPARABLE at 95%"
                                                 : "INDISTINGUISHABLE -- the sample cannot rank them",
                         c_evo.hits, c_top.hits, c_evo.n);
         }
@@ -558,7 +560,7 @@ int main(int argc, char** argv) {
             std::printf("    -> evolution leads the best baseline by %.2f points, and that is\n",
                         evolved.pct() - best_b->pct());
             std::printf("       %s.\n", separable(evolved, *best_b)
-                        ? "SEPARABLE at 95%%" : "INSIDE THE NOISE -- not a win");
+                        ? "SEPARABLE at 95%" : "INSIDE THE NOISE -- not a win");
         } else {
             std::printf("    -> evolution trails the best baseline by %.2f points (%s).\n",
                         best_b->pct() - evolved.pct(),

@@ -209,6 +209,25 @@ public:
     std::vector<bool> live_mask() const;
     std::size_t effective_length() const;
 
+    // THE OUTPUT IS THE LAST REGISTER WRITTEN, not a fixed r0.
+    //
+    // Measured, and it was the structural cause of a dead search. With r0 as the
+    // sole output, an instruction is live only if it happens to target one
+    // register in four, so over 200,000 random 5-codon genomes: mean 1.309 live
+    // instructions, 27% pure identity, and only 53% producing output that
+    // depends on the input at all. The behaviourally distinct space collapsed to
+    // roughly 384 programs -- small enough to enumerate exhaustively in seconds,
+    // which makes "evolution" a slower and noisier for-loop.
+    //
+    // Reading out the destination of the final executed instruction makes that
+    // instruction live by construction, and liveness then propagates backwards
+    // through its sources. Nothing is bribed and no prior toward composition is
+    // added: the same genomes simply stop throwing three quarters of their work
+    // away. This is what an accumulator machine does, and it is closer to the
+    // biology too -- a gene's product is what the last step of the pathway
+    // makes, not what a designated slot happens to hold.
+    std::size_t output_register() const;
+
 private:
     std::vector<std::uint8_t> tape_;
 };

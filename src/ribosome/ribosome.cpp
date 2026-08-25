@@ -122,19 +122,27 @@ Genome Genome::cross(const Genome& x, const Genome& y, std::uint64_t seed) {
     return Genome(std::move(t));
 }
 
-// BACKWARD LIVENESS. Start with r0 live at the end and walk backwards: an
-// instruction is live only if its destination is live at that point, and if it
-// is, its sources become live before it. Everything else is non-coding.
+std::size_t Genome::output_register() const {
+    std::size_t out = 0;
+    for (const Codon& c : decode()) {
+        if (c.op != Op::Nop) out = c.dst;
+    }
+    return out;
+}
+
+// BACKWARD LIVENESS. Start with the output register live at the end and walk
+// backwards: an instruction is live only if its destination is live at that
+// point, and if it is, its sources become live before it. Everything else is
+// non-coding.
 //
-// This is not cosmetic. Only r0 is read out, so most instructions in an evolved
-// genome never reach the answer, and reading a champion without the marking is
-// how a program that ignores its own input gets mistaken for an operator --
-// which happened here, on the first hypernym run.
+// This is not cosmetic. Reading a champion without the marking is how a program
+// that ignores its own input gets mistaken for an operator, which is exactly
+// what happened on the first hypernym run here.
 std::vector<bool> Genome::live_mask() const {
     const auto code = decode();
     std::vector<bool> live(code.size(), false);
     std::array<bool, kRegisters> reg{};
-    reg[0] = true;                     // only r0 is read out
+    reg[output_register()] = true;     // the last register written is the answer
     for (std::size_t k = code.size(); k-- > 0;) {
         const Codon& c = code[k];
         if (c.op == Op::Nop) continue;
@@ -381,7 +389,8 @@ lattice::Glyph Vm::run(const Genome& g, const lattice::Glyph& input) const {
     std::array<lattice::Glyph, kRegisters> r = kInit;
     r[0] = input;
 
-    for (const Codon& c : g.decode()) {
+    const auto code = g.decode();
+    for (const Codon& c : code) {
         switch (c.op) {
             case Op::Nop:                                    break;
             case Op::Copy:   r[c.dst] = r[c.a];               break;
@@ -449,7 +458,7 @@ lattice::Glyph Vm::run(const Genome& g, const lattice::Glyph& input) const {
             default: break;
         }
     }
-    return r[0];
+    return r[g.output_register()];
 }
 
 // ---------------------------------------------------------------------------

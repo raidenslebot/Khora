@@ -106,6 +106,36 @@ int main() {
         check(Vm::role(17) != Vm::role(18), "and different roles are different vectors");
     }
 
+    // --- HOW MUCH OF A GENOME IS ACTUALLY ALIVE ------------------------------
+    //
+    // An adversarial audit measured this and it was the deepest problem in the
+    // module. With a fixed output register, over 200,000 random 5-codon genomes:
+    // mean 1.309 live instructions, 27% pure identity, only 53% producing output
+    // that depends on the input at all. The behaviourally distinct space
+    // collapsed to roughly 384 programs -- enumerable exhaustively in seconds,
+    // which makes calling the search "evolution" dishonest.
+    //
+    // Reading out the LAST register written instead makes the final instruction
+    // live by construction, and liveness propagates back through its sources.
+    // This measures the effect rather than assuming it.
+    {
+        const std::size_t kTrials = 50000;
+        std::size_t total_live = 0, identity = 0;
+        for (std::size_t t = 0; t < kTrials; ++t) {
+            const Genome g = Genome::random(5, rnd());
+            const std::size_t e = g.effective_length();
+            total_live += e;
+            if (e == 0) ++identity;
+        }
+        const double mean_live = static_cast<double>(total_live) / kTrials;
+        std::printf("  random 5-codon genomes: mean %.3f live instructions, %.1f%% pure identity\n",
+                    mean_live, 100.0 * identity / static_cast<double>(kTrials));
+        check(mean_live > 1.9,
+              "most of a genome is expressed, not discarded (fixed-r0 measured 1.309)");
+        check(100.0 * identity / static_cast<double>(kTrials) < 12.0,
+              "and few genomes are pure identity (fixed-r0 measured 27%)");
+    }
+
     // --- A FLAT LANDSCAPE, AND WHY IT IS FLAT --------------------------------
     //
     // This is kept as a test because it is the finding that redesigned the

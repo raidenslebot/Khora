@@ -251,6 +251,74 @@ That is the current state and it is not being dressed as anything else.
 
 ---
 
+## The audit: an agent attacked this module and found nine defects
+
+Rather than defend the negative results above, I dispatched an adversarial agent
+to find out whether the SEARCH was broken. It came back with an exhaustive scan
+of all 384 one-instruction programs and a verdict worth more than anything this
+module had produced: **the selection machinery is sound, the objective was
+wrong, and the reported numbers were noise.**
+
+### The reported numbers were noise
+
+Held-out is 1,133 pairs. "3.18% versus 3.44%" is **36 correct answers against
+39** — two-proportion z = 0.35, p = 0.72. The earlier withdrawn win of 0.353
+against 0.177 was **4 answers against 2**, p = 0.41. Nothing this bench printed
+was distinguishable from anything else it printed, and three separate wrong
+conclusions survived because a point estimate was never shown with its interval.
+
+Every rate now carries `hits/n` and a 95% Wilson interval, and the verdict line
+says INSIDE THE NOISE when a z-test cannot separate the leader from the
+runner-up.
+
+### The objective was anti-correlated with the reported metric
+
+The chamber selected on one designated sibling while the bench reported
+same-category accuracy. Over the range that matters those disagree: the
+instruction the chamber preferred scores 1.62% on the reported metric; the one
+it rejected scores 3.36%. The champion was **rank 1 of 384** on the target it was
+given. Selection never failed — it converged on the global optimum of a
+badly-specified fitness.
+
+### The "corrected" metric was also won by a constant — the same trap, twice
+
+Same-category accuracy has its own majority-class optimum at 3.97%, beating both
+the champion and the top-associate baseline, and the top scorers on it are all
+constants reached through the fixed initial registers. A majority-class row was
+printed beside the exact metric, where it reads 0.000% and looks harmless, and
+nothing was printed beside the metric that actually had the problem.
+
+### Six more, all confirmed
+
+| defect | effect |
+|---|---|
+| `sample = 96` | 294 of 300 organisms score zero hits, so fitness is a 1e-6 tiebreak of random sign and the tournament is a coin flip. Separating the difference at 2σ needs ~34,000 samples |
+| `Assoc` ill-conditioned | `b % degree`, degree 0–32, so one codon meant a different rank per word — no stable semantics. Only `b==0` meant "top associate" for all words: 0.027 expected copies in a starting population |
+| `Common` duplicated `Assoc[0]` | returned the first element of a's list found in b's, so `common(i,i) == links(i)[0]`, bit-identical |
+| opcode modulo bias | 256 % 13 = 9, so opcodes 9–12 got 19/256 — and 9–12 are exactly the four with a gradient |
+| no elitism | the champion was never re-inserted into the breeding population and could be bred out, surviving only as a reporting artefact |
+| performance | 88% of `Vm::run` was regenerating constant registers and re-decoding the tape; the champion admission test triggered 411,012 extra VM runs per round against the 28,800 needed to score the population |
+
+### And the deepest finding, which no fix addressed
+
+Over 200,000 random 5-codon genomes: mean **1.309** live instructions, **27%**
+pure identity, only 53% producing output that depends on the input at all. The
+behaviourally distinct space was roughly **384 programs** — enumerable
+exhaustively in seconds, which makes calling the search "evolution" dishonest.
+
+The response was to change the machine rather than bribe the fitness: **the
+output is the last register written**, not a fixed `r0`. That makes the final
+instruction live by construction and propagates liveness backwards through its
+sources. No prior toward composition is added; the same genomes simply stop
+throwing three quarters of their work away. Measured:
+
+| | fixed `r0` | last written |
+|---|---|---|
+| mean live instructions | 1.309 | **2.241** |
+| pure-identity genomes | 27% | **0.0%** |
+
+---
+
 ## The honest gap: the objective is still supplied from outside
 
 The claim that makes this organ interesting is that **the system decides for
