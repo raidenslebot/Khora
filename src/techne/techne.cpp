@@ -1052,6 +1052,17 @@ std::string Recipe::render() const {
     return go(static_cast<int>(root));
 }
 
+BuildResult construct_best(const Spec& spec, std::size_t max_pool, const Library* lib,
+                           bool mine_constants) {
+    BuildResult with = construct(spec, max_pool, lib, mine_constants);
+    if (with.proof == Proof::Generalised || lib == nullptr || lib->size() == 0) return with;
+    BuildResult bare = construct(spec, max_pool, nullptr, mine_constants);
+    if (bare.proof == Proof::Generalised) return bare;
+    // Neither generalised: keep whichever got further, so the fallback cannot
+    // lose information either.
+    return (bare.cases_passed > with.cases_passed) ? bare : with;
+}
+
 BuildResult construct(const Spec& spec, std::size_t max_pool, const Library* lib,
                       bool mine_constants) {
     BuildResult r;

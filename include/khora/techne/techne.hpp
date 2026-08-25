@@ -589,6 +589,23 @@ BuildResult construct(const Spec& spec, std::size_t max_pool,
                       const Library* lib = nullptr,
                       bool mine_constants = true);
 
+// With the library, and then WITHOUT it if that failed.
+//
+// A library is a vocabulary and a haystack at once: every entry is another
+// level-0 candidate competing for a bounded pool. That is not hypothetical --
+// `sort.delta`, which is `Delta(Sort(x))` and two operations deep, is solved
+// with an empty library and NOT solved with a ninety-six entry one. On a fixed
+// ninety-six task bar, three tasks were lost that way while eight were won, and
+// the totals hid it because the wins are larger.
+//
+// Keeping the better of the two answers cannot be worse than either. The second
+// search runs only for tasks that already failed -- the ones with budget to
+// spare -- and it converts "the library usually helps" into "the library cannot
+// hurt". That difference matters more than the average does.
+BuildResult construct_best(const Spec& spec, std::size_t max_pool,
+                           const Library* lib = nullptr,
+                           bool mine_constants = true);
+
 // ---------------------------------------------------------------------------
 // EMISSION: a recipe becomes real source in a real language.
 //

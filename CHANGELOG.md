@@ -236,6 +236,40 @@ that is invisible until someone looks.
 
 **And it plateaus** — flat from stage 6 while training continues.
 
+### Removing the library's regression was worth more than the library
+
+The per-task diff said the library was breaking things it could solve without:
+`sort.delta`, which is `Delta(Sort(x))` and two operations deep, solved with an
+empty library and not with a ninety-six entry one. Every entry is another level-0
+candidate competing for a bounded pool.
+
+`construct_best` keeps the better of with-library and without. The second search
+runs only for tasks that already failed — the ones with budget to spare — so the
+library becomes incapable of costing anything but time.
+
+| | before | after |
+|---|--------|-------|
+| fixed bar, best | 28 of 96 | **38 of 96** |
+| gained / lost | 8 / 3 | **16 / 1** |
+| plateau | flat from stage 6 | **still climbing at stage 9** |
+| depth 4 | 2 -> 3 | **2 -> 8** |
+| depth 5 | 0 -> 4 | **0 -> 5** |
+
+Against a base of 22 that is **+68%**, where it was +27%. Removing the
+regression was worth more than everything the library was contributing before
+it — and it broke the plateau, which three separate attacks on the search and
+the vocabulary had not.
+
+The one remaining loss is worth naming precisely: a program that CERTIFIED —
+passed every visible case and every holdout case — and then failed the external
+200-probe check. The fallback cannot fire on that, because from the solver's own
+view it succeeded. Only an outside oracle sees the difference, which is the whole
+reason that check exists.
+
+Cost: the ascent reaches tier 17 rather than 20 inside the same 300 s budget,
+because a failed task now pays for two searches. That is time, not capability —
+the carried-versus-empty gap is 214 against 179.
+
 ### The benchmark's own case lengths were hiding a fifth of the capability
 
 `make()` drew ten training cases at lengths 1-5 and five holdout cases at 7-11.

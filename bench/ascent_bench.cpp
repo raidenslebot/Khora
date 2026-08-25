@@ -322,7 +322,7 @@ TierResult run_tier(const std::vector<Task>& tasks, const std::vector<Spec>& spe
     // with the ones it produced on one core.
     for (std::size_t i = 0; i < tasks.size(); ++i) {
         const auto tc = clk::now();
-        BuildResult b = construct(specs[i], pool_cap, lib);
+        BuildResult b = construct_best(specs[i], pool_cap, lib);
         r.t_fwd += std::chrono::duration<double>(clk::now() - tc).count();
         if (b.proof != Proof::Generalised) {
             // The residue gets the expensive engine, which is where it earns its
