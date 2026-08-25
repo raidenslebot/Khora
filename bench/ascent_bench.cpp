@@ -134,6 +134,28 @@ std::vector<Atom> atoms() {
                         o.push_back(v[i] * static_cast<std::int64_t>(i + 1)); return o; }},
         {"ziprev", [](const Value& v) { Value o; const std::size_t n = v.size();
                         for (std::size_t i = 0; i < n; ++i) o.push_back(v[i] + v[n-1-i]); return o; }},
+        // WHAT AN ATOM HAS TO BE, which took a negative result to state precisely.
+        //
+        // The obvious next lever at curriculum saturation is "atoms outside the
+        // span of the existing ones". Measured: dedup, cummax, rank, rotk and
+        // digitsum, all genuinely outside it, gave 137 verified against 118 at
+        // tier 25 -- against 232 against 192 at tier 29 without them. A third of
+        // the capability, gone.
+        //
+        // The reason is that an atom outside the ATOM set's span is usually also
+        // outside the OPERATION set's span, because both are the same family:
+        // arithmetic, reordering, slicing. Scan sums and cannot take a running
+        // maximum; nothing sorts-and-searches; nothing loops over digits. A task
+        // built from an atom the solver cannot express is not a harder task, it
+        // is an impossible one, and a curriculum full of them measures nothing.
+        //
+        // So the target is narrow and now stated: an atom must be OUTSIDE the
+        // span of the other atoms and INSIDE the span of the operations. The
+        // five that worked -- rot1, scan, altneg, idxmul, ziprev, worth tier 15
+        // to tier 20 -- are exactly that, and idxmul was later hand-built out of
+        // mul, mapadd, range and len to prove it. Curriculum depth and solver
+        // reach have to be raised TOGETHER; neither side alone does anything.
+        //
         // Involution and idempotents, kept because real composition contains them.
         {"rev",    [](const Value& v) { return Value(v.rbegin(), v.rend()); }},
         {"sort",   [](const Value& v) { Value o = v; std::sort(o.begin(), o.end()); return o; }},
@@ -371,24 +393,6 @@ TierResult run_tier(const std::vector<Task>& tasks, const std::vector<Spec>& spe
             // external task set hard enough to reward a richer vocabulary, and
             // techne_bench -- the fixed set that exists -- is not that: its
             // hand-picked list transformations are solved 16/20 either way.
-            // RE-TESTED AND STILL REJECTED, which is worth recording because the
-            // reason for re-testing was sound. Gating admission on behavioural
-            // novelty and on not collapsing lost to admitting whatever came
-            // first when it was first measured (tier 18 / 175 against tier 20 /
-            // 220), and that measurement predated the case-length fix,
-            // construct_best and solve_one -- all of which moved this bench a
-            // long way. A rejection carries a profile with it and expires when
-            // the profile does, so it was measured again:
-            //
-            //   admit first-come | carried 232 | empty 192 | gap 40 | tier 29
-            //   novelty-gated    | carried 231 | empty 175 | gap 56 | tier 26
-            //
-            // The gate WIDENS THE GAP and that is exactly why it is still
-            // rejected. The widening is entirely the control getting worse --
-            // 192 down to 175 -- while the carried arm does not move at all, and
-            // three tiers of depth are lost to the extra search a more diverse
-            // atom set costs. A library that looks more valuable because the
-            // baseline got worse is not more valuable.
             if (g_atoms.size() < 40) {
                 const Recipe copy = b.recipe;
                 g_atoms.push_back(Atom{"L", [copy](const Value& v) {

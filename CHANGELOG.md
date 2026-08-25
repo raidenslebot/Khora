@@ -287,6 +287,39 @@ widening the cases from 1-5 to 1-12 already removed them. A counterexample hunt
 finds nothing when the specification is already informative enough, which is the
 outcome you want from having fixed the specification.
 
+### What an atom has to be, which took a negative result to state
+
+At tier 29 the generator draws about 1,610 tasks to keep two, so the ascent ends
+on the curriculum rather than the solver. The obvious lever, and the one thing
+never tried, is atoms outside the span of the existing set.
+
+Measured — `dedup`, `cummax`, `rank`, `rotk`, `digitsum`, all genuinely outside
+it:
+
+| | carried | empty | depth |
+|---|---------|-------|-------|
+| without them | **232** | 192 | **tier 29**, stopping rule |
+| with them | 137 | 118 | tier 25, budget out |
+
+A third of the capability, gone.
+
+The reason is that an atom outside the ATOM set's span is usually outside the
+OPERATION set's span as well, because both are the same family: arithmetic,
+reordering, slicing. `Scan` sums and cannot take a running maximum. Nothing
+sorts-and-searches. Nothing loops over digits. **A task built from an atom the
+solver cannot express is not a harder task, it is an impossible one**, and a
+curriculum full of impossible tasks measures nothing.
+
+So the criterion is narrow and now stated: an atom must be **outside the span of
+the other atoms and inside the span of the operations**. The five that worked —
+`rot1`, `scan`, `altneg`, `idxmul`, `ziprev`, worth tier 15 to tier 20 — are
+exactly that, and `idxmul` was later hand-built from `mul`, `mapadd`, `range` and
+`len` to prove it.
+
+Which means curriculum saturation cannot be fixed from the atom side alone.
+Curriculum depth and solver reach have to be raised together, and that is a
+different and larger piece of work than adding five functions to a list.
+
 ### A rejection re-tested, and a gap that widened for the wrong reason
 
 The lesson from parallel search — a rejected idea carries a profile with it, and
