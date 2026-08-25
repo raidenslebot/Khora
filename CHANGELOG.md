@@ -3,6 +3,108 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.119.0 — The knowledge layer had no ground truth, and the ground truth was already in the tree
+
+**Author:** Claude Opus 5
+
+Every reasoning faculty in Khora stands on the Ligature: deduce, the abstraction
+tower, the planner, and now Logos. The planner reaches 100% of goals in one step
+and the chains are worthless, because 94.68% of the causal layer is a single
+sighting. That number has been in the README for a while as the thing capping
+everything above it, and it was never attacked, because relation extraction had
+no measure of whether it was TRUE -- only `extraction_bench`, whose header said
+"there is no ground truth for is this relation true".
+
+That was false when it was written. `data/eval/wn_categories.tsv` -- 3,031
+WordNet categories over 35,767 words -- was already in the tree, used by two
+other benches, and IS-A is exactly what it records.
+
+### The metric was grading itself
+
+`extraction_bench` scored quality with a hand-written list of 56 words that
+cannot be the object of a relation, and reported **5.3% error** on output that
+reads like this:
+
+```
+justice  is-a: interest(5) thief(3) order(2)
+man      is-a: thing(3) social(2) frontispiece(1)
+body     is-a: disease(1) held(1) box(1)
+```
+
+A blocklist cannot see that `justice is-a interest` is wrong, so it scored 94.7%
+correct on data that is mostly not. Same defect as `deduce()` scoring itself
+1.000: a metric built out of the assumptions it is meant to test.
+
+### What an external bar says
+
+A triple is DECIDABLE when the subject is a word WordNet knows and the object is
+one of its category names. On 58 books and 8.1M tokens, the whole extractor
+scores **2.16% [1.58, 2.94]** against a chance of 0.50% -- chance being its own
+subjects paired with its own objects, reshuffled.
+
+That absolute number is a FLOOR and I will not claim otherwise: WordNet's
+categories here are one level deep and badly incomplete, so `chemist is-a person`
+and `logic is-a science` both score WRONG. The level is not the true rate. What
+the bar is good for is DIFFERENCES, since the same incompleteness applies to
+everything measured through it.
+
+### Which rule is the poison
+
+Extraction was one function with every rule welded in, so only the union was
+measurable. A pattern mask makes each rule run alone over identical sentences:
+
+| pattern | is-a triples | decidable | prec | 95% CI | chance |
+|---------|-------------|-----------|------|--------|--------|
+| copula: X is a Y | 7,167 | 1,694 | 1.89% | [1.34, 2.65] | 0.59% |
+| hearst: Y such as X | 391 | 21 | 0.00% | [0.00, 15.46] | 0.00% |
+| **hearst: X and other Y** | 1,174 | 76 | **7.89%** | [3.67, 16.17] | 0.00% |
+| hearst: Y including X | 274 | 21 | 9.52% | [2.65, 28.91] | 4.76% |
+| **all hearst together** | 1,826 | 117 | **6.84%** | [3.51, 12.91] | 0.00% |
+| everything | 12,870 | 1,807 | 2.16% | [1.58, 2.94] | 0.50% |
+
+**Hearst 6.84% [3.51, 12.91] against copula 1.89% [1.34, 2.65] -- the intervals
+do not overlap.** The copula is the poison and it is 56% of everything the
+extractor produces. "X is a Y" in English is a predication that is only sometimes
+a taxonomy; "justice is the interest of the stronger" is parsed perfectly and
+means nothing taxonomic. The Hearst frames are hard to write without meaning the
+taxonomy, which is the asymmetry Hearst (1992) is built on -- and this repository
+had one of the three frames and not the others. The one it had, `Y such as X`,
+is the one with no measured signal; `X and other Y`, newly added, is the best
+rule in the extractor.
+
+### Two fixes the bar could not see, and one it refused
+
+`can` and `cannot` were the only modals missing from the stopword list, and the
+subject of a relation is the token before the verb -- so "he can make her a
+promise" asserted CAUSES(can, her). Those were the highest-support causal triples
+in the live graph. Pronouns were absent too: **`is-a(she, woman)` was asserted 42
+times, the strongest is-a triple in the whole graph**, a correct reading of a
+real sentence and a fact about nothing. Removing both dropped 1,080 junk triples
+and moved precision by 0.07 points, because WordNet has never heard of "she" --
+the external bar is blind to exactly this kind of noise, and that is worth
+knowing about the bar.
+
+**And one change failed its own validation.** Every consumer already filters on
+support, so the cheap way to act on a 3.6x precision ratio was to make one Hearst
+sighting count for three and let every existing floor prefer it. On 29 books the
+ratio was not derived from: **6.98% [3.24, 14.40] weighted against 5.88%
+[2.72, 12.24] unweighted.** Not a difference, and it would have cost `support`
+its meaning. Reverted.
+
+It also nearly cost a second wrong claim. I first recorded the consolation prize
+as "Hearst leaves 102 decidable triples above a support floor of 2 where the old
+rules left 27". That 102 was the weighted graph -- a lone Hearst sighting counted
+3 and cleared a floor of 2 by itself. Unweighted it is 32. The fallback result
+was produced by the thing that had just been reverted.
+
+Held out, the Hearst frames are worth 2.51% [1.65, 3.81] to 2.75% [1.87, 4.02] at
+a floor of 1 -- four more correct triples in 910, not significant. They stay
+because per-pattern they are the best rules here by a margin that is.
+
+Six new checks in `ligature_test` pin the two new frames, the mask, the modal and
+the pronoun, so a later tidy-up cannot quietly delete the good ones. 28/28 suites
+pass.
+
 ## v0.118.0 — I built the paradigm this system rejects, and raced it
 
 **Author:** Claude Opus 5

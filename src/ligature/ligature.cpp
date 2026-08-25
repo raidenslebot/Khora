@@ -28,6 +28,23 @@ const std::unordered_set<std::string>& stopwords() {
         "out","off","over","under","very","much","more","most","some","such","like","also",
         "only","even","well","both","each","many","other","being","does","did","will","would",
         "could","should","shall","may","might","must","one","two","any","all","own","same",
+        // "can" and "cannot" were the only modals missing from this list, and
+        // that single omission produced the highest-support causal triples in
+        // the whole graph: causes(can, use) x6, causes(can, her) x5,
+        // causes(cannot, certain) x4. The subject of a relation is the token
+        // before the verb, so "he can make her a promise" asserts that CAN
+        // causes HER.
+        "can","cannot",
+        // PRONOUNS. is-a(she, woman) was asserted 42 times -- the single
+        // strongest is-a triple in the graph -- alongside is-a(she, wife) x14
+        // and is-a(she, daughter) x11. Each one is a correct reading of a real
+        // sentence and none of them is a fact: a pronoun has no referent outside
+        // the sentence it appeared in, so the triple says nothing about any
+        // concept. Anything under three characters is already excluded by the
+        // length test, which is why he/it/we/me are absent here.
+        "she","her","hers","him","his","thee","thou","thy","thine","mine","ours",
+        "yours","himself","herself","itself","myself","oneself","ourselves",
+        "yourself","yourselves","themselves",
         "thus","therefore","hence","because","since","while","though","although","however",
         "yet","still","here","now","ever","never","always","often","again","once","upon"
     };
@@ -69,7 +86,39 @@ void Ligature::add(Relation r, const std::string& subj, const std::string& obj,
     assertions_ += n;
 }
 
-std::size_t Ligature::extract(const std::vector<std::string>& t) {
+// A PATTERN WEIGHT WAS TRIED HERE AND DID NOT SURVIVE ITS OWN VALIDATION.
+//
+// Measured on 29 books, each rule alone against an external IS-A bar: the copula
+// scored 1.26% [0.71, 2.24] and the Hearst frames 7.32% [2.52, 19.43]; on the
+// full 58 the same split reads 1.89% [1.34, 2.65] against 6.84% [3.51, 12.91],
+// intervals that do not overlap. Since every consumer already filters on support
+// -- the planner refuses a step below 2, deduce takes the weakest link -- the
+// obvious move was to make one Hearst sighting count for three, so that every
+// existing floor would prefer the better evidence with no consumer changing.
+//
+// On 29 books the ratio was NOT derived from, it bought nothing: 6.98%
+// [3.24, 14.40] weighted against 5.88% [2.72, 12.24] unweighted, intervals
+// almost entirely coincident. It also cost something real -- support would have
+// stopped meaning "seen this many times" and started meaning "believed this
+// much", so a triple reported at 3 might have been seen once. Paying that for a
+// difference inside the noise is not a trade, so the weight is gone and every
+// assertion is worth one again.
+//
+// AND THE FIRST THING I WROTE HERE WAS WRONG IN THE SAME WAY. I recorded that
+// the Hearst frames leave 102 decidable triples above a support floor of 2
+// against 27 for the old rules -- almost four times the surviving knowledge.
+// That 102 was the WEIGHTED graph: a lone Hearst sighting counted 3 and cleared
+// a floor of 2 by itself. With the weight gone the honest figure is 27 -> 32,
+// because a lone Hearst sighting is a lone sighting. The number that looked like
+// the consolation prize was produced by the thing that had just been reverted.
+//
+// So what the Hearst frames are actually worth, held out, is small and not
+// significant: 2.51% [1.65, 3.81] to 2.75% [1.87, 4.02] at a floor of 1, four
+// more correct triples out of 910. They stay because per-pattern they are the
+// best rules here by a margin that IS significant, and because 517 triples at
+// 7.32% is better material for a planner than the same effort spent on copula.
+std::size_t Ligature::extract(const std::vector<std::string>& t,
+                              std::uint32_t pat) {
     std::size_t added = 0;
     if (t.size() < 3) return 0;
 
@@ -84,7 +133,8 @@ std::size_t Ligature::extract(const std::vector<std::string>& t) {
         // IS-A:  X is/are/was/were  a/an/the  [kind/sort/type/form of]  ... Y(head)
         // The determiner is REQUIRED — it marks a noun phrase ("is a Y"), excluding
         // passive/predicate forms ("is reflected", "is sufficient") that aren't taxonomy.
-        if ((w == "is" || w == "are" || w == "was" || w == "were") &&
+        if ((pat & PatCopula) &&
+            (w == "is" || w == "are" || w == "was" || w == "were") &&
             i + 1 < t.size() && is_det(t[i + 1])) {
             std::size_t ys = i + 2;
             // "a KIND of Y" / "a sort/type/form/species/class/branch of Y" -> skip the meta-noun.
@@ -98,17 +148,19 @@ std::size_t Ligature::extract(const std::vector<std::string>& t) {
             if (is_content(X) && !Y.empty()) { add(Relation::IsA, X, Y); ++added; }
         }
         // CAUSES:  X <causal verb>  [det] ... Y
-        else if (w == "causes" || w == "cause" || w == "produces" || w == "produce" ||
+        else if ((pat & PatCausal) &&
+                 (w == "causes" || w == "cause" || w == "produces" || w == "produce" ||
                  w == "creates" || w == "create" || w == "generates" || w == "generate" ||
                  w == "yields"  || w == "yield"  || w == "induce"  || w == "induces" ||
                  w == "makes"   || w == "make"   || w == "brings"  || w == "bring"   ||
                  w == "drives"  || w == "drive"  || w == "forces"  || w == "enables" ||
-                 w == "enable"  || w == "excites" || w == "excite") {
+                 w == "enable"  || w == "excites" || w == "excite")) {
             const std::string Y = head_after(t, i + 1);
             if (is_content(X) && !Y.empty()) { add(Relation::Causes, X, Y); ++added; }
         }
         // CAUSES:  X leads/led/lead/results/give  to/in  ... Y   ("leads to", "results in")
-        else if ((w == "leads" || w == "led" || w == "lead" || w == "results" ||
+        else if ((pat & PatCausal) &&
+                 (w == "leads" || w == "led" || w == "lead" || w == "results" ||
                   w == "result" || w == "gives" || w == "give") &&
                  i + 2 < t.size() && (t[i + 1] == "to" || t[i + 1] == "in" || t[i + 1] == "rise")) {
             std::size_t ys = i + 2;
@@ -127,31 +179,57 @@ std::size_t Ligature::extract(const std::vector<std::string>& t) {
         // "the cell has a nucleus" still passes; "the time has come" no longer
         // does. The unambiguous verbs need no determiner, since "water contains
         // oxygen" is a real part-whole claim.
-        else if (w == "has" || w == "have" || w == "had") {
+        else if ((pat & PatPossess) && (w == "has" || w == "have" || w == "had")) {
             if (i + 1 < t.size() && is_det(t[i + 1])) {
                 const std::string Y = head_after(t, i + 2);
                 if (is_content(X) && !Y.empty()) { add(Relation::HasPart, X, Y); ++added; }
             }
         }
-        else if (w == "contains" || w == "contain" ||
+        else if ((pat & PatPossess) &&
+                 (w == "contains" || w == "contain" ||
                  w == "comprises" || w == "comprise" || w == "includes" ||
-                 w == "possesses" || w == "possess" || w == "carries" || w == "carry") {
+                 w == "possesses" || w == "possess" || w == "carries" || w == "carry")) {
             const std::string Y = head_after(t, i + 1);
             if (is_content(X) && !Y.empty()) { add(Relation::HasPart, X, Y); ++added; }
         }
         // HAS-PART (material/composition):  X consists/composed/made/formed  of  ... Y
-        else if ((w == "consists" || w == "consist" || w == "composed" || w == "made" ||
+        else if ((pat & PatPossess) &&
+                 (w == "consists" || w == "consist" || w == "composed" || w == "made" ||
                   w == "formed" || w == "built" || w == "comprised") &&
                  i + 2 < t.size() && t[i + 1] == "of") {
             const std::string Y = head_after(t, i + 2);
             if (is_content(X) && !Y.empty()) { add(Relation::HasPart, X, Y); ++added; }
         }
 
-        // Hearst:  Y such as X   ->  IS-A(X, Y)
-        if (w == "such" && i + 2 < t.size() && t[i + 1] == "as") {
-            const std::string& Y = t[i - 1];
+        // HEARST PATTERNS. Lexico-syntactic frames that are difficult to write
+        // without asserting the taxonomy, as opposed to the copula, which is
+        // difficult to write without asserting something else as well. Only the
+        // first of these three was here; the bench measures each separately and
+        // reports what each is worth.
+
+        //   Y such as X   ->  IS-A(X, Y)
+        if ((pat & PatSuchAs) && w == "such" && i + 2 < t.size() && t[i + 1] == "as") {
+            const std::string& Y  = t[i - 1];
             const std::string& Xh = t[i + 2];
             if (is_content(Xh) && is_content(Y)) { add(Relation::IsA, Xh, Y); ++added; }
+        }
+
+        //   X and other Y / X or other Y   ->  IS-A(X, Y)
+        // The head is taken after "other" rather than at it, since "other" is a
+        // determiner here and the noun follows.
+        if ((pat & PatOther) && (w == "and" || w == "or") &&
+            i + 2 < t.size() && t[i + 1] == "other") {
+            const std::string& Xh = t[i - 1];
+            const std::string  Y  = head_after(t, i + 2);
+            if (is_content(Xh) && !Y.empty()) { add(Relation::IsA, Xh, Y); ++added; }
+        }
+
+        //   Y including X / Y especially X   ->  IS-A(X, Y)
+        if ((pat & PatIncluding) && (w == "including" || w == "especially") &&
+            i + 1 < t.size()) {
+            const std::string& Y  = t[i - 1];
+            const std::string  Xh = head_after(t, i + 1);
+            if (is_content(Y) && !Xh.empty()) { add(Relation::IsA, Xh, Y); ++added; }
         }
     }
     return added;

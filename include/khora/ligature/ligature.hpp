@@ -55,9 +55,34 @@ class Ligature {
 public:
     Ligature() = default;
 
+    // WHICH SURFACE PATTERN produced a relation. Extraction was one function
+    // with every rule welded into it, so the only measurable thing was the union
+    // of all of them -- and the union scores 1.87% against an external IS-A bar
+    // with chance at 0.76%. A mask makes each rule measurable ON ITS OWN, which
+    // is the difference between knowing the extractor is poor and knowing which
+    // part of it is poor.
+    //
+    // The distinction that matters is copula against Hearst. "X is a Y" is a
+    // predication and only sometimes a taxonomy ("justice is the interest of the
+    // stronger"), while "Y such as X" and "X and other Y" are lexico-syntactic
+    // frames that are hard to write without meaning the taxonomy. Hearst (1992)
+    // is built on exactly that asymmetry, and this repository had one of the
+    // frames and not the others.
+    enum Pattern : std::uint32_t {
+        PatCopula    = 1u << 0,   // X is/are/was/were a Y
+        PatSuchAs    = 1u << 1,   // Y such as X
+        PatOther     = 1u << 2,   // X and/or other Y
+        PatIncluding = 1u << 3,   // Y including/especially X
+        PatCausal    = 1u << 4,   // X causes/leads to Y
+        PatPossess   = 1u << 5,   // X has a Y / contains Y / made of Y
+        PatHearst    = PatSuchAs | PatOther | PatIncluding,
+        PatAll       = 0xFFFFFFFFu
+    };
+
     // Extract typed relations from a token sequence (the same tokens the Lexicon
     // and Plexus see). Returns the number of triples asserted.
-    std::size_t extract(const std::vector<std::string>& tokens);
+    std::size_t extract(const std::vector<std::string>& tokens,
+                        std::uint32_t patterns = PatAll);
 
     // Assert/reinforce a single triple.
     void add(Relation r, const std::string& subj, const std::string& obj,

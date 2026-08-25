@@ -199,6 +199,66 @@ int main() {
               "and it discriminates -- neither everything nor nothing plans");
     }
 
+    // --- THE SURFACE PATTERNS, AND THE TWO THAT WERE MISSING -----------------
+    //
+    // Measured against an external IS-A bar, each rule alone over the same
+    // sentences: the copula scores 1.26% [0.71, 2.24] and the Hearst frames
+    // 7.32% [2.52, 19.43]. Two of the three Hearst frames were absent, and one
+    // of them is now the best-scoring rule in the extractor. They are tested
+    // here so that a later tidy-up cannot quietly delete the good ones.
+    {
+        auto toks = [](const char* s) {
+            std::vector<std::string> out;
+            std::string cur;
+            for (const char* p = s; ; ++p) {
+                if (*p == 0 || *p == 0x20) { if (!cur.empty()) out.push_back(cur); cur.clear(); if (!*p) break; }
+                else cur.push_back(*p);
+            }
+            return out;
+        };
+
+        Ligature g;
+        g.extract(toks("bruises wounds and other injuries were treated"));
+        check(g.count(Relation::IsA, "wounds", "injuries") == 1,
+              "hearst: X and other Y gives is-a(X, Y)");
+
+        Ligature h;
+        h.extract(toks("several diseases including malaria were common"));
+        check(h.count(Relation::IsA, "malaria", "diseases") == 1,
+              "hearst: Y including X gives is-a(X, Y)");
+
+        // The mask is what made per-pattern attribution possible, so it has to
+        // actually mask.
+        Ligature only_copula;
+        only_copula.extract(toks("bruises wounds and other injuries were treated"),
+                            Ligature::PatCopula);
+        check(only_copula.count(Relation::IsA, "wounds", "injuries") == 0,
+              "and a pattern switched off does not fire");
+
+        // "can" was the one modal missing from the stopword list, and that
+        // omission produced the highest-support causal triples in the live
+        // graph -- causes(can, use), causes(can, her), causes(cannot, certain).
+        Ligature m;
+        m.extract(toks("the soldier can make the enemy a promise"));
+        check(m.count(Relation::Causes, "can", "enemy") == 0,
+              "a modal verb is not the subject of a causal relation");
+
+        // is-a(she, woman) was asserted 42 times: the strongest is-a triple in
+        // the whole graph, a correct reading of a real sentence, and a fact
+        // about nothing.
+        Ligature pr;
+        pr.extract(toks("she is a woman of great courage"));
+        check(pr.count(Relation::IsA, "she", "woman") == 0,
+              "and a pronoun is not the subject of a taxonomic one");
+
+        // The copula still has to work -- it is poor, not broken, and it is
+        // still where most of the graph comes from.
+        Ligature c;
+        c.extract(toks("the sparrow is a small bird"));
+        check(c.count(Relation::IsA, "sparrow", "bird") == 1,
+              "while the copula still fires and still takes the head noun");
+    }
+
     std::printf("\n");
     if (failures == 0) std::printf("ALL PASS\n");
     else               std::printf("%d FAILURE(S)\n", failures);

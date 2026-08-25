@@ -27,16 +27,47 @@
 //   tense then reads as possession: "the time has come" -> HAS-PART(time, come).
 //
 // This measures both rules on the same real books, before and against after.
-// There is no ground truth for "is this relation true", so what is counted is
-// what CAN be counted mechanically: how many objects are function words or
-// participles that could not be a noun, and how many relations survive at all.
+//
+// IT ORIGINALLY SAID there is no ground truth for "is this relation true", and
+// counted instead how many objects are function words or participles that could
+// not be a noun. That claim was false when it was written. data/eval/
+// wn_categories.tsv -- 3,031 WordNet categories over 35,767 words -- was already
+// in this tree, used by two other benches, and IS-A is exactly what it records.
+// So the blocklist metric stayed (it is a useful lower bound) and an EXTERNAL one
+// was added beside it.
+//
+// The blocklist alone was reporting 5.3% error on output that reads like this:
+//
+//     justice  is-a: interest(5) thief(3) order(2)
+//     man      is-a: thing(3) social(2) frontispiece(1)
+//     body     is-a: disease(1) held(1) box(1)
+//
+// A hand-written list of 56 words cannot see that "justice is-a interest" is
+// wrong, so it scored 94.7% correct on data that is mostly not. That is the same
+// defect as deduce() scoring itself 1.000 -- a metric built out of the same
+// assumptions as the thing it measures.
+//
+// WHAT THE EXTERNAL BAR CAN AND CANNOT SAY. A triple is DECIDABLE when the
+// subject appears somewhere in WordNet and the object is one of the category
+// names; precision is counted over that subset only. WordNet categories here are
+// one level deep and badly incomplete -- "chemist is-a person" and "logic is-a
+// science" both score WRONG -- so the absolute number is a FLOOR and a low one.
+// It is still worth having, because the same incompleteness applies to every
+// version measured, so DIFFERENCES between rule sets are real even though the
+// level is not. Chance is reported beside it by reshuffling the objects within
+// the decidable set, which is the only way to read the level at all.
 
 #include "khora/lexicon/lexicon.hpp"
 #include "khora/ligature/ligature.hpp"
 #include "khora/reservoir/reservoir.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
+#include <fstream>
+#include <random>
+#include <sstream>
+#include <unordered_map>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -103,10 +134,80 @@ void show(const Ligature& lig, const std::vector<std::string>& probes, const cha
     }
 }
 
+// --- THE EXTERNAL BAR -------------------------------------------------------
+//
+// wn_categories.tsv is "category<TAB>member member member". Inverted, it answers
+// "is Y one of X's categories", which is the IS-A question.
+struct WordNet {
+    std::unordered_map<std::string, std::unordered_set<std::string>> cats;   // name -> members
+    std::unordered_map<std::string, std::unordered_set<std::string>> of;     // word -> categories
+    bool ok = false;
+};
+
+WordNet load_wordnet(const std::string& path) {
+    WordNet wn;
+    std::ifstream in(path);
+    if (!in) return wn;
+    std::string line;
+    while (std::getline(in, line)) {
+        const auto tab = line.find('\t');
+        if (tab == std::string::npos) continue;
+        const std::string name = line.substr(0, tab);
+        std::istringstream ws(line.substr(tab + 1));
+        std::string w;
+        while (ws >> w) { wn.cats[name].insert(w); wn.of[w].insert(name); }
+    }
+    wn.ok = !wn.cats.empty();
+    return wn;
+}
+
+struct Score { std::size_t decidable = 0, correct = 0, chance = 0; };
+
+// A 95% Wilson interval on a proportion. At 32 hits in 1,715 the difference
+// between the extractor and chance is a couple of dozen events, and a bare
+// percentage invites reading that as a result.
+std::pair<double, double> wilson(std::size_t hits, std::size_t n) {
+    if (n == 0) return {0.0, 0.0};
+    const double z = 1.96, ph = static_cast<double>(hits) / static_cast<double>(n);
+    const double d = 1.0 + z * z / static_cast<double>(n);
+    const double c = ph + z * z / (2.0 * static_cast<double>(n));
+    const double m = z * std::sqrt(ph * (1.0 - ph) / static_cast<double>(n)
+                                   + z * z / (4.0 * static_cast<double>(n) * static_cast<double>(n)));
+    return {100.0 * (c - m) / d, 100.0 * (c + m) / d};
+}
+
+// EVERY is-a triple the graph holds, not only the ones under the fifteen probe
+// words -- scoring the probes would measure fifteen words rather than the
+// extractor.
+Score score_isa(const Ligature& lig, const WordNet& wn, std::uint32_t min_support) {
+    Score sc;
+    std::vector<std::string> subs, objs;
+    for (const auto& [w, cs] : wn.of) {
+        (void)cs;
+        for (const auto& [o, c] : lig.objects(Relation::IsA, w, 64)) {
+            if (c < min_support || !wn.cats.count(o)) continue;
+            ++sc.decidable;
+            if (wn.of.at(w).count(o)) ++sc.correct;
+            subs.push_back(w);
+            objs.push_back(o);
+        }
+    }
+    // Chance: the same subjects against the same objects, reshuffled. With a
+    // ground truth this incomplete the level means nothing without it.
+    std::mt19937 rng(20260825);
+    std::shuffle(objs.begin(), objs.end(), rng);
+    for (std::size_t i = 0; i < subs.size(); ++i)
+        if (wn.of.at(subs[i]).count(objs[i])) ++sc.chance;
+    return sc;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
-    const std::string dir = (argc > 1) ? argv[1] : "data/reservoir";
+    const std::string dir       = (argc > 1) ? argv[1] : "data/reservoir";
+    const std::string wn_path   = (argc > 2) ? argv[2] : "data/eval/wn_categories.tsv";
+    const std::size_t max_books = (argc > 3) ? std::stoul(argv[3]) : 60;
+    const WordNet     wn        = load_wordnet(wn_path);
     khora::reservoir::Reservoir res(dir);
     res.load_catalog();
     const auto cat = res.catalog();
@@ -121,7 +222,7 @@ int main(int argc, char** argv) {
     Ligature flat, split;
     std::size_t books = 0, sentences = 0, tokens = 0;
     for (const auto& t : cat) {
-        if (books >= 20) break;
+        if (books >= max_books) break;
         auto text = res.read(t.title);
         if (!text || text->size() < 40000) continue;
         ++books;
@@ -155,6 +256,37 @@ int main(int argc, char** argv) {
                 static_cast<unsigned long long>(b.triples), b.objects_sampled,
                 b.impossible,
                 b.objects_sampled ? 100.0 * b.impossible / b.objects_sampled : 0.0);
+
+    // --- SCORED AGAINST WORDNET, NOT AGAINST A LIST I WROTE ------------------
+    if (!wn.ok) {
+        std::printf("\n  (no %s -- external scoring skipped)\n", wn_path.c_str());
+    } else {
+        std::printf("\n  === IS-A AGAINST WORDNET (external ground truth) ===\n");
+        std::printf("    rule set                | decidable | correct |  prec  | chance\n");
+        std::printf("    ------------------------+-----------+---------+--------+-------\n");
+        auto row = [](const char* lbl, const Score& s) {
+            std::printf("    %-23s | %9zu | %7zu | %5.2f%% | %5.2f%%\n", lbl,
+                        s.decidable, s.correct,
+                        s.decidable ? 100.0 * s.correct / s.decidable : 0.0,
+                        s.decidable ? 100.0 * s.chance  / s.decidable : 0.0);
+        };
+        row("document-at-once (old)",  score_isa(flat,  wn, 1));
+        row("per-sentence + det rule", score_isa(split, wn, 1));
+
+        std::printf("\n    and against a corroboration floor:\n");
+        for (const std::uint32_t f : {1u, 2u, 3u}) {
+            const Score s = score_isa(split, wn, f);
+            std::printf("      support >= %u          | %9zu | %7zu | %5.2f%% | %5.2f%%\n",
+                        f, s.decidable, s.correct,
+                        s.decidable ? 100.0 * s.correct / s.decidable : 0.0,
+                        s.decidable ? 100.0 * s.chance  / s.decidable : 0.0);
+        }
+        std::printf("\n    DECIDABLE means the subject is a word WordNet knows AND the object\n"
+                    "    is one of its category names. Those categories are one level deep\n"
+                    "    and incomplete: chemist is-a person, and logic is-a science, both\n"
+                    "    score WRONG -- so precision here is a FLOOR, not the true rate.\n"
+                    "    Chance is the same pairs reshuffled, and makes the floor readable.\n");
+    }
 
     show(flat,  probes, "BEFORE: document-at-once");
     show(split, probes, "AFTER: per-sentence, has/have needs a determiner");
@@ -195,6 +327,105 @@ int main(int argc, char** argv) {
             }
         }
         if (any) std::printf("\n");
+    }
+
+    // --- WHICH RULE IS THE POISON --------------------------------------------
+    //
+    // Every rule ran together and the union was the only thing measurable. Each
+    // one now runs alone over the identical sentences and is scored on the
+    // identical external bar, so the answer is attributable instead of guessed.
+    if (wn.ok) {
+        struct Row { const char* name; std::uint32_t mask; Ligature lig; };
+        std::vector<Row> rows;
+        rows.push_back({"copula: X is a Y",      Ligature::PatCopula,    Ligature{}});
+        rows.push_back({"hearst: Y such as X",   Ligature::PatSuchAs,    Ligature{}});
+        rows.push_back({"hearst: X and other Y", Ligature::PatOther,     Ligature{}});
+        rows.push_back({"hearst: Y including X", Ligature::PatIncluding, Ligature{}});
+        rows.push_back({"all hearst together",   Ligature::PatHearst,    Ligature{}});
+        rows.push_back({"everything",            Ligature::PatAll,       Ligature{}});
+
+        std::size_t nb = 0;
+        for (const auto& t : cat) {
+            if (nb >= max_books) break;
+            auto text = res.read(t.title);
+            if (!text || text->size() < 40000) continue;
+            ++nb;
+            for (const auto& sent : khora::lexicon::tokenize_sentences(*text))
+                for (auto& r : rows) r.lig.extract(sent, r.mask);
+        }
+
+        std::printf("\n  === PER-PATTERN, SAME SENTENCES, SAME EXTERNAL BAR ===\n");
+        std::printf("    pattern                | is-a triples | decidable | correct |  prec  | 95%% CI          | chance\n");
+        std::printf("    -----------------------+--------------+-----------+---------+--------+-----------------+-------\n");
+        for (auto& r : rows) {
+            const Score sc = score_isa(r.lig, wn, 1);
+            const auto ci = wilson(sc.correct, sc.decidable);
+            std::size_t isa_total = 0;
+            for (const auto& [w, cs] : wn.of) { (void)cs; isa_total += r.lig.objects(Relation::IsA, w, 64).size(); }
+            std::printf("    %-22s | %12llu | %9zu | %7zu | %5.2f%% | [%5.2f%%, %5.2f%%] | %5.2f%%\n",
+                        r.name, static_cast<unsigned long long>(r.lig.triple_count()),
+                        sc.decidable, sc.correct,
+                        sc.decidable ? 100.0 * sc.correct / sc.decidable : 0.0,
+                        ci.first, ci.second,
+                        sc.decidable ? 100.0 * sc.chance / sc.decidable : 0.0);
+            (void)isa_total;
+        }
+        std::printf("\n    Chance is that row's own subjects paired with its own objects,\n"
+                    "    reshuffled. A pattern is worth having only if its interval clears it.\n");
+    }
+
+    // --- AND DOES THE WEIGHT HELP, ON BOOKS IT WAS NOT DERIVED FROM ----------
+    //
+    // The 3.6 ratio came off the first half of the catalogue. Applying it there
+    // and reporting the result there would be reading a tuned parameter back as
+    // a finding, so the weighted graph is scored on the second half, which the
+    // ratio never saw. The unweighted comparison is the same sentences with the
+    // Hearst assertions counted as one each.
+    if (wn.ok) {
+        Ligature with_hearst, flat_w;
+        std::size_t seen = 0, held = 0;
+        for (const auto& t : cat) {
+            auto text = res.read(t.title);
+            if (!text || text->size() < 40000) continue;
+            ++seen;
+            if (seen <= max_books) continue;          // calibration half, skipped
+            if (held >= max_books) break;
+            ++held;
+            for (const auto& sent : khora::lexicon::tokenize_sentences(*text)) {
+                with_hearst.extract(sent, Ligature::PatAll);
+                // The same rules with Hearst worth one: copula-only plus each
+                // Hearst frame asserted through a graph that cannot weight them
+                // differently is what the system had before.
+                flat_w.extract(sent, Ligature::PatCopula | Ligature::PatCausal |
+                                     Ligature::PatPossess);
+            }
+        }
+        if (held == 0) {
+            std::printf("\n  (no held-out books beyond the first %zu -- weighting not validated)\n", max_books);
+        } else {
+            std::printf("\n  === HELD OUT: %zu books the weight was not derived from ===\n", held);
+            std::printf("    graph                        | floor | decidable | correct |  prec  | 95%% CI\n");
+            std::printf("    -----------------------------+-------+-----------+---------+--------+----------------\n");
+            auto line = [](const char* lbl, std::uint32_t f, const Score& sc) {
+                const auto ci = wilson(sc.correct, sc.decidable);
+                std::printf("    %-28s | %5u | %9zu | %7zu | %5.2f%% | [%5.2f%%, %5.2f%%]\n", lbl, f,
+                            sc.decidable, sc.correct,
+                            sc.decidable ? 100.0 * sc.correct / sc.decidable : 0.0,
+                            ci.first, ci.second);
+            };
+            line("copula+causal+has, as before", 1, score_isa(flat_w,   wn, 1));
+            line("copula+causal+has, as before", 2, score_isa(flat_w,   wn, 2));
+            line("with the hearst frames",       1, score_isa(with_hearst, wn, 1));
+            line("with the hearst frames",       2, score_isa(with_hearst, wn, 2));
+            std::printf("\n    A weight of 3 on Hearst sightings was tried here and reverted:\n"
+                        "    6.98%% [3.24, 14.40] against 5.88%% [2.72, 12.24] on these same\n"
+                        "    held-out books is not a difference, and it would have cost support\n"
+                        "    its meaning -- a triple reported at 3 might have been seen once.\n"
+                        "    Note what the weight was doing to the row above it: weighted, the\n"
+                        "    floor of 2 left 102 decidable triples standing, because a lone\n"
+                        "    Hearst sighting cleared it alone. Unweighted it is 32. The gain I\n"
+                        "    first recorded as the consolation prize was the reverted change.\n");
+        }
     }
 
     std::printf("\n  'impossible objects' counts objects that cannot be the object of\n"
