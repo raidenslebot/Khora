@@ -287,6 +287,35 @@ widening the cases from 1-5 to 1-12 already removed them. A counterexample hunt
 finds nothing when the specification is already informative enough, which is the
 outcome you want from having fixed the specification.
 
+### Three searches at once: tier 17 to tier 29, and the last regression to zero
+
+Forward, bidirectional, and library-free were attempted one after another —
+three searches for one answer, on one core, none of them depending on any other.
+Each reads the same const Library and writes nothing shared.
+
+`solve_one` runs them concurrently and resolves by a **fixed preference order**,
+never by who finishes first, so the answer stays a function of the specification
+rather than of the scheduler. Checked rather than asserted: the same run twice is
+byte-identical.
+
+| | before | after |
+|---|--------|-------|
+| ascent | tier 17, budget exhausted | **tier 29, ends on its stopping rule** |
+| ascent, carried vs empty | 214 vs 179 | **232 vs 192** |
+| fixed bar | 38, 16 gained / 1 lost | **38, 16 gained / 0 LOST** |
+| fixed bar, depth 3 | 8 -> 10 | 8 -> **11** |
+
+The last regression is at zero. Nothing on that bar is now solvable without the
+library and unsolvable with it.
+
+**This only pays because verification became free.** When verification was 80% of
+the run, parallelising the search was capped at 13% by Amdahl before a line was
+written — measured then as worthless, at width 1 and width 21 alike. Compacting
+recipes removed that 80%, which made the search the whole cost, which made the
+same idea worth twelve tiers. The lesson is not that parallelism works; it is
+that a rejected idea has a profile attached to it, and when the profile changes
+the rejection expires.
+
 ### Removing the library's regression was worth more than the library
 
 The per-task diff said the library was breaking things it could solve without:

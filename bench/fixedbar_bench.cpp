@@ -278,11 +278,7 @@ std::size_t score(const Drawn& d, const Library* lib, std::size_t pool_cap,
     // the measurement moves.
     std::size_t n = 0;
     for (std::size_t i = 0; i < d.tasks.size(); ++i) {
-        BuildResult b = construct_best(d.specs[i], pool_cap, lib);
-        if (b.proof != Proof::Generalised) {
-            BuildResult alt = construct_bidir(d.specs[i], pool_cap, lib);
-            if (alt.proof == Proof::Generalised) b = std::move(alt);
-        }
+        BuildResult b = solve_one(d.specs[i], pool_cap, lib);
         if (g_cegis_rounds > 0) {
             const Fn& ref = d.tasks[i].f;
             std::uint64_t pr = 0xC0FFEEULL + i * 7919ULL;
@@ -361,11 +357,7 @@ int main(int argc, char** argv) {
         // meeting problems it has not seen rather than re-solving one set.
         const Drawn train = draw_set(0x7A17u + s * 104729u, per_depth, 2, 7);
         for (std::size_t i = 0; i < train.tasks.size(); ++i) {
-            BuildResult b = construct_best(train.specs[i], pool_cap, &learned);
-            if (b.proof != Proof::Generalised) {
-                BuildResult alt = construct_bidir(train.specs[i], pool_cap, &learned);
-                if (alt.proof == Proof::Generalised) b = std::move(alt);
-            }
+            BuildResult b = solve_one(train.specs[i], pool_cap, &learned);
             if (b.proof != Proof::Generalised) continue;
             if (!holds_up(b.recipe, &learned, train.tasks[i].f)) continue;
             learned.admit_recipe(train.tasks[i].name, b.recipe, i);

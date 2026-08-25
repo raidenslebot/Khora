@@ -606,6 +606,23 @@ BuildResult construct_best(const Spec& spec, std::size_t max_pool,
                            const Library* lib = nullptr,
                            bool mine_constants = true);
 
+// EVERY INDEPENDENT ATTEMPT AT ONCE, resolved by a fixed preference order.
+//
+// A task is currently attempted forward, then bidirectionally if that failed,
+// then forward without the library if that failed too. Three searches, run one
+// after another, on one core -- and they do not depend on each other at all.
+// Each reads the same const Library and writes nothing shared.
+//
+// Running them concurrently and choosing by a FIXED ORDER rather than by who
+// finishes first keeps the answer identical to the sequential version: the
+// result is a function of the specification, not of the scheduler. It costs
+// three cores instead of one and returns in the time of the slowest rather than
+// the sum, which on this workload is where capability comes from -- the ascent
+// lost three tiers inside a fixed time budget when the fallback was added, and
+// this is that budget back.
+BuildResult solve_one(const Spec& spec, std::size_t max_pool,
+                      const Library* lib = nullptr);
+
 // ---------------------------------------------------------------------------
 // EMISSION: a recipe becomes real source in a real language.
 //

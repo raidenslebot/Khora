@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <functional>
 #include <numeric>
+#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -1050,6 +1051,30 @@ std::string Recipe::render() const {
         return nm + "(" + go(e.a) + ", " + go(e.b) + ")";
     };
     return go(static_cast<int>(root));
+}
+
+BuildResult solve_one(const Spec& spec, std::size_t max_pool, const Library* lib) {
+    const bool have_lib = (lib != nullptr && lib->size() > 0);
+    BuildResult fwd, bid, bare;
+    std::thread t1([&] { fwd  = construct(spec, max_pool, lib); });
+    std::thread t2([&] { bid  = construct_bidir(spec, max_pool, lib); });
+    std::thread t3;
+    if (have_lib) t3 = std::thread([&] { bare = construct(spec, max_pool, nullptr); });
+    t1.join(); t2.join();
+    if (t3.joinable()) t3.join();
+
+    // FIXED PREFERENCE, never "whoever finished first". Forward before
+    // bidirectional because it is the cheaper and more common answer, and both
+    // before the no-library fallback so the library keeps whatever credit it has
+    // earned. Ordering by arrival would make the result depend on the scheduler,
+    // which is the one thing a certificate may not do.
+    if (fwd.proof  == Proof::Generalised) return fwd;
+    if (bid.proof  == Proof::Generalised) return bid;
+    if (bare.proof == Proof::Generalised) return bare;
+    BuildResult best = std::move(fwd);
+    if (bid.cases_passed  > best.cases_passed) best = std::move(bid);
+    if (bare.cases_passed > best.cases_passed) best = std::move(bare);
+    return best;
 }
 
 BuildResult construct_best(const Spec& spec, std::size_t max_pool, const Library* lib,

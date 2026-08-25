@@ -321,18 +321,14 @@ TierResult run_tier(const std::vector<Task>& tasks, const std::vector<Spec>& spe
     // thread count -- which is what makes this loop's numbers still comparable
     // with the ones it produced on one core.
     for (std::size_t i = 0; i < tasks.size(); ++i) {
+        // Forward, bidirectional and library-free, ALL AT ONCE, resolved by a
+        // fixed preference order rather than by who finishes first. They never
+        // depended on each other -- running them in sequence was spending the
+        // time budget three times for one answer, and this loop's tier depth is
+        // exactly what that budget buys.
         const auto tc = clk::now();
-        BuildResult b = construct_best(specs[i], pool_cap, lib);
+        BuildResult b = solve_one(specs[i], pool_cap, lib);
         r.t_fwd += std::chrono::duration<double>(clk::now() - tc).count();
-        if (b.proof != Proof::Generalised) {
-            // The residue gets the expensive engine, which is where it earns its
-            // place: at depth 4 forward search solved 0 of 3 and bidirectional
-            // solved 3 of 3.
-            const auto tb = clk::now();
-            BuildResult d = construct_bidir(specs[i], pool_cap, lib);
-            r.t_bidir += std::chrono::duration<double>(clk::now() - tb).count();
-            if (d.proof == Proof::Generalised) b = std::move(d);
-        }
         r.nodes += b.nodes_considered;
         if (b.proof != Proof::Generalised) continue;
         ++r.solved;
