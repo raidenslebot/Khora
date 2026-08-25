@@ -312,6 +312,49 @@ int main() {
               "and a nesting that reaches kMaxCallDepth refuses the whole unit");
     }
 
+    // --- THE FOUR OPERATIONS THE TEXT BENCH NAMED ----------------------------
+    //
+    // Four string tasks failed there and I claimed each had a specific missing
+    // capability behind it. These four exist to test that claim, so they had
+    // better do exactly what the claim says -- an operation that is subtly wrong
+    // would make the diagnosis untestable rather than tested.
+    {
+        auto build2 = [](Op op, std::uint8_t k) {
+            Recipe r;
+            r.pool.push_back(Expr{Op::Mov, -1, -1, 0});      // the input
+            r.pool.push_back(Expr{Op::Const, -1, -1, k});    // a constant operand
+            r.pool.push_back(Expr{op, 0, 1, 0});
+            r.root = 2;
+            r.found = true;
+            return r;
+        };
+
+        const Recipe gt = build2(Op::Gt, 2);                 // > 2
+        check(gt.apply(Value{1, 2, 3, 5}, nullptr) == Value{0, 0, 1, 1},
+              "Gt gives an elementwise indicator, so a conditional becomes arithmetic");
+
+        const Recipe mem = build2(Op::Member, 3);            // in [3]
+        check(mem.apply(Value{1, 3, 5, 3}, nullptr) == Value{0, 1, 0, 1},
+              "Member tests set membership");
+
+        const Recipe until = build2(Op::Until, 0);           // up to the first 0
+        check(until.apply(Value{7, 8, 0, 9}, nullptr) == Value{7, 8},
+              "Until stops at the delimiter");
+        check(until.apply(Value{7, 8, 9}, nullptr) == Value{7, 8, 9},
+              "and returns everything when the delimiter is absent");
+
+        Recipe delta;
+        delta.pool.push_back(Expr{Op::Mov, -1, -1, 0});
+        delta.pool.push_back(Expr{Op::Delta, 0, -1, 0});
+        delta.root = 1;
+        delta.found = true;
+        check(delta.apply(Value{1, 4, 9}, nullptr) == Value{3, 5},
+              "Delta compares neighbouring elements");
+        check(delta.apply(Value{5}, nullptr).empty(),
+              "and a single element has no neighbours");
+        check(delta.apply(Value{}, nullptr).empty(), "nor does an empty list");
+    }
+
     std::printf("\n");
     if (failures == 0) std::printf("ALL PASS\n");
     else               std::printf("%d FAILURE(S)\n", failures);

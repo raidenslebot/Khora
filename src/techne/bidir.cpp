@@ -141,6 +141,27 @@ Value fwd_op(Op op, const Value& A, const Value& B, std::uint8_t k,
         case Op::Count: { if (B.empty()) break; std::int64_t n = 0; for (const auto x : A) if (x == B[0]) ++n; out = Value{n}; break; }
         case Op::Guard: if (!B.empty()) out = A; break;
         case Op::Else: out = A.empty() ? B : A; break;
+        case Op::Gt: {
+            if (B.empty()) break;
+            for (const auto x : A) out.push_back(x > B[0] ? 1 : 0);
+            break;
+            }
+        case Op::Member: {
+            if (B.empty()) break;
+            for (const auto x : A) {
+                out.push_back(std::find(B.begin(), B.end(), x) != B.end() ? 1 : 0);
+            }
+            break;
+            }
+        case Op::Until: {
+            if (B.empty()) break;
+            for (const auto x : A) { if (x == B[0]) break; out.push_back(x); }
+            break;
+            }
+        case Op::Delta: {
+            for (std::size_t i = 1; i < A.size(); ++i) out.push_back(cap(A[i] - A[i - 1]));
+            break;
+            }
         case Op::MapF: {
             if (lib == nullptr || lib->size() == 0) break;
             const std::size_t li = k % lib->size();
@@ -176,14 +197,15 @@ Value fwd_op(Op op, const Value& A, const Value& B, std::uint8_t k,
 
 const std::vector<Op>& fwd_unary() {
     static const std::vector<Op> v{Op::Len, Op::Head, Op::Tail, Op::Rev, Op::Sort,
-                                   Op::Range, Op::Sum, Op::Max, Op::Min};
+                                   Op::Range, Op::Sum, Op::Max, Op::Min, Op::Delta};
     return v;
 }
 const std::vector<Op>& fwd_binary() {
     static const std::vector<Op> v{Op::Add, Op::Sub, Op::Mul, Op::Div, Op::Mod,
                                    Op::Append, Op::Take, Op::Drop, Op::Index,
                                    Op::Filter, Op::MapAdd, Op::MapMul, Op::Count,
-                                   Op::Guard, Op::Else};
+                                   Op::Guard, Op::Else,
+                                   Op::Gt, Op::Member, Op::Until};
     return v;
 }
 

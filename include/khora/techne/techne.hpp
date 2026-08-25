@@ -133,6 +133,21 @@ enum class Op : std::uint8_t {
     // between already-computed values. Termination by construction is untouched.
     Guard,     // dst = b.empty() ? [] : a     -- a, but only if b is non-empty
     Else,      // dst = a.empty() ? b : a      -- a, or b when a has nothing
+    // ---- THE FOUR THE TEXT BENCH NAMED --------------------------------------
+    //
+    // Not invented. Four string tasks failed there and I claimed each failure
+    // had a specific missing capability behind it -- set membership, a scan that
+    // stops at a delimiter, a conditional on a value range, and any comparison
+    // between neighbouring elements. That was a DIAGNOSIS, and adding exactly
+    // these four tests it: if count_vowels, first_word, title_case and
+    // dedup_adjacent still fail, the explanation was wrong.
+    //
+    // All four are total and single-pass. None introduces a loop whose length is
+    // not the length of its input, so termination by construction survives.
+    Gt,        // dst = [ x > b[0] ? 1 : 0 for x in a ]   makes conditionals arithmetic
+    Member,    // dst = [ x in b ? 1 : 0 for x in a ]     set membership
+    Until,     // dst = prefix of a before the first element equal to b[0]
+    Delta,     // dst = [ a[i+1] - a[i] ]                 neighbour comparison
     Call,      // dst = library[b](a)    a learned primitive
     // ---- HIGHER ORDER: operations whose BODY is a learned function ----------
     //

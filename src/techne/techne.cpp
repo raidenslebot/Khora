@@ -81,6 +81,8 @@ const char* op_name(Op o) {
         case Op::Count: return "count";  case Op::Call: return "call";
         case Op::Guard: return "guard";  case Op::Else: return "else";
         case Op::MapF: return "mapf";    case Op::FoldF: return "foldf";
+        case Op::Gt: return "gt";        case Op::Member: return "member";
+        case Op::Until: return "until";  case Op::Delta: return "delta";
         default: return "?";
     }
 }
@@ -92,6 +94,7 @@ inline bool binary(Op o) {
         case Op::Append: case Op::Take: case Op::Drop: case Op::Index:
         case Op::Filter: case Op::MapAdd: case Op::MapMul: case Op::Count:
         case Op::Guard: case Op::Else:
+        case Op::Gt: case Op::Member: case Op::Until:
             return true;
         default: return false;
     }
@@ -395,7 +398,28 @@ Value run(const Program& p, const Value& input, const Library* lib, std::size_t 
             }
             case Op::Guard: if (!B.empty()) out = A; break;
             case Op::Else:  out = A.empty() ? B : A; break;
-            case Op::MapF: {
+            case Op::Gt: {
+                if (B.empty()) break;
+                for (const auto x : A) out.push_back(x > B[0] ? 1 : 0);
+                break;
+            }
+            case Op::Member: {
+                if (B.empty()) break;
+                for (const auto x : A) {
+                    out.push_back(std::find(B.begin(), B.end(), x) != B.end() ? 1 : 0);
+                }
+                break;
+            }
+            case Op::Until: {
+                if (B.empty()) break;
+                for (const auto x : A) { if (x == B[0]) break; out.push_back(x); }
+                break;
+            }
+            case Op::Delta: {
+                for (std::size_t i = 1; i < A.size(); ++i) out.push_back(cap(A[i] - A[i - 1]));
+                break;
+            }
+        case Op::MapF: {
                 if (lib == nullptr || lib->size() == 0) break;
                 const std::size_t li = c.b % lib->size();
                 for (const auto x : A) {
@@ -590,14 +614,15 @@ namespace {
 // without adding a behaviour, and this pool is indexed by behaviour.
 const std::vector<Op>& unary_ops() {
     static const std::vector<Op> v{Op::Len, Op::Head, Op::Tail, Op::Rev, Op::Sort,
-                                   Op::Range, Op::Sum, Op::Max, Op::Min};
+                                   Op::Range, Op::Sum, Op::Max, Op::Min, Op::Delta};
     return v;
 }
 const std::vector<Op>& binary_ops() {
     static const std::vector<Op> v{Op::Add, Op::Sub, Op::Mul, Op::Div, Op::Mod,
                                    Op::Append, Op::Take, Op::Drop, Op::Index,
                                    Op::Filter, Op::MapAdd, Op::MapMul, Op::Count,
-                                   Op::Guard, Op::Else};
+                                   Op::Guard, Op::Else,
+                                   Op::Gt, Op::Member, Op::Until};
     return v;
 }
 
@@ -655,6 +680,27 @@ Value apply_op(Op op, const Value& A, const Value& B, std::uint8_t k,
         case Op::Count: { if (B.empty()) break; std::int64_t n = 0; for (const auto x : A) if (x == B[0]) ++n; out = Value{n}; break; }
         case Op::Guard: if (!B.empty()) out = A; break;
         case Op::Else:  out = A.empty() ? B : A; break;
+        case Op::Gt: {
+            if (B.empty()) break;
+            for (const auto x : A) out.push_back(x > B[0] ? 1 : 0);
+            break;
+        }
+        case Op::Member: {
+            if (B.empty()) break;
+            for (const auto x : A) {
+                out.push_back(std::find(B.begin(), B.end(), x) != B.end() ? 1 : 0);
+            }
+            break;
+        }
+        case Op::Until: {
+            if (B.empty()) break;
+            for (const auto x : A) { if (x == B[0]) break; out.push_back(x); }
+            break;
+        }
+        case Op::Delta: {
+            for (std::size_t i = 1; i < A.size(); ++i) out.push_back(cap(A[i] - A[i - 1]));
+            break;
+        }
         case Op::MapF: {
             if (lib == nullptr || lib->size() == 0) break;
             const std::size_t li = k % lib->size();
