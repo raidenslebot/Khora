@@ -35,6 +35,7 @@
 #include "khora/techne/techne.hpp"
 
 #include <algorithm>
+#include <unordered_set>
 #include <functional>
 #include <numeric>
 #include <unordered_map>
@@ -148,8 +149,22 @@ Value fwd_op(Op op, const Value& A, const Value& B, std::uint8_t k,
             }
         case Op::Member: {
             if (B.empty()) break;
-            for (const auto x : A) {
-                out.push_back(std::find(B.begin(), B.end(), x) != B.end() ? 1 : 0);
+            // O(|a| + |b|), not O(|a| x |b|). Scanning all of B for every
+            // element of A is applied to every PAIR of pool entries inside the
+            // search, and with two 512-element lists that is 262,144 comparisons
+            // per candidate per case -- which took the throughput benchmark from
+            // finishing in seconds to not finishing at all. A quadratic operation
+            // in a hot loop is not a slow program, it is a different one.
+            //
+            // A hash set costs more than a scan for a handful of elements, so the
+            // scan is kept where it wins.
+            if (B.size() <= 16) {
+                for (const auto x : A) {
+                    out.push_back(std::find(B.begin(), B.end(), x) != B.end() ? 1 : 0);
+                }
+            } else {
+                const std::unordered_set<std::int64_t> seen(B.begin(), B.end());
+                for (const auto x : A) out.push_back(seen.count(x) ? 1 : 0);
             }
             break;
             }

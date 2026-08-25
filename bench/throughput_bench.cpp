@@ -188,14 +188,17 @@ void run_worker(const std::vector<Spec>& specs, std::atomic<std::size_t>& cursor
         if (i >= specs.size()) break;
         ++out.attempted;
 
+        // Mining is always on and kept small (8 constants) rather than made
+        // conditional. A cheap-then-mined retry was tried and was worse: ~45% of
+        // tasks fail, so nearly half the workload paid for both attempts.
         BuildResult b;
         std::shared_ptr<const Library> snap;
+        const Library* use = &solo;
         if (shared != nullptr) {
             snap = shared->read();                    // one atomic load, no lock
-            b = construct(specs[i], pool_cap, snap.get());
-        } else {
-            b = construct(specs[i], pool_cap, &solo);
+            use = snap.get();
         }
+        b = construct(specs[i], pool_cap, use);
         out.peak_bytes = std::max(out.peak_bytes, b.distinct_behaviours * 64);
         if (b.proof != Proof::Generalised) continue;
 
@@ -228,6 +231,20 @@ void run_worker(const std::vector<Spec>& specs, std::atomic<std::size_t>& cursor
             solo.prune();
         }
     }
+}
+
+
+// STAGE MARKERS THAT FLUSH.
+//
+// This benchmark stopped finishing and I diagnosed the cause three times by
+// reasoning about it -- Member being quadratic, mining being on, the refinement
+// pool doubling -- and was wrong or incomplete each time, because stdout is
+// buffered and a hang shows nothing at all. An unobservable program invites
+// exactly that kind of confident guessing. One flushed line per arm turns it
+// into a measurement.
+static void stage(const char* what) {
+    std::printf("  [stage] %s\n", what);
+    std::fflush(stdout);
 }
 
 } // namespace
@@ -291,9 +308,12 @@ int main(int argc, char** argv) {
         return std::make_pair(total, std::chrono::duration<double>(clk::now() - t).count());
     };
 
-    const auto one  = sweep(1, true);
-    const auto many = sweep(hw, true);
-    const auto solo = sweep(hw, false);
+    stage("1-thread arm");
+const auto one  = sweep(1, true);
+    stage("parallel shared arm");
+const auto many = sweep(hw, true);
+    stage("parallel isolated arm");
+const auto solo = sweep(hw, false);
 
     // ---- TO FIXPOINT --------------------------------------------------------
     //
@@ -301,6 +321,7 @@ int main(int argc, char** argv) {
     // queue hands it out, so a task that is trivial once some component exists
     // fails when it happens to come first. That is a fact about scheduling, not
     // about solvability, and iterating removes it.
+stage("fixpoint arm");
     SolveConfig sc;
     sc.pool_cap = pool_cap;
     sc.lib_budget = lib_bud;
@@ -342,7 +363,13 @@ int main(int argc, char** argv) {
     // constraint, repeat. A counterexample is by construction a case the current
     // program gets WRONG, so the next search cannot return the same program.
     {
-        const std::size_t sample = std::min<std::size_t>(specs.size(), 400);
+stage("counterexample arm");
+        // Sized against the run, not fixed at 400. This arm does up to six
+        // refinements per task with a doubling pool and 300 probes each, so it
+        // is the most expensive thing here by an order of magnitude; a fixed 400
+        // meant a 300-task run spent nearly all its time in one arm and never
+        // reached the language table.
+        const std::size_t sample = std::min<std::size_t>(specs.size(), 60);
         // Only VERIFIED recipes enter this library. A merely certified one is
         // wrong somewhere the sample did not look, and admitting it would put a
         // primitive that lies underneath every later search.

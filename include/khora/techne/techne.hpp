@@ -479,7 +479,22 @@ BuildResult construct_bidir(const Spec& spec, std::size_t max_pool,
 
 // Build a program by composition. `max_pool` bounds the number of DISTINCT
 // behaviours retained, which is the real memory cost.
-BuildResult construct(const Spec& spec, std::size_t max_pool, const Library* lib = nullptr);
+// `mine_constants` decides whether level 0 is seeded with values drawn from the
+// specification as well as the fixed table.
+//
+// A knob rather than always-on, because it is not free. Mining takes level 0
+// from 17 entries to about 41, and a binary level is quadratic in that: ~5,200
+// candidates becomes ~30,000, roughly six times the work per level. Measured,
+// that turned a throughput run finishing in minutes into one that did not finish
+// at all.
+//
+// The policy that follows is the one that already worked for the two search
+// engines: run the cheap configuration first, spend the expensive one only on
+// what survives it. Most tasks never need a mined constant, and the ones that do
+// are exactly the ones a first pass fails.
+BuildResult construct(const Spec& spec, std::size_t max_pool,
+                      const Library* lib = nullptr,
+                      bool mine_constants = true);
 
 // ---------------------------------------------------------------------------
 // EMISSION: a recipe becomes real source in a real language.

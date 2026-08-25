@@ -261,6 +261,7 @@ bool Library::admit(std::string name, Program body, std::size_t task) {
 
 bool Library::admit_recipe(std::string name, Recipe r, std::size_t task) {
     if (!r.found) return false;
+
     for (const auto& it : items_) {
         if (it.recipe.found && it.recipe.pool.size() == r.pool.size() &&
             it.recipe.root == r.root) {
@@ -406,8 +407,22 @@ Value run(const Program& p, const Value& input, const Library* lib, std::size_t 
             }
             case Op::Member: {
                 if (B.empty()) break;
-                for (const auto x : A) {
-                    out.push_back(std::find(B.begin(), B.end(), x) != B.end() ? 1 : 0);
+                // O(|a| + |b|), not O(|a| x |b|). Scanning all of B for every
+                // element of A is applied to every PAIR of pool entries inside the
+                // search, and with two 512-element lists that is 262,144 comparisons
+                // per candidate per case -- which took the throughput benchmark from
+                // finishing in seconds to not finishing at all. A quadratic operation
+                // in a hot loop is not a slow program, it is a different one.
+                //
+                // A hash set costs more than a scan for a handful of elements, so the
+                // scan is kept where it wins.
+                if (B.size() <= 16) {
+                    for (const auto x : A) {
+                        out.push_back(std::find(B.begin(), B.end(), x) != B.end() ? 1 : 0);
+                    }
+                } else {
+                    const std::unordered_set<std::int64_t> seen(B.begin(), B.end());
+                    for (const auto x : A) out.push_back(seen.count(x) ? 1 : 0);
                 }
                 break;
             }
@@ -432,6 +447,7 @@ Value run(const Program& p, const Value& input, const Library* lib, std::size_t 
             }
             case Op::FoldF: {
                 if (lib == nullptr || lib->size() == 0 || A.empty()) break;
+                if (depth > 0) break;                 // see MapF: no nesting
                 const std::size_t li = c.b % lib->size();
                 Value acc{A[0]};
                 for (std::size_t i = 1; i < A.size(); ++i) {
@@ -688,8 +704,22 @@ Value apply_op(Op op, const Value& A, const Value& B, std::uint8_t k,
         }
         case Op::Member: {
             if (B.empty()) break;
-            for (const auto x : A) {
-                out.push_back(std::find(B.begin(), B.end(), x) != B.end() ? 1 : 0);
+            // O(|a| + |b|), not O(|a| x |b|). Scanning all of B for every
+            // element of A is applied to every PAIR of pool entries inside the
+            // search, and with two 512-element lists that is 262,144 comparisons
+            // per candidate per case -- which took the throughput benchmark from
+            // finishing in seconds to not finishing at all. A quadratic operation
+            // in a hot loop is not a slow program, it is a different one.
+            //
+            // A hash set costs more than a scan for a handful of elements, so the
+            // scan is kept where it wins.
+            if (B.size() <= 16) {
+                for (const auto x : A) {
+                    out.push_back(std::find(B.begin(), B.end(), x) != B.end() ? 1 : 0);
+                }
+            } else {
+                const std::unordered_set<std::int64_t> seen(B.begin(), B.end());
+                for (const auto x : A) out.push_back(seen.count(x) ? 1 : 0);
             }
             break;
         }
@@ -704,6 +734,15 @@ Value apply_op(Op op, const Value& A, const Value& B, std::uint8_t k,
         }
         case Op::MapF: {
             if (lib == nullptr || lib->size() == 0) break;
+                // NO NESTING. A fold invokes its body once per element, so a
+                // fold whose body folds is quadratic in list length, and three
+                // permitted levels makes 64 elements cost 262,144 evaluations
+                // for one call. Speculation was bounded; the cost of CALLING an
+                // admitted body was not, and one such entry made every later
+                // search that touched it unaffordable -- measured, the isolated
+                // arm stopped returning at 300 tasks. One level keeps a library
+                // call O(elements), which is a bound that can be stated.
+                if (depth > 0) break;
             const std::size_t li = k % lib->size();
             for (const auto x : A) {
                 const Value r1 = lib->call(li, Value{x}, depth + 1);
@@ -714,6 +753,7 @@ Value apply_op(Op op, const Value& A, const Value& B, std::uint8_t k,
         }
         case Op::FoldF: {
             if (lib == nullptr || lib->size() == 0 || A.empty()) break;
+            if (depth > 0) break;                     // see MapF: no nesting
             const std::size_t li = k % lib->size();
             Value acc{A[0]};
             for (std::size_t i = 1; i < A.size(); ++i) {
@@ -829,7 +869,8 @@ std::string Recipe::render() const {
     return go(static_cast<int>(root));
 }
 
-BuildResult construct(const Spec& spec, std::size_t max_pool, const Library* lib) {
+BuildResult construct(const Spec& spec, std::size_t max_pool, const Library* lib,
+                      bool mine_constants) {
     BuildResult r;
     r.cases_total = spec.cases.size();
     r.holdout_total = spec.holdout.size();
@@ -891,7 +932,7 @@ BuildResult construct(const Spec& spec, std::size_t max_pool, const Library* lib
     // candidate the specification itself nominated, which is a far better prior
     // than my taste in round numbers. Capped, and ordered by how often they
     // occur, so a wide input alphabet cannot flood level 0.
-    {
+    if (mine_constants) {
         std::unordered_map<std::int64_t, std::size_t> freq;
         for (const Case& c : spec.cases) {
             for (const auto v : c.in)  ++freq[v];
@@ -930,9 +971,27 @@ BuildResult construct(const Spec& spec, std::size_t max_pool, const Library* lib
             if (a.second != b.second) return a.second > b.second;
             return a.first < b.first;              // deterministic on ties
         });
+        // EIGHT, NOT TWENTY-FOUR, AND THE REASON IS QUADRATIC.
+        //
+        // A binary level costs level0^2 x ops. At 24 mined constants level 0 goes
+        // from 17 entries to 41 and that level goes from ~5,200 candidates to
+        // ~30,000 -- six times the work, which took a throughput run from
+        // finishing in minutes to not finishing. At 8 it is 25 entries and 2.1x,
+        // which is a price worth paying.
+        //
+        // I first tried making mining conditional instead: cheap attempt, then a
+        // mined retry on failure. That was WORSE. Roughly 45% of tasks fail, so
+        // nearly half the workload paid for both attempts -- 7x rather than 6x.
+        // Cheap-first only wins when the cheap case is the common case, and here
+        // it is not.
+        //
+        // Eight is enough because the mined list is ordered by frequency with
+        // input/output RELATIONSHIPS weighted above raw values, and it is the
+        // relationships that carry the answers: -32 for upper_lower, 32 for
+        // strip_spaces and first_word. Those sit at the top, not the tail.
         std::size_t taken = 0;
         for (const auto& [val, n] : mined) {
-            if (taken >= 24) break;
+            if (taken >= 8) break;
             (void)n;
             bool already = false;
             for (std::uint8_t k = 0; k < 16; ++k) if (const_of(k) == val) { already = true; break; }
@@ -965,6 +1024,45 @@ BuildResult construct(const Spec& spec, std::size_t max_pool, const Library* lib
         const std::size_t end = pool.size();
         if (start >= end) break;
         frontier = end;
+
+        for (std::size_t i = start; i < end && found_at < 0 && pool.size() < max_pool; ++i) {
+            for (const Op op : unary_ops()) {
+                if (!spec.allows(op)) continue;
+                std::vector<Value> outs(ncase);
+                for (std::size_t c = 0; c < ncase; ++c) {
+                    outs[c] = apply_op(op, behaviour[i][c], {}, 0, lib, 0);
+                }
+                Expr e; e.op = op; e.a = static_cast<int>(i);
+                consider(e, std::move(outs));
+                if (found_at >= 0) break;
+            }
+        }
+        for (std::size_t i = 0; i < end && found_at < 0 && pool.size() < max_pool; ++i) {
+            for (std::size_t j = 0; j < end && found_at < 0 && pool.size() < max_pool; ++j) {
+                if (i < start && j < start) continue;   // this pair already combined
+                for (const Op op : binary_ops()) {
+                    if (!spec.allows(op)) continue;
+                    std::vector<Value> outs(ncase);
+                    for (std::size_t c = 0; c < ncase; ++c) {
+                        outs[c] = apply_op(op, behaviour[i][c], behaviour[j][c], 0, lib, 0);
+                    }
+                    Expr e; e.op = op; e.a = static_cast<int>(i); e.b = static_cast<int>(j);
+                    consider(e, std::move(outs));
+                    if (found_at >= 0) break;
+                }
+            }
+        }
+
+        // HIGHER-ORDER LAST, and this is a scheduling fix rather than a policy
+        // change.
+        //
+        // Expanding folds and maps FIRST put up to 256 x 2 x 8 = 4,096 candidates
+        // into the pool before a single ordinary operation was tried, and against
+        // a 3,000-behaviour cap that meant the cheap, common answers never got
+        // space. Measured: the parallel arm certified 80 of 300 while a SINGLE
+        // THREAD certified 184, because the shared library filled faster and so
+        // the flood arrived sooner. A search that spends its budget on the rarest
+        // shape first is not exploring, it is queueing badly.
 
         // HIGHER-ORDER EXPANSION. MapF and FoldF are unary in shape but carry a
         // library index, so each needs one candidate per library ENTRY rather
@@ -1021,33 +1119,6 @@ BuildResult construct(const Spec& spec, std::size_t max_pool, const Library* lib
             }
         }
 
-        for (std::size_t i = start; i < end && found_at < 0 && pool.size() < max_pool; ++i) {
-            for (const Op op : unary_ops()) {
-                if (!spec.allows(op)) continue;
-                std::vector<Value> outs(ncase);
-                for (std::size_t c = 0; c < ncase; ++c) {
-                    outs[c] = apply_op(op, behaviour[i][c], {}, 0, lib, 0);
-                }
-                Expr e; e.op = op; e.a = static_cast<int>(i);
-                consider(e, std::move(outs));
-                if (found_at >= 0) break;
-            }
-        }
-        for (std::size_t i = 0; i < end && found_at < 0 && pool.size() < max_pool; ++i) {
-            for (std::size_t j = 0; j < end && found_at < 0 && pool.size() < max_pool; ++j) {
-                if (i < start && j < start) continue;   // this pair already combined
-                for (const Op op : binary_ops()) {
-                    if (!spec.allows(op)) continue;
-                    std::vector<Value> outs(ncase);
-                    for (std::size_t c = 0; c < ncase; ++c) {
-                        outs[c] = apply_op(op, behaviour[i][c], behaviour[j][c], 0, lib, 0);
-                    }
-                    Expr e; e.op = op; e.a = static_cast<int>(i); e.b = static_cast<int>(j);
-                    consider(e, std::move(outs));
-                    if (found_at >= 0) break;
-                }
-            }
-        }
     }
 
     r.distinct_behaviours = pool.size();

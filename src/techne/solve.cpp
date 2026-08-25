@@ -240,7 +240,11 @@ BuildResult synthesise_verified(Spec spec, std::size_t pool_cap,
 
     for (std::size_t round = 0; round <= rounds; ++round) {
         v.rounds = round;
-        BuildResult b = construct(spec, static_cast<std::size_t>(cap), lib);
+        // Cheap first here too. Mining takes level 0 from 17 entries to about 41
+        // and a binary level is quadratic in that, so doing it on every
+        // refinement round -- while the pool is ALSO doubling each round -- is
+        // how this arm went from 176 seconds to not returning.
+        BuildResult b = construct(spec, static_cast<std::size_t>(cap), lib, round > 0);
         if (!b.certified()) {
             if (out) *out = v;
             return (b.cases_passed > best.cases_passed) ? b : best;
@@ -276,7 +280,10 @@ BuildResult synthesise_verified(Spec spec, std::size_t pool_cap,
         // cannot return the same program. Every round strictly narrows the set
         // of behaviours still consistent with the specification.
         spec.cases.push_back(Case{v.counterexample, oracle(v.counterexample)});
-        cap *= 2.0;
+        // Doubling six times is 64x the starting pool, and combined with mining
+        // that is a cost nobody budgeted for. Growth is capped so a refinement
+        // sequence cannot quietly become the most expensive thing in the run.
+        cap = std::min(cap * 2.0, static_cast<double>(pool_cap) * 8.0);
     }
 
     if (out) *out = v;
@@ -333,7 +340,7 @@ BuildResult synthesise_exhaustive(Spec spec, std::size_t pool_cap,
     double cap = static_cast<double>(pool_cap);
 
     for (std::size_t round = 0; round <= rounds; ++round) {
-        BuildResult b = construct(spec, static_cast<std::size_t>(cap), lib);
+        BuildResult b = construct(spec, static_cast<std::size_t>(cap), lib, round > 0);
         if (!b.certified()) {
             if (out) *out = last;
             return (b.cases_passed > best.cases_passed) ? b : best;
@@ -355,7 +362,7 @@ BuildResult synthesise_exhaustive(Spec spec, std::size_t pool_cap,
         // search cannot return the same program -- and because the hunt is
         // complete, the sequence of counterexamples cannot cycle.
         spec.cases.push_back(Case{last.counterexample, oracle(last.counterexample)});
-        cap *= 2.0;
+        cap = std::min(cap * 2.0, static_cast<double>(pool_cap) * 8.0);
     }
 
     if (out) *out = last;
