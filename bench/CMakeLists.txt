@@ -75,3 +75,6 @@ target_link_libraries(text_bench PRIVATE khora::techne)
 
 add_executable(proof_bench proof_bench.cpp)
 target_link_libraries(proof_bench PRIVATE khora::techne)
+
+add_executable(diagnosis_bench diagnosis_bench.cpp)
+target_link_libraries(diagnosis_bench PRIVATE khora::techne)

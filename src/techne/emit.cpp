@@ -1855,6 +1855,13 @@ static std::string emit_inlined(const Recipe& r, Lang l, const std::string& fn,
     for (const Expr& e : r.pool) {
         if (e.op == Op::Call) return {};
         if ((e.op == Op::MapF || e.op == Op::FoldF) && lib_n == 0) return {};
+        // Gt, Member, Until and Delta have no backend yet. Without this they
+        // reach fn_of(), hit its default and emit kh_id -- a silent identity
+        // where a comparison belongs. That is the exact shape of the Op::Call
+        // defect that made three quarters of this module's output a different
+        // program from the one certified, and the refusal costs one line.
+        if (e.op == Op::Gt || e.op == Op::Member ||
+            e.op == Op::Until || e.op == Op::Delta) return {};
     }
 
     // Only the nodes the root actually reaches. Emitting the whole pool would
@@ -1921,7 +1928,10 @@ static std::string emit_inlined(const Recipe& r, Lang l, const std::string& fn,
         const std::string lhs = sig + "t" + std::to_string(i);
         std::string rhs;
         if (e.op == Op::Const) {
-            const std::string k = std::to_string(const_value(e.k));
+            // A mined literal overrides the table index. Emitting const_value(k)
+            // for a node carrying a literal would emit a DIFFERENT constant than
+            // the certified program uses.
+            const std::string k = std::to_string(e.has_lit ? e.lit : const_value(e.k));
             switch (l) {
                 case Lang::Cpp:    rhs = "V{" + k + "}"; break;
                 case Lang::Rust:   rhs = "vec![" + k + "]"; break;

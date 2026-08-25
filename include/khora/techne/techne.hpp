@@ -230,6 +230,21 @@ struct Expr {
     int  a  = -1;
     int  b  = -1;
     std::uint8_t k = 0;      // constant selector / library index
+
+    // A LITERAL MINED FROM THE SPECIFICATION, when has_lit is set.
+    //
+    // The fixed constant table is a set I chose with no relationship to any
+    // particular problem, and it showed: 32 is not in it, so every text task
+    // needing a space had to build mul(4, 8) first. Values that appear in the
+    // problem are a far better prior than my taste in round numbers.
+    //
+    // It is a separate field rather than a wider `k` because EVERY consumer has
+    // to honour it -- evaluation, rendering and emission alike. A literal that
+    // the search uses and the evaluator ignores would compute one thing during
+    // the search and another on re-application, which is the silent divergence
+    // this module has already shipped twice.
+    std::int64_t lit = 0;
+    bool has_lit = false;
 };
 
 // A constructed program. This is what the bottom-up engine produces, and it is

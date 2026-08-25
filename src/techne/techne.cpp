@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <functional>
 #include <numeric>
+#include <unordered_map>
 #include <unordered_set>
 
 namespace khora::techne {
@@ -781,7 +782,11 @@ Value Recipe::apply(const Value& in, const Library* lib, std::size_t depth) cons
         const Expr& e = pool[i];
         const Value& A = (e.a < 0) ? in : vals[static_cast<std::size_t>(e.a)];
         const Value& B = (e.b < 0) ? in : vals[static_cast<std::size_t>(e.b)];
-        vals[i] = apply_op(e.op, A, B, e.k, lib, depth);
+        // A mined literal is carried on the node, not selectable by index, so it
+        // has to be read here or the recipe evaluates to a different constant
+        // than the one the search chose.
+        vals[i] = (e.op == Op::Const && e.has_lit) ? Value{e.lit}
+                                                   : apply_op(e.op, A, B, e.k, lib, depth);
     }
     return vals[root];
 }
@@ -808,7 +813,7 @@ std::string Recipe::render() const {
     std::function<std::string(int)> go = [&](int i) -> std::string {
         if (i < 0) return "x";
         const Expr& e = pool[static_cast<std::size_t>(i)];
-        if (e.op == Op::Const) return std::to_string(const_of(e.k));
+        if (e.op == Op::Const) return std::to_string(e.has_lit ? e.lit : const_of(e.k));
         if (e.op == Op::Call)  return "lib" + std::to_string(e.k) + "(" + go(e.a) + ")";
         // A fold is meaningless without naming its BODY. `foldf(x, x)` printed
         // its operand twice and said nothing about which learned function was
@@ -869,6 +874,46 @@ BuildResult construct(const Spec& spec, std::size_t max_pool, const Library* lib
         for (std::size_t c = 0; c < ncase; ++c) outs[c] = apply_op(Op::Const, {}, {}, k, lib, 0);
         Expr e; e.op = Op::Const; e.k = k;
         consider(e, std::move(outs));
+    }
+    // CONSTANTS MINED FROM THE SPECIFICATION ITSELF.
+    //
+    // The fixed table holds {0..10, -1, -2, 100, 1000}, which is a set I chose
+    // and which has no relationship to any particular problem. Measured
+    // consequence: the space character 32 is not nameable, so every text task
+    // needing it had to BUILD it -- count_spaces and upper_lower both found
+    // mul(4, 8), and first_word found until(x, mul(4, 8)). That worked. It stops
+    // working the moment a task needs several such constants: count_vowels needs
+    // the set {97, 101, 105, 111, 117}, which is five unnameable values plus four
+    // appends, and no pool reaches it.
+    //
+    // The values a problem needs are almost always sitting in the problem. Every
+    // distinct value appearing in the cases -- inputs as well as outputs -- is a
+    // candidate the specification itself nominated, which is a far better prior
+    // than my taste in round numbers. Capped, and ordered by how often they
+    // occur, so a wide input alphabet cannot flood level 0.
+    {
+        std::unordered_map<std::int64_t, std::size_t> freq;
+        for (const Case& c : spec.cases) {
+            for (const auto v : c.in)  ++freq[v];
+            for (const auto v : c.out) ++freq[v];
+        }
+        std::vector<std::pair<std::int64_t, std::size_t>> mined(freq.begin(), freq.end());
+        std::sort(mined.begin(), mined.end(), [](const auto& a, const auto& b) {
+            if (a.second != b.second) return a.second > b.second;
+            return a.first < b.first;              // deterministic on ties
+        });
+        std::size_t taken = 0;
+        for (const auto& [val, n] : mined) {
+            if (taken >= 24) break;
+            (void)n;
+            bool already = false;
+            for (std::uint8_t k = 0; k < 16; ++k) if (const_of(k) == val) { already = true; break; }
+            if (already) continue;
+            std::vector<Value> outs(ncase, Value{val});
+            Expr e; e.op = Op::Const; e.k = 0; e.lit = val; e.has_lit = true;
+            consider(e, std::move(outs));
+            ++taken;
+        }
     }
     if (lib != nullptr) {
         for (std::size_t li = 0; li < lib->size() && found_at < 0; ++li) {
