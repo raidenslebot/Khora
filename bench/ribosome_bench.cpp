@@ -171,8 +171,7 @@ int main(int argc, char** argv) {
         std::printf("  glyphs: DISTRIBUTIONAL (Lexicon random indexing, %zu tokens)\n",
                     lex.vocabulary_size());
     } else {
-        std::printf("  glyphs: HASHED (every word orthogonal to every other)
-");
+        std::printf("  glyphs: HASHED (every word orthogonal to every other)\n");
     }
     std::size_t no_context = 0;
     auto intern = [&](const std::string& w) -> std::size_t {

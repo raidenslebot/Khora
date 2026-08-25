@@ -216,9 +216,67 @@ build/bin/ribosome_bench data/plexus_archive/main data/eval/wn_categories.tsv 15
 ```
 
 **Status at last measurement: Ribosome does not beat the baselines on real
-data.** The substrate is verified, the two synthetic controls behave exactly as
-designed, and the real assay is a loss. That is the current state and it is not
-being dressed as anything else.
+data, on either relation, once the metric is correct.**
+
+| predictor | hypernym | co-hyponym (one sibling) | co-hyponym (same category) |
+|---|---|---|---|
+| chance | 0.021% | 0.021% | — |
+| majority class | **5.649%** | 0.000% | — |
+| top Plexus associate | 0.794% | 0.177% | **3.44%** |
+| second-order kin (alone) | 0.177% | 0.000% | 2.91% |
+| VSA role vector (textbook) | 0.000% | 0.000% | — |
+| **Ribosome (evolved)** | 0.706% | 0.353% | 3.18% |
+
+The last column is the one that counts, and it is the column I had to add after
+noticing my own assay understated the task: co-hyponymy is a **set-valued**
+relation — any sibling is a correct answer — but the scored target was one fixed
+sibling, so returning a *different* correct sibling counted as a miss. On the
+correctly specified measure the evolved operator scores **3.18% against a
+one-line baseline's 3.44%**. The earlier 0.353%-vs-0.177% "win" was an artifact
+of the over-strict target, and it should not have been reported as a win.
+
+Two further negatives from the same run:
+
+- **The added primitives contributed nothing.** `Kin` alone scores 0.000% on
+  co-hyponymy, and no champion uses it. The winning genome's entire live body is
+  still one instruction, `neigh r0 <- bundle top 3 of r0` — evolution
+  rediscovered the trivial baseline and stopped.
+- **Hypernymy is confirmed absent, not merely hard.** Adding the primitives moved
+  the champion off the constant (436 distinct answers, so it is now a real
+  function of its input) and accuracy *fell*, from 1.677% to 0.706%. Under
+  class-balanced fitness a constant scores 1/k = 0.667% and the champion scored
+  0.793%. There is nothing above the constant floor in a co-occurrence graph.
+
+That is the current state and it is not being dressed as anything else.
+
+---
+
+## The honest gap: the objective is still supplied from outside
+
+The claim that makes this organ interesting is that **the system decides for
+itself what is worth building**. That is not yet true. Fitness here is accuracy
+against WordNet — an external, human-curated ground truth. Strip the framing and
+this is supervised program search with a hand-supplied target.
+
+That is a real limitation and it is the difference between a good component and
+the thing this organ is supposed to be. Genetic programming is 1992. What would
+not be 1992 is a fitness function derived from the system's **own epistemic
+state**, with no external answer key anywhere in the loop.
+
+Khora already has the parts:
+
+- `ContextTree::depth_signal()` reports, calibrated by construction, how deep a
+  regularity a passage let it use — a direct measure of *how well do I know this
+  territory*.
+- `Plexus` is a structure that can be added to, and whose value is testable.
+
+So the closed loop is: **an organism proposes structure; the structure is judged
+by whether adding it improves Khora's prediction of held-out text it has never
+seen.** No WordNet, no human labels, no answer key — the system's own surprise is
+the selection pressure, and the organisms that reduce it survive. A relation is
+"true" here in the only sense the system can verify: it pays.
+
+That is the version worth building, and it is next.
 
 ---
 
@@ -232,5 +290,7 @@ being dressed as anything else.
 2. **A relation known to be in the environment.** Before concluding the method
    fails, run it on something Plexus demonstrably contains, so a loss separates
    "the search is weak" from "the signal is absent".
-3. **Bulwark, when it is load-bearing.** Organisms that call Carapace tools need
+3. **Self-supervised fitness**, per the section above. This is the one that
+   changes what the organ *is* rather than how well it scores.
+4. **Bulwark, when it is load-bearing.** Organisms that call Carapace tools need
    real containment; until then the sandbox claim stays unmade.

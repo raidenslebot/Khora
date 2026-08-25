@@ -64,25 +64,36 @@ claiming a safeguard that is not doing any work.
 **What it is worth, against real ground truth.** WordNet relations computed
 through Plexus, split by member so held-out words were never selected against:
 
-| | co-hyponym | hypernym |
-|---|---|---|
-| chance | 0.021% | 0.021% |
-| identity | 0.000% | 0.000% |
-| majority class | 0.000% | **5.649%** |
-| top Plexus associate | 0.177% | 0.794% |
-| VSA role vector (textbook) | 0.000% | 0.000% |
-| **Ribosome** | **0.353%** | 1.677% |
+| predictor | hypernym | co-hyponym (one sibling) | co-hyponym (same category) |
+|---|---|---|---|
+| chance | 0.021% | 0.021% | — |
+| majority class | **5.649%** | 0.000% | — |
+| top Plexus associate | 0.794% | 0.177% | **3.44%** |
+| second-order kin (alone) | 0.177% | 0.000% | 2.91% |
+| VSA role vector (textbook) | 0.000% | 0.000% | — |
+| **Ribosome (evolved)** | 0.706% | 0.353% | 3.18% |
 
-It beats every baseline on co-hyponymy, including the hand-designed VSA role
-vector that every paper in the field would write, and it is a genuine function of
-its input — 926 distinct answers over 1,133 held-out words. On hypernymy it
-loses to "always answer person".
+**It loses.** The last column is the one that counts, and it exists because the
+assay understated the task: co-hyponymy is SET-VALUED — any sibling is correct —
+but the scored target was one fixed sibling, so returning a *different* correct
+sibling counted as a miss. On the correctly specified measure the evolved
+operator scores 3.18% against a one-line baseline's 3.44%. An earlier
+0.353-vs-0.177 result was reported here as a win; it was an artifact of the
+over-strict target and it is withdrawn.
 
-That split is the result, not a hedge. Under class-balanced fitness a constant
-scores 1/k = 0.667%; the hypernym champion scored **0.687%** and gave ONE
-distinct answer across 1,133 inputs. There was nothing above the constant floor
-to find. The method correctly reports which relation is present in the
-environment it was given.
+Two further negatives from the same run:
+
+- **The added primitives contributed nothing.** `Kin` alone scores 0.000% on
+  co-hyponymy and no champion uses it. The winning genome's entire live body is
+  one instruction — `neigh r0 <- bundle top 3 of r0`. Evolution rediscovered the
+  trivial baseline and stopped there.
+- **Hypernymy is absent, not merely hard.** Giving the machine neighbourhood
+  intersection and second-order kinship moved the champion off the constant (436
+  distinct answers, so a real function of its input) and accuracy FELL, 1.677% to
+  0.706%. Under class-balanced fitness a constant scores 1/k = 0.667% and the
+  champion managed 0.793%. There is nothing above the constant floor in a
+  co-occurrence graph, and that is a fact about the environment rather than about
+  the search.
 
 ### Three findings that redesigned Ribosome mid-build
 
