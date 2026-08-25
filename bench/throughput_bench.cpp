@@ -117,6 +117,20 @@ Spec make(const Gen& g, std::uint64_t& seed) {
         }
         return v;
     };
+    // DISJOINT CASE AND HOLDOUT LENGTHS HERE TOO -- and fixing it does not help,
+    // which is worth recording because it did help in the other three.
+    //
+    // Cases run 2-6 and the holdout 7-10, the same shape that was hiding a fifth
+    // of the capability in ascent_bench, fixedbar_bench and selfhost_bench.
+    // Widening the cases to 1-11 with the holdout at 13-16 was measured here:
+    // certification fell from 1,700 of 2,000 to 1,510, and the count of programs
+    // carrying a certificate AND a counterexample did not move -- 30 against 31.
+    //
+    // So the thirty are not length overfits. Whatever makes them wrong survives
+    // a holdout drawn well past anything the cases showed, and widening the
+    // cases only makes every task harder for no gain in quality. The defect
+    // class is real and its impact is bench-specific; this is the bench where it
+    // is not the cause.
     for (std::size_t i = 0; i < g_visible; ++i) s.cases.push_back({draw(2 + i % 5), {}});
     for (std::size_t i = 0; i < 4; ++i) s.holdout.push_back({draw(7 + i), {}});
     for (auto& c : s.cases)   c.out = g(c.in);

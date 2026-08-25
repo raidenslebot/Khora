@@ -287,6 +287,31 @@ widening the cases from 1-5 to 1-12 already removed them. A counterexample hunt
 finds nothing when the specification is already informative enough, which is the
 outcome you want from having fixed the specification.
 
+### The fourth disjoint-length bench, where fixing it does not help
+
+Having found training cases whose lengths never overlapped the holdout's in
+`ascent_bench`, `fixedbar_bench` and `selfhost_bench`, the obvious thing was to
+look in the fourth. It is there: cases at lengths 2-6, holdout at 7-10.
+
+It was fixed and measured — cases 1-11, holdout 13-16:
+
+| | before | after |
+|---|--------|-------|
+| certified at fixpoint | **1,700 of 2,000** | 1,510 of 2,000 |
+| certified WITH a counterexample | 30 | 31 |
+
+Certification falls by 190 and the number of programs carrying a certificate and
+a counterexample at the same time does not move. **So the thirty are not length
+overfits.** Whatever makes them wrong survives a holdout drawn well past anything
+the cases showed, and widening the cases only makes every task harder for no gain
+in quality at all.
+
+Reverted, and the reasoning left in the source next to the two lines it concerns.
+The defect class is real — it cost a fifth of the measured capability elsewhere —
+and this is the bench where it is not the cause. Finding the same shape three
+times does not make it the explanation the fourth time, which is the failure mode
+this one was about to become.
+
 ### The production solver was not using the fix
 
 `construct_best` — try with the library, fall back to without — was worth turning
