@@ -82,6 +82,10 @@ add_executable(ribosome_test ribosome_test.cpp)
 target_link_libraries(ribosome_test PRIVATE khora::ribosome)
 add_test(NAME RibosomeTest COMMAND ribosome_test)
 
+add_executable(retina_test retina_test.cpp)
+target_link_libraries(retina_test PRIVATE khora::retina)
+add_test(NAME RetinaTest COMMAND retina_test)
+
 add_executable(ligature_test ligature_test.cpp)
 target_link_libraries(ligature_test PRIVATE khora::ligature)
 add_test(NAME LigatureTest COMMAND ligature_test)
