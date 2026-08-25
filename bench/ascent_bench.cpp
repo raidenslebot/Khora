@@ -213,7 +213,37 @@ bool holds_up(const Recipe& r, const Library* lib, const Fn& ref) {
     return true;
 }
 
-struct TierResult { std::size_t solved = 0, verified = 0, total = 0; double secs = 0.0; };
+struct TierResult {
+    std::size_t solved = 0, verified = 0, total = 0;
+    // HOW MANY ANSWERS ACTUALLY USED THE LIBRARY, and how many calls deep.
+    //
+    // The carried arm verifying more than the empty one shows the library helps.
+    // It does NOT show how, and the difference matters: a library that appears in
+    // the answers is a vocabulary, while a library that merely changes the search
+    // order is a lucky perturbation. Counting live Call nodes separates them, and
+    // chained calls separately again -- lib_j(lib_i(x)) is the composition the
+    // whole compounding story rests on.
+    std::size_t used_library = 0, chained_calls = 0;
+    double secs = 0.0;
+};
+
+// Live library calls in an answer, over the nodes the root actually reaches.
+std::size_t live_calls(const Recipe& r) {
+    if (!r.found) return 0;
+    std::vector<bool> seen(r.pool.size(), false);
+    std::vector<std::size_t> stack{r.root};
+    std::size_t n = 0;
+    while (!stack.empty()) {
+        const std::size_t i = stack.back();
+        stack.pop_back();
+        if (i >= r.pool.size() || seen[i]) continue;
+        seen[i] = true;
+        if (r.pool[i].op == Op::Call) ++n;
+        if (r.pool[i].a >= 0) stack.push_back(static_cast<std::size_t>(r.pool[i].a));
+        if (r.pool[i].b >= 0) stack.push_back(static_cast<std::size_t>(r.pool[i].b));
+    }
+    return n;
+}
 
 TierResult run_tier(const std::vector<Task>& tasks, const std::vector<Spec>& specs,
                     Library* lib, std::size_t pool_cap, bool admit) {
@@ -233,6 +263,9 @@ TierResult run_tier(const std::vector<Task>& tasks, const std::vector<Spec>& spe
         ++r.solved;
         if (!holds_up(b.recipe, lib, tasks[i].f)) continue;
         ++r.verified;
+        const std::size_t calls = live_calls(b.recipe);
+        if (calls > 0) ++r.used_library;
+        if (calls > 1) ++r.chained_calls;
         if (admit && lib != nullptr) {
             lib->admit_recipe(tasks[i].name, b.recipe, i);
             lib->prune();
@@ -275,8 +308,8 @@ int main(int argc, char** argv) {
                 probe.die_temp_available ? "available" : "NOT available");
 
     Library carried(32);
-    std::printf("  tier | tasks | carried library | empty library | library | seconds\n");
-    std::printf("  -----+-------+-----------------+---------------+---------+--------\n");
+    std::printf("  tier | tasks | carried library | empty library | used lib | chained | seconds\n");
+    std::printf("  -----+-------+-----------------+---------------+----------+---------+--------\n");
 
     std::size_t total_carried = 0, total_empty = 0;
     const auto started = clk::now();
@@ -321,9 +354,9 @@ int main(int argc, char** argv) {
         total_carried += with.verified;
         total_empty += without.verified;
 
-        std::printf("  %4zu | %5zu | %6zu verified  | %5zu verified | %7zu | %6.1f\n",
+        std::printf("  %4zu | %5zu | %6zu verified  | %5zu verified | %8zu | %7zu | %6.1f\n",
                     tier, tasks.size(), with.verified, without.verified,
-                    carried.size(), with.secs + without.secs);
+                    with.used_library, with.chained_calls, with.secs + without.secs);
 
         // TWO BARREN TIERS, NOT ONE.
         //

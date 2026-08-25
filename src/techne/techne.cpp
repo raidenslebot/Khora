@@ -1085,6 +1085,39 @@ BuildResult construct(const Spec& spec, std::size_t max_pool, const Library* lib
         // reason.
         const std::size_t kHigherOrderNodes = 256;
         const std::size_t kHigherOrderBodies = 8;
+        // A LIBRARY CALL ON AN INTERMEDIATE NODE, not only on the raw input.
+        //
+        // Op::Call was seeded at level 0 with a == -1 and nowhere else, so it
+        // could only ever be applied to the argument. That makes
+        // lib_j(lib_i(x)) -- a composition of two learned functions --
+        // UNREACHABLE, which is precisely the mechanism that is supposed to make
+        // a deep task cheap once its parts are known.
+        //
+        // It is the reason the ascent stalled: tiers 6 to 13 verified 1 to 3 of
+        // 20 with a full 32-entry library, because the library could contribute
+        // at most one call to any answer. A library you can only call once is a
+        // set of shortcuts, not a vocabulary.
+        //
+        // Bounded and placed after the ordinary operations for the same reason
+        // the higher-order expansion is: candidates that cost more should not get
+        // the pool before candidates that cost less.
+        if (lib != nullptr && lib->size() > 0) {
+            const std::size_t call_nodes = std::min(end, kHigherOrderNodes);
+            const std::size_t call_bodies = std::min(lib->size(), kHigherOrderBodies);
+            for (std::size_t i = start; i < call_nodes && found_at < 0 && pool.size() < max_pool; ++i) {
+                for (std::size_t li = 0; li < call_bodies && found_at < 0; ++li) {
+                    std::vector<Value> outs(ncase);
+                    for (std::size_t c = 0; c < ncase; ++c) {
+                        outs[c] = apply_op(Op::Call, behaviour[i][c], {},
+                                           static_cast<std::uint8_t>(li), lib, 0);
+                    }
+                    Expr e; e.op = Op::Call; e.a = static_cast<int>(i);
+                    e.k = static_cast<std::uint8_t>(li);
+                    consider(e, std::move(outs));
+                }
+            }
+        }
+
         if (lib != nullptr && lib->size() > 0) {
             const std::size_t node_lim = std::min(end, kHigherOrderNodes);
             const std::size_t body_lim = std::min(lib->size(), kHigherOrderBodies);
