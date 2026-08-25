@@ -3,6 +3,109 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.116.0 — The organ that constructs, and four assumptions measurement destroyed
+
+**Author:** Claude Opus 5
+
+Two new modules. Roughly half of this entry is again negative results, and one
+of the negatives is the most useful thing in it.
+
+### ContextTree — bounded prediction, and depth is not reliability
+
+Variable-order prediction with backoff under a hard node budget. On 1.8M tokens
+of real books, held out: **8.45%** against a bigram table's 7.66% — while the
+bigram keeps every successor with no ceiling and ContextTree holds 300,000 nodes.
+40,000 purely novel symbols settle at 18,471 nodes against a 20,000 budget, which
+is the bound TemporalMemory never had (2.9M segments on 24k tokens).
+
+Three assumptions inside it were wrong, and each was found by measuring:
+
+- **"Deeper context predicts better."** False where it matters. Accuracy FELL
+  through the region carrying 90% of traffic — order 1 14.88%, order 2 13.87%,
+  order 3 11.87% — so the rule kept trading a working order-1 guess for a worse
+  deeper one, and a thirty-line bigram beat the module 14.22 to 13.02. Replaced
+  with per-node measured hit rates shrunk toward the shorter context, which is
+  the Kneser-Ney shape. Accuracy now rises monotonically with the order chosen:
+  **7.8 / 12.4 / 19.8 / 26.9 / 40.0 / 85.7**.
+- **"A bounded successor list can displace singletons."** That rule locked the
+  list once every slot reached count 2, so the order-0 node — which sees every
+  word in the corpus — predicted at **0.00%** where the most-frequent-word
+  baseline scores 7.87%. Replaced with Space-Saving, which has the guarantee the
+  heuristic only looked like it had.
+- **"Fitness is how often a context is used."** A context that is reliably wrong
+  is consulted as often as one that is reliably right. Fitness is now measured
+  off-policy: every step, every context that could have predicted is graded on
+  whether it WOULD have been right.
+
+And a fourth, from a counterfactual: the empty context was winning 26.6% of
+predictions on a ~7% measured rate and delivering **0.75%**, where the bigram
+scored 3.47% on those exact positions. Selection bias — its rate is estimated
+over every position but it only wins on the hard ones. Demoted to last resort.
+
+A null result worth keeping: the shrinkage strength `prior_weight` is **flat from
+w=1 to w=50**. The mechanism mattered; its magnitude does not. `max_successors`
+is the entire story, with a cliff between 8 and 16.
+
+### Ribosome — the organ that constructs
+
+Khora could perceive, act and contain. It could not construct: every faculty it
+has, a human wrote. Ribosome evolves programs over Khora's own primitives.
+
+The genome is a linear byte tape and **the decoder is total** — every byte string
+is a running program. Tree-based genetic programming produces invalid offspring
+that need repair, and the repair rule is a human prior smuggled into the search.
+Verified: 500 random tapes all run, 500 successive replications hold the reading
+frame, crossover of any two genomes yields a viable offspring.
+
+Containment is by construction — fixed registers, no addressing, no I/O, no
+loops — and so this stage **does not use Bulwark at all**. Claiming it would be
+claiming a safeguard that is not doing any work.
+
+**What it is worth, against real ground truth.** WordNet relations computed
+through Plexus, split by member so held-out words were never selected against:
+
+| | co-hyponym | hypernym |
+|---|---|---|
+| chance | 0.021% | 0.021% |
+| identity | 0.000% | 0.000% |
+| majority class | 0.000% | **5.649%** |
+| top Plexus associate | 0.177% | 0.794% |
+| VSA role vector (textbook) | 0.000% | 0.000% |
+| **Ribosome** | **0.353%** | 1.677% |
+
+It beats every baseline on co-hyponymy, including the hand-designed VSA role
+vector that every paper in the field would write, and it is a genuine function of
+its input — 926 distinct answers over 1,133 held-out words. On hypernymy it
+loses to "always answer person".
+
+That split is the result, not a hedge. Under class-balanced fitness a constant
+scores 1/k = 0.667%; the hypernym champion scored **0.687%** and gave ONE
+distinct answer across 1,133 inputs. There was nothing above the constant floor
+to find. The method correctly reports which relation is present in the
+environment it was given.
+
+### Three findings that redesigned Ribosome mid-build
+
+- **A closed instruction set cannot search a hypervector space.** With no senses,
+  on a target expressible in ONE instruction — `bind(from, ROLE[57])` — selection
+  found **0.000** of a possible 1.0 in 2,048 births. Every wrong role is
+  orthogonal to the right one, so the landscape is flat with a single invisible
+  needle. This generalises: a program over random atomic hypervectors cannot
+  express a semantic relation, because the atoms carry no structure. The relation
+  lives in the graph. Given graph senses, same budget: **1.000**.
+- **Per-pair accuracy has a degenerate optimum and selection finds it.** "Always
+  answer person" scores 5.65%, above any honest operator's first generations.
+  The champion's output register was never written from its input. Fixed by
+  averaging over target classes rather than pairs, which levels the peak instead
+  of penalising it.
+- **Two harness defects, both mine.** The majority-class baseline was missing
+  from the bench — chance was not the relevant dumb baseline, and its absence
+  made a constant read like a discovery. And the environment was starved: taking
+  Plexus's top 16 associates *before* intersecting with the codebook left 1.4
+  edges per word and 47% of words with none, so the senses were never under test.
+
+Spec: `docs/SPEC-v3-ribosome.md`.
+
 ## v0.115.0 — A sparse substrate, sequence memory, and five things that turned out not to work
 
 **Author:** Claude Opus 5 — taking the project over; measuring first, and reporting the losses

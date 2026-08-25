@@ -1,0 +1,236 @@
+# SPEC v3 — Ribosome: the organ that constructs
+
+**Status:** substrate built, tested, and benched against real ground truth.
+Whether it earns its place is decided in "Results" below, and the answer at the
+time of writing is *not yet*.
+
+---
+
+## Why this exists
+
+Khora could do three of the four things a system needs in order to be more than
+a model of its input:
+
+| | organ | state |
+|---|---|---|
+| perceive | Plexus, Lexicon, ContextTree, TemporalMemory | built |
+| act | Carapace — 95 reachable tools | built |
+| contain | Bulwark — job objects, low-integrity tokens, DACL repair | built |
+| **construct** | — | **missing** |
+
+Nothing in Khora could emit a capability that did not previously exist. Every
+faculty it has, a human wrote. Ribosome is the organ that closes that gap.
+
+### The specific target
+
+Every vector symbolic architecture in the literature **hand-designs its
+composition**. To encode a role-filler pair you bind with a role vector; to
+encode a sequence you permute; to encode a set you bundle. Which primitive, in
+which order, with which role vector, is always a human decision. That decision
+*is* the architecture, and it has never been searched — only chosen.
+
+So the thing worth evolving is not a better predictor. It is the composition
+itself: given pairs of words standing in some relation, find the program that
+carries the first to the second, in a form that generalises to pairs it was
+never shown.
+
+---
+
+## Design
+
+### Genome — a linear byte tape
+
+Four bytes per codon: `(opcode, dst, a, b)`. Every field is masked into range on
+decode, so **the decoder is total**: every possible byte string is a running
+program.
+
+This is the property the whole design rests on. Tree-based genetic programming
+produces invalid offspring that need repair, and the repair rule is a human
+prior smuggled into the search. A total decoder over a linear tape needs no
+repair, so mutation and crossover are closed operations exactly as they are in
+DNA. Any mutation yields an organism that is viable or dead, never malformed.
+
+Verified: 500 random tapes all decode and run; 500 successive replications hold
+the reading frame; crossover of any two genomes yields a runnable offspring.
+
+### Instruction set
+
+Registers hold **Glyphs** — 10,000-bit hypervectors — so an organism computes
+*in* the representation rather than about it.
+
+| op | effect |
+|---|---|
+| `copy` | `dst = a` |
+| `bind` | `dst = bind(a, b)` — XOR, self-inverse, commutative |
+| `bundle` | `dst = bundle({a, b})` — majority vote |
+| `perm` | `dst = permute(a, b - 128)` — the only directional primitive |
+| `role` | `dst = bind(a, ROLE[b])` — one of 256 fixed role vectors |
+| `and`, `or` | bitwise |
+| `clean` | nearest item in the cleanup memory |
+| `assoc` | **sense:** the b-th associate, in the environment graph, of the item nearest `a` |
+| `neigh` | **sense:** bundle of the top `(b mod 8)+1` associates of that item |
+
+Four registers, not eight. A one-instruction solution must name the right opcode
+*and* the right destination *and* the right source, so the register count enters
+the odds of a blind hit squared. This is a search-budget decision, not a claim
+about capacity.
+
+`ROLE[k]` is fixed for the life of the process and identical in every organism,
+so a role index means the same thing in every genome. Without that, crossover
+would splice in a symbol with a different referent and heredity would be
+meaningless.
+
+### Containment — by construction, not by Bulwark
+
+Fixed register file, no memory addressing, no I/O, no loops, instruction ceiling
+set by tape length. The VM cannot reach anything outside itself.
+
+This is stronger than a sandbox, and it is why this stage **does not use Bulwark
+at all**. Bulwark becomes necessary at the stage where organisms call Carapace
+tools and touch the world. Claiming it now would be claiming a safeguard that is
+not doing any work.
+
+### The chamber
+
+A fixed population under continuous replacement in the PACE sense: one chamber,
+one fixed volume, organisms displaced by better ones as they arrive rather than
+at a generation boundary. Nothing is culled on age.
+
+Fitness is evaluated on a **resampled** subset each round, shared by every
+organism scored in that round. Resampling is not only a speed measure — scoring
+everyone on one fixed set rewards operators that suit *that set*, and the
+champion is re-scored on the full training set before it may replace the
+incumbent, because keeping the luckiest sample rather than the best organism is
+how a sampled fitness quietly becomes a random search.
+
+---
+
+## The four pillars, mapped honestly
+
+| pillar | what is actually built |
+|---|---|
+| DNA data storage | the genome is a linear byte tape with a total decoder; mutation and crossover are closed |
+| Biocomputing | registers hold hypervectors; opcodes are Khora's own tissue operations |
+| Synthetic genomics | replication copies the tape with per-byte error, plus whole-codon indels so programs can change length |
+| Directed evolution | continuous displacement under a fixed budget; failure is starvation, not a cull |
+
+---
+
+## Three findings that redesigned it
+
+Each was found by measuring, and each is kept as a test rather than quietly
+fixed.
+
+### 1. A closed instruction set cannot find anything — the landscape is flat
+
+The first version had no senses: bind, bundle, permute, cleanup, 256 role
+vectors. On a relation expressible in **one instruction** — `to = bind(from,
+ROLE[57])` — selection found nothing. 2,048 births, **0.000** of a possible 1.0.
+
+Not a tuning problem. In a 10,000-bit XOR space every wrong role is orthogonal
+to the right one, so wrong-by-a-hair and wrong-entirely both score zero. The
+landscape is perfectly flat with one invisible needle, and no amount of pressure
+climbs a flat surface.
+
+**That generalises past the synthetic case, and it is the part that matters:** a
+program over random atomic hypervectors cannot express a semantic relation,
+because the atoms carry no structure. Two words that mean similar things have
+orthogonal glyphs. The relation lives in the **graph**, not in the vectors.
+
+So the organism was given senses. Same search, same 2,048 births, on a relation
+it can sense: **1.000** on held-out pairs.
+
+### 2. Similarity is the wrong fitness; accuracy over a set is the right one
+
+Mean similarity to the target is flat for the same reason. Cleanup **accuracy**
+over a set of pairs is graded: an operator that carries three pairs out of twenty
+scores 0.15, and that is a foothold. Partial credit comes from being right about
+part of the world rather than from closeness in a space that has none.
+
+### 3. Per-pair accuracy has a degenerate optimum, and selection finds it
+
+On WordNet hypernymy over 150 categories, *"always answer `person`"* scores
+**5.65%**, and any honest operator scores less than that in its first
+generations. Selection climbed the constant hill and stayed there: the champion
+produced **one distinct answer across 1,133 held-out inputs**, and its output
+register was never written from its input at all.
+
+A penalty term would be the wrong fix — a constant would still be a local
+optimum with a moat around it. Averaging accuracy over **target classes** rather
+than over pairs removes the optimum entirely: a constant is right for one class
+out of every class it faces, so it scores `1/k` instead of the size of the
+largest class. The deceptive peak is not penalised, it is levelled.
+
+Two harness defects were found alongside it, and both were mine:
+
+- **The majority-class baseline was missing from the bench.** Its absence turned
+  a degenerate constant into something that read like a discovery. Chance was not
+  the relevant dumb baseline.
+- **The environment was starved.** Restricting Plexus adjacency to the codebook
+  *after* taking the top 16 associates left 1.4 edges per word and 47% of words
+  with none. The organism had nothing to sense, so the senses were never under
+  test.
+
+---
+
+## The assay
+
+**Environment:** Plexus — a PPMI co-occurrence graph over the corpus. The world
+model Khora actually has.
+
+**Ground truth:** WordNet, which the corpus never saw. Two relations, and the
+contrast between them is the point:
+
+- **Hypernym** — member → its category (`sparrow` → `bird`). Vertical. There is
+  no reason a co-occurrence graph should encode it.
+- **Co-hyponym** — member → a sibling in the same category. Horizontal, and the
+  one distributional structure is actually supposed to carry.
+
+A win on the horizontal relation and a loss on the vertical one would not be a
+mixed result. It would be the method correctly reporting which relations are
+present in the environment it was given.
+
+**Split by member**, so held-out words were never selected against.
+
+**Baselines** — and the last two are the ones that matter:
+
+| baseline | what it is |
+|---|---|
+| chance | `1 / |codebook|` |
+| identity | output = input |
+| top Plexus associate | thirty lines, no search |
+| **majority class** | always answer the commonest target |
+| **VSA role vector** | `r = bundle(bind(from_i, to_i))`, predict `cleanup(bind(from, r))` — *the* textbook answer, same training pairs, free to compute |
+
+If evolution cannot beat the role vector on held-out words, this organ is
+ceremony and the module says so.
+
+---
+
+## Results
+
+Recorded in `CHANGELOG.md` and reproduced by:
+
+```bash
+build/bin/ribosome_bench data/plexus_archive/main data/eval/wn_categories.tsv 150 60
+```
+
+**Status at last measurement: Ribosome does not beat the baselines on real
+data.** The substrate is verified, the two synthetic controls behave exactly as
+designed, and the real assay is a loss. That is the current state and it is not
+being dressed as anything else.
+
+---
+
+## What comes next, in order
+
+1. **Multi-hop senses.** One `assoc` is one edge. Hypernymy, if it is in the
+   graph at all, is a *pattern over neighbourhoods* — the category is the word
+   many co-hyponyms share. Nothing in the current instruction set can express an
+   intersection over a neighbourhood, which may simply mean the target relation
+   is outside the machine's reach rather than outside the data.
+2. **A relation known to be in the environment.** Before concluding the method
+   fails, run it on something Plexus demonstrably contains, so a loss separates
+   "the search is weak" from "the signal is absent".
+3. **Bulwark, when it is load-bearing.** Organisms that call Carapace tools need
+   real containment; until then the sandbox claim stays unmade.

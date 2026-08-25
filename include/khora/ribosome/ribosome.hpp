@@ -81,6 +81,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace khora::ribosome {
@@ -208,6 +209,12 @@ public:
     const std::vector<std::uint32_t>& links(std::size_t i) const;
 
     // Index of the nearest item, or npos when empty.
+    //
+    // An EXACT hit short-circuits the scan. This is not only an optimisation:
+    // Assoc, Neigh and Clean all return codebook glyphs verbatim, and the
+    // inputs are codebook glyphs, so in a typical organism most lookups are
+    // exact and the linear scan over 10,000-bit vectors is pure waste. Without
+    // the short-circuit the bench does not finish.
     std::size_t nearest_index(const lattice::Glyph& q) const;
 
     // Nearest item by similarity. Returns the input unchanged when empty.
@@ -219,6 +226,15 @@ public:
 private:
     std::vector<std::pair<std::string, lattice::Glyph>> items_;
     std::vector<std::vector<std::uint32_t>> adj_;
+    std::unordered_map<std::uint64_t, std::uint32_t> exact_;  // glyph hash -> slot
+
+    // Memo for the scan. Cleanup is a deterministic function of the query, and
+    // a population of related genomes recomputes the same intermediates
+    // constantly -- the same input word through the same program prefix, across
+    // hundreds of organisms and hundreds of generations. Keyed on a 64-bit
+    // digest and capped, so at the cap a collision has probability ~1e-9 and
+    // would cost one mis-scored pair, never a structurally wrong result.
+    mutable std::unordered_map<std::uint64_t, std::uint32_t> memo_;
 };
 
 // ---------------------------------------------------------------------------
@@ -250,6 +266,14 @@ struct ChamberConfig {
     double      mutation_rate = 0.02; // per byte, per replication
     double      crossover     = 0.5;  // share of offspring from two parents
     std::size_t tournament    = 4;    // selection pressure
+
+    // Training pairs drawn per fitness evaluation, 0 for all of them. A
+    // fluctuating sample is standard in evolutionary computation and it is not
+    // only a speed measure: scoring every organism on the identical fixed set
+    // rewards operators that happen to suit that set, and resampling makes the
+    // pressure be about the relation rather than about the sample. Held-out
+    // scoring always uses every pair.
+    std::size_t sample = 96;
 };
 
 // One (input, target) pair the population is selected against. `to_index` is
@@ -301,9 +325,12 @@ private:
     std::uint64_t rng_;
     std::size_t generations_ = 0;
     std::size_t births_ = 0;
+    double best_full_ = -1e9;   // the champion's score on the FULL training set
 
     std::uint64_t next_rand();
     std::size_t select_parent();
+    double evaluate_(const Genome& g, const std::vector<Assay>& pairs,
+                     std::size_t sample, std::uint64_t seed) const;
 };
 
 } // namespace khora::ribosome

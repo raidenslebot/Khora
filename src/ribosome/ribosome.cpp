@@ -4,6 +4,7 @@
 #include <array>
 #include <cstdio>
 #include <span>
+#include <unordered_map>
 
 namespace khora::ribosome {
 namespace {
@@ -157,7 +158,19 @@ std::string Genome::disassemble() const {
 // Codebook
 // ---------------------------------------------------------------------------
 
+namespace {
+// A 64-bit digest of a Glyph, for exact-match lookup only. Collisions are
+// checked against the stored vector before being trusted, so a collision costs
+// a comparison and never a wrong answer.
+std::uint64_t glyph_digest(const lattice::Glyph& g) noexcept {
+    std::uint64_t h = 1469598103934665603ULL;
+    for (const auto w : g.words()) { h ^= w; h *= 1099511628211ULL; }
+    return h;
+}
+} // namespace
+
 void Codebook::add(std::string name, const lattice::Glyph& g) {
+    exact_.emplace(glyph_digest(g), static_cast<std::uint32_t>(items_.size()));
     items_.emplace_back(std::move(name), g);
 }
 
@@ -173,35 +186,32 @@ const std::vector<std::uint32_t>& Codebook::links(std::size_t i) const {
 
 std::size_t Codebook::nearest_index(const lattice::Glyph& q) const {
     if (items_.empty()) return static_cast<std::size_t>(-1);
+    const std::uint64_t d = glyph_digest(q);
+    const auto hit = exact_.find(d);
+    if (hit != exact_.end() && items_[hit->second].second == q) return hit->second;
+    const auto m = memo_.find(d);
+    if (m != memo_.end()) return m->second;
+
     std::size_t best = 0;
     double bs = -2.0;
     for (std::size_t i = 0; i < items_.size(); ++i) {
         const double s = q.similarity(items_[i].second);
         if (s > bs) { bs = s; best = i; }
     }
+    if (memo_.size() >= (1u << 18)) memo_.clear();
+    memo_.emplace(d, static_cast<std::uint32_t>(best));
     return best;
 }
 
 const lattice::Glyph& Codebook::nearest(const lattice::Glyph& q) const {
     if (items_.empty()) return q;
-    std::size_t best = 0;
-    double bs = -2.0;
-    for (std::size_t i = 0; i < items_.size(); ++i) {
-        const double s = q.similarity(items_[i].second);
-        if (s > bs) { bs = s; best = i; }
-    }
-    return items_[best].second;
+    const std::size_t i = nearest_index(q);
+    return items_[i].second;
 }
 
 std::string_view Codebook::nearest_name(const lattice::Glyph& q) const {
     if (items_.empty()) return {};
-    std::size_t best = 0;
-    double bs = -2.0;
-    for (std::size_t i = 0; i < items_.size(); ++i) {
-        const double s = q.similarity(items_[i].second);
-        if (s > bs) { bs = s; best = i; }
-    }
-    return items_[best].first;
+    return items_[nearest_index(q)].first;
 }
 
 // ---------------------------------------------------------------------------
@@ -296,23 +306,58 @@ Chamber::Chamber(ChamberConfig cfg, const Codebook* cleanup, std::uint64_t seed)
 std::uint64_t Chamber::next_rand() { return splitmix(rng_); }
 
 double Chamber::evaluate(const Genome& g, const std::vector<Assay>& pairs) const {
+    return evaluate_(g, pairs, 0, 0);
+}
+
+// FITNESS IS BALANCED ACCURACY, AND THE REASON IS A DEGENERATE OPTIMUM.
+//
+// Per-pair accuracy rewards ignoring the input. On WordNet hypernymy over 150
+// categories, "always answer person" scores 5.65% because that category is the
+// largest, and any honest operator scores less than that in its first
+// generations. Selection climbed the constant hill and stayed: the champion
+// produced ONE distinct answer across 1,133 held-out inputs -- the majority-
+// class classifier in an eight-instruction costume, and its output register was
+// never written from its input at all.
+//
+// A penalty term would be the wrong fix, because a constant would still be a
+// local optimum with a moat around it. Averaging accuracy over TARGET CLASSES
+// instead of over pairs removes the optimum entirely: a constant answering
+// "person" is right for one class out of every class it is scored against, so
+// it scores 1/k rather than the size of the largest class. The deceptive peak
+// is not penalised, it is levelled.
+//
+// This is standard practice for imbalanced classification and it should have
+// been the measure from the start.
+double Chamber::evaluate_(const Genome& g, const std::vector<Assay>& pairs,
+                          std::size_t sample, std::uint64_t seed) const {
     if (pairs.empty()) return 0.0;
     const Vm vm(cleanup_);
-    std::size_t right = 0;
     double sim = 0.0;
-    for (const Assay& a : pairs) {
+    const std::size_t n_eval = (sample == 0 || sample >= pairs.size()) ? pairs.size() : sample;
+    std::uint64_t s = seed | 1ULL;
+
+    std::unordered_map<std::size_t, std::pair<std::uint32_t, std::uint32_t>> per_class;
+    for (std::size_t k = 0; k < n_eval; ++k) {
+        const Assay& a = (n_eval == pairs.size()) ? pairs[k]
+                                                  : pairs[splitmix(s) % pairs.size()];
         const lattice::Glyph out = vm.run(g, a.from);
         sim += out.similarity(a.to);
-        if (cleanup_ && a.to_index != static_cast<std::size_t>(-1)) {
-            if (cleanup_->nearest_index(out) == a.to_index) ++right;
-        } else if (out == a.to) {
-            ++right;
-        }
+        const bool hit = (cleanup_ && a.to_index != static_cast<std::size_t>(-1))
+                             ? (cleanup_->nearest_index(out) == a.to_index)
+                             : (out == a.to);
+        auto& c = per_class[a.to_index];
+        ++c.second;
+        if (hit) ++c.first;
     }
-    const double n = static_cast<double>(pairs.size());
-    // Accuracy dominates; similarity is a thousandth-weight tiebreak so a
-    // population that has not yet got one pair right still has SOME gradient.
-    return static_cast<double>(right) / n + 0.001 * (sim / n);
+
+    double acc = 0.0;
+    for (const auto& kv : per_class) {
+        acc += static_cast<double>(kv.second.first) / static_cast<double>(kv.second.second);
+    }
+    acc /= static_cast<double>(per_class.size());
+    // Similarity stays as a thousandth-weight tiebreak so a population that has
+    // not yet got one pair right is not perfectly flat.
+    return acc + 0.001 * (sim / static_cast<double>(n_eval));
 }
 
 std::size_t Chamber::select_parent() {
@@ -329,13 +374,24 @@ std::size_t Chamber::select_parent() {
 }
 
 double Chamber::step(const std::vector<Assay>& train) {
+    // One sample per ROUND, shared by every organism scored in it -- the whole
+    // chamber faces the same environment at the same moment, which is what
+    // makes the comparison between them meaningful. It changes between rounds.
+    const std::uint64_t env = next_rand();
     for (Organism& o : pop_) {
-        if (o.fitness < -1.0 + 1e-12 || o.age == 0) o.fitness = evaluate(o.genome, train);
+        o.fitness = evaluate_(o.genome, train, cfg_.sample, env);
         ++o.age;
     }
 
+    // The champion is re-scored on the FULL training set before it is allowed
+    // to replace the incumbent. A sampled score is noisy, and keeping the
+    // luckiest sample rather than the best organism is how a sampled fitness
+    // quietly turns into a random search.
     for (const Organism& o : pop_) {
-        if (o.fitness > best_.fitness) best_ = o;
+        if (o.fitness <= best_.fitness) continue;
+        Organism c = o;
+        c.fitness = evaluate(c.genome, train);
+        if (c.fitness > best_full_) { best_full_ = c.fitness; best_ = c; }
     }
 
     // CONTINUOUS replacement, in the PACE sense: the chamber has a fixed volume,
@@ -357,7 +413,7 @@ double Chamber::step(const std::vector<Assay>& train) {
             : pop_[p].genome;
         child = child.replicate(next_rand(), cfg_.mutation_rate);
         pop_[worst].genome = std::move(child);
-        pop_[worst].fitness = evaluate(pop_[worst].genome, train);
+        pop_[worst].fitness = evaluate_(pop_[worst].genome, train, cfg_.sample, env);
         pop_[worst].age = 1;
         ++births_;
     }

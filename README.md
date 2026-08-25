@@ -49,6 +49,8 @@ has been true of the Synapse Bus for 115 releases.
 | **Predictive Column** (`cortex`) | Next-glyph lookup by exact-context memorisation. Superseded by Temporal Memory on the bench, but still what the binary runs | partial, tested | yes |
 | **Reverie / Curator / Lodestone / Ballast / Volition** | Consolidation, self-education, resource governance, saturation gates | partial, mostly **untested** | yes |
 | **Maw** (`maw`) | Contained chaos exploration | partial, tested | yes |
+| **Ribosome** (`ribosome`) | Evolves programs over Khora's own primitives. Linear byte-tape genome with a TOTAL decoder, so mutation and crossover are closed; population under continuous PACE-style displacement; containment by construction rather than by Bulwark. Beats every baseline on co-hyponymy and loses to a constant on hypernymy | working, tested, benched | **no** |
+| **Context Tree** (`cortex`) | Variable-order prediction with backoff under a HARD node budget. Order chosen by measured reliability, not depth; fitness is off-policy correctness; Space-Saving successor lists | working, tested, benched | **no** |
 | **Synapse Bus** (`synapse`) | Topic pub/sub — **implemented, tested, and used by nothing** | dead | **no** |
 | **Sigilline** (DSL), **Vellum** (WPF UI) | — | not started | — |
 
@@ -68,6 +70,11 @@ observed. These are the numbers, including the ones that went the wrong way.
 | **Greedy novelty-seeking is a trap** | Scores **1.0000 surprise-remaining** at every signal-to-noise ratio — learns nothing, spends 92-98% of attention on static. This was Khora's stated Soma design |
 | **Synaptic pruning did not pay** | Measured in two regimes, reverted |
 | **The extracted taxonomy is mostly false** | Ligature is-a relations, measured |
+| **A bounded predictor beats an unbounded n-gram** | 1.8M tokens, held out: ContextTree **8.45%** under a 300k-node ceiling vs bigram 7.66% with every successor kept. Accuracy rises with the order chosen — 7.8 / 12.4 / 19.8 / 26.9 / 40.0 / 85.7 — because the order is picked by measured reliability, not depth |
+| **Depth is not reliability** | Choosing the longest context seen made accuracy FALL where the traffic is (order 1 14.9%, order 2 13.9%, order 3 11.9%) and lost to a bigram outright |
+| **An evolved operator beats the textbook VSA answer — on one relation** | WordNet co-hyponymy through Plexus, held-out words: Ribosome **0.353%** vs top-associate 0.177%, VSA role vector 0.000%, chance 0.021%. On hypernymy it converges to a constant and loses to "always answer person" (5.65%) |
+| **Hypernymy is not in a co-occurrence graph** | Under class-balanced fitness a constant scores 1/k = 0.667%. The evolved champion scored **0.687%** and gave ONE distinct answer over 1,133 held-out inputs — nothing above the constant floor exists to be found |
+| **A closed instruction set cannot search a hypervector space** | One-instruction target `bind(from, ROLE[57])`: 2,048 births, **0.000** of 1.0. Every wrong role is orthogonal to the right one, so the landscape is flat with one invisible needle. With graph senses, same budget: **1.000** |
 
 ## Build
 
