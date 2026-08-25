@@ -43,6 +43,8 @@ const char* fn_of(Op op) {
         case Op::Filter: return "kh_filter";case Op::MapAdd: return "kh_addk";
         case Op::MapMul: return "kh_mulk";  case Op::Count: return "kh_count";
         case Op::Guard: return "kh_guard";  case Op::Else: return "kh_else";
+        case Op::Gt: return "kh_gt";        case Op::Member: return "kh_member";
+        case Op::Until: return "kh_until";  case Op::Delta: return "kh_delta";
         default: return "kh_id";
     }
 }
@@ -53,6 +55,11 @@ bool is_binary(Op op) {
         case Op::Append: case Op::Take: case Op::Drop: case Op::Index:
         case Op::Filter: case Op::MapAdd: case Op::MapMul: case Op::Count:
         case Op::Guard: case Op::Else:
+        // Delta is NOT here: it reads one operand. This list mirrors binary()
+        // in techne.cpp, which is what decides how many registers apply_op
+        // reads -- an operation classified differently in the two places would
+        // emit a call with the wrong arity.
+        case Op::Gt: case Op::Member: case Op::Until:
             return true;
         default: return false;
     }
@@ -104,6 +111,16 @@ def kh_mulk(a, b): return [kh_cap(x * b[0]) for x in a] if b else []
 def kh_count(a, b): return [sum(1 for x in a if x == b[0])] if b else []
 def kh_guard(a, b): return list(a) if b else []
 def kh_else(a, b): return list(a) if a else list(b)
+def kh_gt(a, b): return [1 if x > b[0] else 0 for x in a] if b else []
+def kh_member(a, b): return [1 if x in b else 0 for x in a] if b else []
+def kh_until(a, b):
+    if not b: return []
+    o = []
+    for x in a:
+        if x == b[0]: break
+        o.append(x)
+    return o
+def kh_delta(a): return [kh_cap(a[i] - a[i - 1]) for i in range(1, len(a))]
 
 # HIGHER ORDER. The body is a plain function value, which is what Python hands
 # over for free. The truncation is the reference's, written the same way round:
@@ -182,6 +199,15 @@ static V kh_mulk(const V& a, const V& b) { if (b.empty()) return {}; V o; for (a
 static V kh_count(const V& a, const V& b) { if (b.empty()) return {}; std::int64_t n = 0; for (auto x : a) if (x == b[0]) ++n; return { n }; }
 static V kh_guard(const V& a, const V& b) { return b.empty() ? V{} : a; }
 static V kh_else(const V& a, const V& b) { return a.empty() ? b : a; }
+static V kh_gt(const V& a, const V& b) { if (b.empty()) return {}; V o; for (auto x : a) o.push_back(x > b[0] ? 1 : 0); return o; }
+static V kh_member(const V& a, const V& b) {
+    if (b.empty()) return {};
+    V o;
+    for (auto x : a) o.push_back(std::find(b.begin(), b.end(), x) != b.end() ? 1 : 0);
+    return o;
+}
+static V kh_until(const V& a, const V& b) { if (b.empty()) return {}; V o; for (auto x : a) { if (x == b[0]) break; o.push_back(x); } return o; }
+static V kh_delta(const V& a) { V o; for (std::size_t i = 1; i < a.size(); ++i) o.push_back(kh_cap(a[i] - a[i - 1])); return o; }
 
 // HIGHER ORDER. The body is a bare function POINTER, because an emitted library
 // body is a free function with exactly this signature -- std::function would
@@ -239,6 +265,25 @@ const kh_mulk = (a, b) => b.length ? a.map(x => kh_cap(x * b[0])) : [];
 const kh_count = (a, b) => b.length ? [a.filter(x => x === b[0]).length] : [];
 const kh_guard = (a, b) => b.length ? a.slice() : [];
 const kh_else = (a, b) => a.length ? a.slice() : b.slice();
+// indexOf rather than includes: both are exact for the integers held here, and
+// indexOf needs no lib beyond ES5, which is what the TypeScript twin of this
+// prelude has to compile under.
+const kh_gt = (a, b) => b.length ? a.map(x => x > b[0] ? 1 : 0) : [];
+const kh_member = (a, b) => b.length ? a.map(x => b.indexOf(x) >= 0 ? 1 : 0) : [];
+const kh_until = (a, b) => {
+  if (!b.length) return [];
+  const o = [];
+  for (const x of a) {
+    if (x === b[0]) break;
+    o.push(x);
+  }
+  return o;
+};
+const kh_delta = a => {
+  const o = [];
+  for (let i = 1; i < a.length; i++) o.push(kh_cap(a[i] - a[i - 1]));
+  return o;
+};
 
 // HIGHER ORDER. A function is a value in JavaScript, so the body is passed by
 // bare name. push(...r) rather than concat so the accumulator is grown in place
@@ -320,6 +365,24 @@ pub fn kh_count(a: &V, b: &V) -> V {
 }
 pub fn kh_guard(a: &V, b: &V) -> V { if b.is_empty() { vec![] } else { a.clone() } }
 pub fn kh_else(a: &V, b: &V) -> V { if a.is_empty() { b.clone() } else { a.clone() } }
+pub fn kh_gt(a: &V, b: &V) -> V {
+    if b.is_empty() { return vec![]; }
+    a.iter().map(|x| if *x > b[0] { 1 } else { 0 }).collect()
+}
+pub fn kh_member(a: &V, b: &V) -> V {
+    if b.is_empty() { return vec![]; }
+    a.iter().map(|x| if b.contains(x) { 1 } else { 0 }).collect()
+}
+pub fn kh_until(a: &V, b: &V) -> V {
+    if b.is_empty() { return vec![]; }
+    a.iter().cloned().take_while(|x| *x != b[0]).collect()
+}
+// saturating_sub, like kh_sub above: a debug build PANICS on i64 overflow where
+// the reference merely wraps, and a panic is a bigger difference than the cap
+// erases. Inside the +-1e9 domain the two are identical.
+pub fn kh_delta(a: &V) -> V {
+    (1..a.len()).map(|i| kh_cap(a[i].saturating_sub(a[i - 1]))).collect()
+}
 
 // HIGHER ORDER. `fn(&V) -> V` is the bare function-pointer type an emitted
 // library body coerces to. A closure type would force a generic parameter and
@@ -574,6 +637,57 @@ func kh_else(a V, b V) V {
 	return append(V{}, a...)
 }
 
+func kh_gt(a V, b V) V {
+	if len(b) == 0 {
+		return V{}
+	}
+	o := make(V, len(a))
+	for i, x := range a {
+		if x > b[0] {
+			o[i] = 1
+		}
+	}
+	return o
+}
+
+func kh_member(a V, b V) V {
+	if len(b) == 0 {
+		return V{}
+	}
+	o := make(V, len(a))
+	for i, x := range a {
+		for _, y := range b {
+			if x == y {
+				o[i] = 1
+				break
+			}
+		}
+	}
+	return o
+}
+
+func kh_until(a V, b V) V {
+	if len(b) == 0 {
+		return V{}
+	}
+	o := V{}
+	for _, x := range a {
+		if x == b[0] {
+			break
+		}
+		o = append(o, x)
+	}
+	return o
+}
+
+func kh_delta(a V) V {
+	o := V{}
+	for i := 1; i < len(a); i++ {
+		o = append(o, kh_cap(a[i]-a[i-1]))
+	}
+	return o
+}
+
 // HIGHER ORDER. A Go function is a value, so the body is passed by bare name.
 func kh_mapf(a V, f func(V) V) V {
 	o := V{}
@@ -714,6 +828,35 @@ class Kh {
     }
     static long[] kh_guard(long[] a, long[] b) { return b.length == 0 ? EMPTY : a.clone(); }
     static long[] kh_else(long[] a, long[] b) { return a.length == 0 ? b.clone() : a.clone(); }
+    static long[] kh_gt(long[] a, long[] b) {
+        if (b.length == 0) return EMPTY;
+        long[] o = new long[a.length];
+        for (int i = 0; i < a.length; i++) o[i] = a[i] > b[0] ? 1 : 0;
+        return o;
+    }
+    // A nested scan rather than a Set: long[] holds primitives, and boxing them
+    // into a HashSet<Long> to ask contains() reintroduces exactly the reference
+    // equality this backend uses long[] to avoid.
+    static long[] kh_member(long[] a, long[] b) {
+        if (b.length == 0) return EMPTY;
+        long[] o = new long[a.length];
+        for (int i = 0; i < a.length; i++) {
+            for (long y : b) if (a[i] == y) { o[i] = 1; break; }
+        }
+        return o;
+    }
+    static long[] kh_until(long[] a, long[] b) {
+        if (b.length == 0) return EMPTY;
+        int n = 0;
+        while (n < a.length && a[n] != b[0]) n++;
+        return Arrays.copyOf(a, n);
+    }
+    static long[] kh_delta(long[] a) {
+        if (a.length < 2) return EMPTY;
+        long[] o = new long[a.length - 1];
+        for (int i = 1; i < a.length; i++) o[i - 1] = kh_cap(a[i] - a[i - 1]);
+        return o;
+    }
 
     // JAVA HAS NO FIRST-CLASS FUNCTIONS, so a body arrives as a
     // java.util.function.Function and the emitted call site passes a method
@@ -857,6 +1000,32 @@ static class Kh {
     }
     public static long[] kh_guard(long[] a, long[] b) { return b.Length == 0 ? EMPTY : kh_id(a); }
     public static long[] kh_else(long[] a, long[] b) { return a.Length == 0 ? kh_id(b) : kh_id(a); }
+    public static long[] kh_gt(long[] a, long[] b) {
+        if (b.Length == 0) return EMPTY;
+        long[] o = new long[a.Length];
+        for (int i = 0; i < a.Length; i++) o[i] = a[i] > b[0] ? 1L : 0L;
+        return o;
+    }
+    public static long[] kh_member(long[] a, long[] b) {
+        if (b.Length == 0) return EMPTY;
+        long[] o = new long[a.Length];
+        for (int i = 0; i < a.Length; i++) {
+            foreach (long y in b) if (a[i] == y) { o[i] = 1L; break; }
+        }
+        return o;
+    }
+    public static long[] kh_until(long[] a, long[] b) {
+        if (b.Length == 0) return EMPTY;
+        int n = 0;
+        while (n < a.Length && a[n] != b[0]) n++;
+        return kh_cut(a, 0, n);
+    }
+    public static long[] kh_delta(long[] a) {
+        if (a.Length < 2) return EMPTY;
+        long[] o = new long[a.Length - 1];
+        for (int i = 1; i < a.Length; i++) o[i - 1] = kh_cap(a[i] - a[i - 1]);
+        return o;
+    }
 
     // C# HAS NO TOP-LEVEL FUNCTIONS EITHER, so a body arrives as a
     // Func<long[], long[]> and the emitted call site passes a method group,
@@ -922,6 +1091,25 @@ const kh_mulk = (a: V, b: V): V => (b.length ? a.map((x) => kh_cap(x * b[0])) : 
 const kh_count = (a: V, b: V): V => (b.length ? [a.filter((x) => x === b[0]).length] : []);
 const kh_guard = (a: V, b: V): V => (b.length ? a.slice() : []);
 const kh_else = (a: V, b: V): V => (a.length ? a.slice() : b.slice());
+// indexOf, not includes: includes needs lib es2016, and this file declares no
+// tsconfig, so it must build under the default lib.
+const kh_gt = (a: V, b: V): V => (b.length ? a.map((x) => (x > b[0] ? 1 : 0)) : []);
+const kh_member = (a: V, b: V): V =>
+  b.length ? a.map((x) => (b.indexOf(x) >= 0 ? 1 : 0)) : [];
+const kh_until = (a: V, b: V): V => {
+  if (!b.length) return [];
+  const o: V = [];
+  for (const x of a) {
+    if (x === b[0]) break;
+    o.push(x);
+  }
+  return o;
+};
+const kh_delta = (a: V): V => {
+  const o: V = [];
+  for (let i = 1; i < a.length; i++) o.push(kh_cap(a[i] - a[i - 1]));
+  return o;
+};
 
 // HIGHER ORDER. Same as the JavaScript backend with the body's type written
 // down: (v: V) => V, which is what an emitted library body is.
@@ -991,6 +1179,10 @@ def kh_mulk(a, b); b.empty? ? [] : a.map { |x| kh_cap(x * b[0]) }; end
 def kh_count(a, b); b.empty? ? [] : [a.count { |x| x == b[0] }]; end
 def kh_guard(a, b); b.empty? ? [] : a.dup; end
 def kh_else(a, b); a.empty? ? b.dup : a.dup; end
+def kh_gt(a, b); b.empty? ? [] : a.map { |x| x > b[0] ? 1 : 0 }; end
+def kh_member(a, b); b.empty? ? [] : a.map { |x| b.include?(x) ? 1 : 0 }; end
+def kh_until(a, b); b.empty? ? [] : a.take_while { |x| x != b[0] }; end
+def kh_delta(a); (1...a.length).map { |i| kh_cap(a[i] - a[i - 1]) }; end
 
 # HIGHER ORDER. A bare Ruby name CALLS the method rather than naming it, so a
 # body is handed over as method(:kh_lib0) -- a Method object -- and invoked with
@@ -1173,6 +1365,42 @@ end
 function kh_guard(a, b) if #b == 0 then return {} end return kh_id(a) end
 function kh_else(a, b) if #a == 0 then return kh_id(b) end return kh_id(a) end
 
+function kh_gt(a, b)
+  if #b == 0 then return {} end
+  local o = {}
+  for i = 1, #a do if a[i] > b[1] then o[i] = 1 else o[i] = 0 end end
+  return o
+end
+
+function kh_member(a, b)
+  if #b == 0 then return {} end
+  local o = {}
+  for i = 1, #a do
+    o[i] = 0
+    for j = 1, #b do if a[i] == b[j] then o[i] = 1 break end end
+  end
+  return o
+end
+
+function kh_until(a, b)
+  if #b == 0 then return {} end
+  local o, n = {}, 0
+  for i = 1, #a do
+    if a[i] == b[1] then break end
+    n = n + 1
+    o[n] = a[i]
+  end
+  return o
+end
+
+-- The 1-indexing again: the reference reads a[i] against a[i-1] for i in
+-- 1..len-1, which is i in 2..#a here, and the result lands at i-1.
+function kh_delta(a)
+  local o = {}
+  for i = 2, #a do o[i - 1] = kh_cap(a[i] - a[i - 1]) end
+  return o
+end
+
 -- HIGHER ORDER. A Lua function is a value, so the body is passed by bare name.
 -- The 1-indexing shows up once more: the fold seeds from a[1], and the pair the
 -- body receives is written at #acc + 1 rather than at #acc.
@@ -1285,6 +1513,17 @@ kh_count a b = if null b then [] else [fromIntegral (length (filter (== head b) 
 kh_guard a b = if null b then [] else a
 kh_else a b = if null a then b else a
 
+kh_gt, kh_member, kh_until :: V -> V -> V
+kh_gt a b = if null b then [] else map (\x -> if x > head b then 1 else 0) a
+kh_member a b = if null b then [] else map (\x -> if x `elem` b then 1 else 0) a
+kh_until a b = if null b then [] else takeWhile (/= head b) a
+
+-- zipWith over the list and its own tail is the neighbour comparison stated
+-- directly: it stops at the shorter, so length 0 and length 1 both give [] with
+-- no guard written.
+kh_delta :: V -> V
+kh_delta a = zipWith (\y x -> kh_cap (y - x)) (drop 1 a) a
+
 -- HIGHER ORDER. Haskell needs no wrapper for a function value at all: the body
 -- is named bare and applied by juxtaposition.
 --
@@ -1376,6 +1615,39 @@ func kh_count(_ a: V, _ b: V) -> V {
 func kh_guard(_ a: V, _ b: V) -> V { return b.isEmpty ? [] : a }
 func kh_else(_ a: V, _ b: V) -> V { return a.isEmpty ? b : a }
 
+// Written as loops rather than map/prefix(while:) so the 1 and 0 are Int64 by
+// the type of what they are appended to; a bare literal in a returned closure
+// is where Swift's inference reaches for Int instead.
+func kh_gt(_ a: V, _ b: V) -> V {
+    if b.isEmpty { return [] }
+    var o = V()
+    for x in a { o.append(x > b[0] ? 1 : 0) }
+    return o
+}
+func kh_member(_ a: V, _ b: V) -> V {
+    if b.isEmpty { return [] }
+    var o = V()
+    for x in a { o.append(b.contains(x) ? 1 : 0) }
+    return o
+}
+func kh_until(_ a: V, _ b: V) -> V {
+    if b.isEmpty { return [] }
+    var o = V()
+    for x in a {
+        if x == b[0] { break }
+        o.append(x)
+    }
+    return o
+}
+func kh_delta(_ a: V) -> V {
+    var o = V()
+    // 1..<a.count is a fatal error when a is empty, so the short cases exit
+    // before the range is ever formed.
+    if a.count < 2 { return o }
+    for i in 1..<a.count { o.append(kh_cap(a[i] &- a[i - 1])) }
+    return o
+}
+
 // HIGHER ORDER. A Swift function is a value under its bare name, so the body
 // needs no wrapper at the call site. No &-operator here: the fold moves whole
 // lists around and never does arithmetic itself.
@@ -1451,6 +1723,13 @@ fun kh_count(a: V, b: V): V =
     if (b.isEmpty()) emptyList() else listOf(a.count { it == b[0] }.toLong())
 fun kh_guard(a: V, b: V): V = if (b.isEmpty()) emptyList() else a.toList()
 fun kh_else(a: V, b: V): V = if (a.isEmpty()) b.toList() else a.toList()
+// 1L and 0L, not 1 and 0: a bare Kotlin integer literal is an Int, and a
+// List<Int> is not a V.
+fun kh_gt(a: V, b: V): V = if (b.isEmpty()) emptyList() else a.map { if (it > b[0]) 1L else 0L }
+fun kh_member(a: V, b: V): V =
+    if (b.isEmpty()) emptyList() else a.map { if (b.contains(it)) 1L else 0L }
+fun kh_until(a: V, b: V): V = if (b.isEmpty()) emptyList() else a.takeWhile { it != b[0] }
+fun kh_delta(a: V): V = (1 until a.size).map { kh_cap(a[it] - a[it - 1]) }
 
 // HIGHER ORDER. `::kh_lib0` is Kotlin's function reference -- a bare name there
 // resolves as a property and does not compile. V is an immutable List, so the
@@ -1552,6 +1831,34 @@ function kh_count($a, $b) {
 }
 function kh_guard($a, $b) { return count($b) === 0 ? [] : array_values($a); }
 function kh_else($a, $b) { return count($a) === 0 ? array_values($b) : array_values($a); }
+function kh_gt($a, $b) {
+    if (count($b) === 0) return [];
+    $o = [];
+    foreach ($a as $x) $o[] = $x > $b[0] ? 1 : 0;
+    return $o;
+}
+// in_array with the strict flag, like kh_count's ===: the loose form matches
+// across types and would answer differently for anything but an int.
+function kh_member($a, $b) {
+    if (count($b) === 0) return [];
+    $o = [];
+    foreach ($a as $x) $o[] = in_array($x, $b, true) ? 1 : 0;
+    return $o;
+}
+function kh_until($a, $b) {
+    if (count($b) === 0) return [];
+    $o = [];
+    foreach ($a as $x) {
+        if ($x === $b[0]) break;
+        $o[] = $x;
+    }
+    return $o;
+}
+function kh_delta($a) {
+    $o = [];
+    for ($i = 1; $i < count($a); $i++) $o[] = kh_cap($a[$i] - $a[$i - 1]);
+    return $o;
+}
 
 // HIGHER ORDER. A bare PHP name is a CONSTANT, not a function, so a body is
 // handed over as the callable string 'kh_lib0', which $f(...) invokes directly.
@@ -1855,13 +2162,9 @@ static std::string emit_inlined(const Recipe& r, Lang l, const std::string& fn,
     for (const Expr& e : r.pool) {
         if (e.op == Op::Call) return {};
         if ((e.op == Op::MapF || e.op == Op::FoldF) && lib_n == 0) return {};
-        // Gt, Member, Until and Delta have no backend yet. Without this they
-        // reach fn_of(), hit its default and emit kh_id -- a silent identity
-        // where a comparison belongs. That is the exact shape of the Op::Call
-        // defect that made three quarters of this module's output a different
-        // program from the one certified, and the refusal costs one line.
-        if (e.op == Op::Gt || e.op == Op::Member ||
-            e.op == Op::Until || e.op == Op::Delta) return {};
+        // Gt, Member, Until and Delta used to be refused here for want of a
+        // backend. They now have one in all fourteen preludes and a name in
+        // fn_of(), so they no longer fall through to kh_id.
     }
 
     // Only the nodes the root actually reaches. Emitting the whole pool would

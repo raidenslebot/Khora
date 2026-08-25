@@ -897,6 +897,34 @@ BuildResult construct(const Spec& spec, std::size_t max_pool, const Library* lib
             for (const auto v : c.in)  ++freq[v];
             for (const auto v : c.out) ++freq[v];
         }
+        // AND FROM THE RELATIONSHIP BETWEEN INPUT AND OUTPUT, not only from the
+        // values themselves.
+        //
+        // Measured regression that forced this: upper_lower subtracts 32 from
+        // every character, and its inputs are pure lowercase, so 32 appears
+        // NOWHERE in the data. Mining values alone therefore could not supply it
+        // -- and worse, the 24 character codes it did mine crowded level 0 and
+        // displaced the mul(4, 8) route that used to work. The task went from
+        // solved to unsolved, which is a regression I caused.
+        //
+        // A constant is very often the DIFFERENCE or the RATIO between what went
+        // in and what came out, and neither is visible in either list on its own.
+        // Mining aligned differences gives -32 directly; mining exact ratios
+        // gives the multiplier in a scaling task.
+        for (const Case& c : spec.cases) {
+            const std::size_t n = std::min(c.in.size(), c.out.size());
+            for (std::size_t i = 0; i < n; ++i) {
+                freq[cap(c.out[i] - c.in[i])] += 2;          // weighted above raw values
+                if (c.in[i] != 0 && c.out[i] % c.in[i] == 0) freq[c.out[i] / c.in[i]] += 2;
+            }
+            // Length relationships too: a take or drop count is usually one of
+            // these and is otherwise unnameable.
+            freq[static_cast<std::int64_t>(c.out.size())] += 1;
+            if (c.in.size() >= c.out.size()) {
+                freq[static_cast<std::int64_t>(c.in.size() - c.out.size())] += 1;
+            }
+        }
+
         std::vector<std::pair<std::int64_t, std::size_t>> mined(freq.begin(), freq.end());
         std::sort(mined.begin(), mined.end(), [](const auto& a, const auto& b) {
             if (a.second != b.second) return a.second > b.second;
