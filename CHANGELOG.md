@@ -287,7 +287,7 @@ widening the cases from 1-5 to 1-12 already removed them. A counterexample hunt
 finds nothing when the specification is already informative enough, which is the
 outcome you want from having fixed the specification.
 
-### "Thirty programs certified and wrong" was two
+### "Thirty programs certified and wrong" is zero
 
 The counterexample arm has reported ~30 of 60 sampled tasks carrying a
 certificate and a counterexample at the same time for several cycles. I quoted it
@@ -317,7 +317,19 @@ use it.
 | oracle respects the value cap | 12 |
 | case lengths span the holdout | 8 |
 | of those, `Proof::Tested` — never claimed to hold | 6 |
-| **GENERALISED, past the holdout, and still wrong** | **2** |
+| generalised and wrong | 2 |
+| generator's list bound aligned with `kMaxListLen` | **0** |
+
+The last two were `range_scaled_k` on `[1000000000]`. The generator capped its
+own output at 64 elements while `Op::Range` caps at 512, so `range(x)` — the
+correct program — returned 512 values where 64 were wanted. No visible case or
+holdout ever contains a first element above 64; only the edge probe does. The
+task carried a bound its own specification never exercised, and the system had no
+constant 64 to express it with. Third bound where the reference disagreed with
+the interpreter, after `clamp_len` and `kValueCap`.
+
+**Zero programs that claimed to generalise are wrong**, across 300 probes and six
+refinement rounds each, stable over four runs.
 
 Two, not thirty. The other twenty-eight were an oracle that could not see the
 system's own value bound, a case range that could not see `take(_, 8)`, and six

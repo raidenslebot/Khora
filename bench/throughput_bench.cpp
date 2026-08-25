@@ -105,8 +105,21 @@ struct Gen {
             case 4: { Value t = v; std::sort(t.begin(), t.end());
                       const std::size_t n = std::min<std::size_t>(t.size(), static_cast<std::size_t>(std::max<std::int64_t>(0, k)));
                       return Value(t.begin(), t.begin() + static_cast<std::ptrdiff_t>(n)); }
+            // BOUNDED BY kMaxListLen, NOT BY 64. This capped its own output at
+            // sixty-four elements while Op::Range caps at five hundred and
+            // twelve, so `range(x)` -- which is the right program -- returns 512
+            // values where the reference wants 64, on any input whose first
+            // element exceeds 64. No visible case or holdout ever contains one;
+            // only the 1e9 edge probe does. The task therefore had a bound its
+            // own specification never exercised and the system had no constant
+            // 64 to express it with.
+            //
+            // Third bound where the reference disagreed with the interpreter,
+            // after clamp_len and kValueCap. A reference for this system has to
+            // use this system's limits.
             case 5: { if (v.empty()) return {};
-                      const std::int64_t n = std::max<std::int64_t>(0, std::min<std::int64_t>(v[0], 64));
+                      const std::int64_t n = std::max<std::int64_t>(0,
+                          std::min<std::int64_t>(v[0], static_cast<std::int64_t>(kMaxListLen)));
                       for (std::int64_t i = 0; i < n; ++i) o.push_back(i * k); return o; }
             case 6: { if (v.size() < 2) return {};
                       std::int64_t s = 0; for (std::size_t i = 1; i < v.size(); ++i) s += v[i];
@@ -461,7 +474,28 @@ stage("counterexample arm");
                                 b.recipe.render().c_str());
                 }
                 ++certified_only;
-                if (b.proof == Proof::Generalised) ++gen_wrong; else ++tested_wrong;
+                if (b.proof == Proof::Generalised) {
+                    // THE ONES THAT MATTER. Generalised means it passed every visible
+                    // case AND every held-out case drawn past the training regime, and
+                    // it is still wrong. Print them in full -- input, wanted, got --
+                    // because counting this category is what hid the other twenty-eight.
+                    const Value& ce = ver.counterexample;
+                    const Value want = oracle(ce);
+                    const Value got  = b.recipe.apply(ce, &cegis_lib);
+                    auto shown = [](const Value& v) {
+                        std::string t = "[";
+                        for (std::size_t q = 0; q < v.size() && q < 8; ++q)
+                            { if (q) t += ","; t += std::to_string(v[q]); }
+                        if (v.size() > 8) t += ",...";
+                        return t + "]";
+                    };
+                    std::printf("    [GEN-WRONG] %s\n      in   %s\n"
+                                "      want %s\n      got  %s\n      %s\n",
+                                specs[i].name.c_str(), shown(ce).c_str(),
+                                shown(want).c_str(), shown(got).c_str(),
+                                b.recipe.render().c_str());
+                    ++gen_wrong;
+                } else ++tested_wrong;
             }
             else ++unsolved;
         }
