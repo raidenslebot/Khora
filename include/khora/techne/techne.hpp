@@ -263,6 +263,21 @@ struct Recipe {
     Value apply(const Value& in, const Library* lib, std::size_t depth = 0) const;
     std::string render() const;
     std::size_t size() const;      // nodes actually reachable from the root
+
+    // Drop everything the root cannot reach.
+    //
+    // A recipe comes out of the search carrying THE WHOLE SEARCH POOL -- every
+    // behaviour the enumeration ever considered, up to max_pool of them -- and
+    // apply() evaluated all of it to return one node. A ten-node answer found in
+    // a fifteen-thousand-node pool therefore cost fifteen hundred times what it
+    // should, on EVERY application: every verification probe, every library
+    // call, every emitted program. Measured on the ascent, verification was 80%
+    // of the run and the search 13%.
+    //
+    // Node order is already topological -- a node only ever references earlier
+    // ones -- so keeping the survivors in their existing relative order keeps it
+    // topological, and the indices just need renumbering.
+    Recipe compact() const;
 };
 
 struct Learned {

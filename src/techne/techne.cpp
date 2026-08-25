@@ -941,6 +941,34 @@ Value Recipe::apply(const Value& in, const Library* lib, std::size_t depth) cons
     return vals[root];
 }
 
+Recipe Recipe::compact() const {
+    if (!found || pool.empty()) return *this;
+    std::vector<bool> live(pool.size(), false);
+    std::vector<std::size_t> stack{root};
+    while (!stack.empty()) {
+        const std::size_t i = stack.back();
+        stack.pop_back();
+        if (i >= pool.size() || live[i]) continue;
+        live[i] = true;
+        if (pool[i].a >= 0) stack.push_back(static_cast<std::size_t>(pool[i].a));
+        if (pool[i].b >= 0) stack.push_back(static_cast<std::size_t>(pool[i].b));
+    }
+    Recipe out;
+    out.found = found;
+    std::vector<std::size_t> remap(pool.size(), 0);
+    out.pool.reserve(pool.size());
+    for (std::size_t i = 0; i < pool.size(); ++i) {
+        if (!live[i]) continue;
+        remap[i] = out.pool.size();
+        Expr e = pool[i];
+        if (e.a >= 0) e.a = static_cast<int>(remap[static_cast<std::size_t>(e.a)]);
+        if (e.b >= 0) e.b = static_cast<int>(remap[static_cast<std::size_t>(e.b)]);
+        out.pool.push_back(e);
+    }
+    out.root = remap[root];
+    return out;
+}
+
 std::size_t Recipe::size() const {
     if (!found) return 0;
     std::vector<bool> used(pool.size(), false);
@@ -1295,6 +1323,10 @@ BuildResult construct(const Spec& spec, std::size_t max_pool, const Library* lib
     r.recipe.pool = std::move(pool);
     r.recipe.root = static_cast<std::size_t>(found_at);
     r.recipe.found = true;
+    // COMPACT BEFORE ANYTHING ELSE TOUCHES IT. Everything downstream -- the case
+    // checks just below, verification, the library, emission -- applies this
+    // recipe, and until now each application walked the entire search pool.
+    r.recipe = r.recipe.compact();
 
     for (const Case& c : spec.cases)   if (r.recipe.apply(c.in, lib) == c.out) ++r.cases_passed;
     for (const Case& c : spec.holdout) if (r.recipe.apply(c.in, lib) == c.out) ++r.holdout_passed;

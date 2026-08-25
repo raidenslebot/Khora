@@ -549,7 +549,7 @@ BuildResult construct_bidir(const Spec& spec, std::size_t max_pool, const Librar
     for (const Case& c : spec.cases)   if (rec.apply(c.in, lib) == c.out) ++r.cases_passed;
     for (const Case& c : spec.holdout) if (rec.apply(c.in, lib) == c.out) ++r.holdout_passed;
 
-    r.recipe = std::move(rec);
+    r.recipe = rec.compact();
     if (r.cases_passed == r.cases_total) {
         r.proof = (r.holdout_total == 0 || r.holdout_passed == r.holdout_total)
                       ? Proof::Generalised : Proof::Tested;

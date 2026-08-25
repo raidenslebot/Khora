@@ -232,6 +232,7 @@ struct TierResult {
     // attributed that spread to three separate code changes before checking. A
     // candidate count does not care which core counted it.
     unsigned long long nodes = 0;
+    double t_fwd = 0, t_bidir = 0, t_check = 0;
     double secs = 0.0;
 };
 
@@ -259,38 +260,45 @@ TierResult run_tier(const std::vector<Task>& tasks, const std::vector<Spec>& spe
     r.total = tasks.size();
     const auto t0 = clk::now();
 
-    // SEQUENTIAL, AND THAT IS A MEASURED CHOICE RATHER THAN AN OVERSIGHT.
+    // TASKS IN ORDER, THE SEARCH ITSELF WIDE.
     //
-    // This loop uses ONE of twenty-four logical processors. Spreading the tier
-    // across the pool was tried twice. One pass against the tier-start library:
-    // 8.5x faster per tier and 53 verified against 61 for the empty control --
-    // the carried library became a net LOSS. Parallel waves with admission
-    // between them, which is the structure solve_all uses: no better.
+    // This loop must stay sequential, and that is measured rather than assumed.
+    // Spreading the TASKS over the pool was tried twice -- one pass against the
+    // tier-start library, and parallel waves with admission between them, the
+    // structure solve_all uses. Compared inside a single run, where both arms
+    // face identical tasks, the carried library is worth +21 verified over its
+    // empty control when admission is task-by-task and -8 when it is not. It
+    // stops helping and starts HURTING, because task j's certified solution has
+    // to enter the library before task j+1 is attempted: a twenty-task tier
+    // compounds twenty times. Tier 1 starts EMPTY and still produced eight
+    // answers containing a library call, every one from a task solved earlier in
+    // the same tier.
     //
-    // The reason is that ADMISSION IS TASK-BY-TASK AND THAT IS WHERE THE VALUE
-    // IS. Task j's certified solution enters the library before task j+1 is
-    // attempted, so a twenty-task tier compounds twenty times. Tier 1 starts
-    // EMPTY and still produced eight answers containing a library call -- every
-    // one of them from a task solved earlier in the same tier. Any scheme that
-    // solves a batch against one snapshot throws that away, and 86 against 65
-    // becomes 53 against 61.
-    //
-    // So the parallelism has to go INSIDE construct(), not around it. Until it
-    // does, this loop stays sequential, because a faster benchmark that verifies
-    // fewer programs is not a faster system.
+    // So the width went INSIDE construct instead, where it costs no compounding
+    // at all. The parallel phase there computes signatures only and the merge
+    // stays single-threaded and in order, so the answers do not depend on the
+    // thread count -- which is what makes this loop's numbers still comparable
+    // with the ones it produced on one core.
     for (std::size_t i = 0; i < tasks.size(); ++i) {
+        const auto tc = clk::now();
         BuildResult b = construct(specs[i], pool_cap, lib);
+        r.t_fwd += std::chrono::duration<double>(clk::now() - tc).count();
         if (b.proof != Proof::Generalised) {
             // The residue gets the expensive engine, which is where it earns its
             // place: at depth 4 forward search solved 0 of 3 and bidirectional
             // solved 3 of 3.
+            const auto tb = clk::now();
             BuildResult d = construct_bidir(specs[i], pool_cap, lib);
+            r.t_bidir += std::chrono::duration<double>(clk::now() - tb).count();
             if (d.proof == Proof::Generalised) b = std::move(d);
         }
         r.nodes += b.nodes_considered;
         if (b.proof != Proof::Generalised) continue;
         ++r.solved;
-        if (!holds_up(b.recipe, lib, tasks[i].f)) continue;
+        const auto tv = clk::now();
+        const bool ok = holds_up(b.recipe, lib, tasks[i].f);
+        r.t_check += std::chrono::duration<double>(clk::now() - tv).count();
+        if (!ok) continue;
         ++r.verified;
         const std::size_t calls = live_calls(b.recipe);
         if (calls > 0) ++r.used_library;
@@ -395,6 +403,9 @@ int main(int argc, char** argv) {
         // last attempt sat past ten minutes with zero bytes written and the only
         // way to learn anything was to kill it. A benchmark you cannot watch is a
         // benchmark you cannot diagnose.
+        std::printf("       |       | forward %6.1f s | bidir %6.1f s | verify %6.1f s\n",
+                    with.t_fwd + without.t_fwd, with.t_bidir + without.t_bidir,
+                    with.t_check + without.t_check);
         std::fflush(stdout);
 
         // TWO BARREN TIERS, NOT ONE.
