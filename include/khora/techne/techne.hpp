@@ -342,6 +342,35 @@ struct BuildResult {
 // behaviours retained, which is the real memory cost.
 BuildResult construct(const Spec& spec, std::size_t max_pool, const Library* lib = nullptr);
 
+// ---------------------------------------------------------------------------
+// EMISSION: a recipe becomes real source in a real language.
+//
+// Until this existed the organ produced expression trees, and "10,000 lines of
+// code" was not a measurable claim about it -- a recipe is not lines. Emission
+// makes the throughput target countable, and it is also the honest form of
+// "every language": a backend per target, each defining the same operations in
+// that language's own idiom, rather than an assertion that the design is
+// language-agnostic.
+//
+// Each backend emits a PRELUDE (the operation set, written once per file) and a
+// FUNCTION per recipe, in static-single-assignment form so every step is a
+// readable line rather than one unreadable nested expression. The prelude is
+// fixed cost; the function is the synthesised part, and the two are counted
+// separately so the line rate cannot be inflated by boilerplate.
+// ---------------------------------------------------------------------------
+enum class Lang { Cpp, Python, JavaScript, Rust };
+
+const char* lang_name(Lang l);
+const char* lang_ext(Lang l);
+
+// The operation set in the target language. Emit once per file.
+std::string prelude(Lang l);
+
+// One recipe as one function. `lines` receives the number of body lines, which
+// is the synthesised output rather than the boilerplate.
+std::string emit(const Recipe& r, Lang l, const std::string& fn,
+                 std::size_t* lines = nullptr);
+
 // Exhaustive enumeration of programs up to `max_len` instructions. This is the
 // dumb baseline the search has to beat, and in this repo the dumb baseline has
 // won often enough that it is not a formality: a thirty-line trigram table beat

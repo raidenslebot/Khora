@@ -632,12 +632,36 @@ Value apply_op(Op op, const Value& A, const Value& B, std::uint8_t k,
 // case. Two candidates with the same behaviour are indistinguishable to the
 // specification, so only the first is kept -- and because the pool is grown in
 // size order, the first is also the smallest.
-std::string signature(const std::vector<Value>& outs) {
-    std::string s;
-    s.reserve(outs.size() * 8);
+//
+// A 128-BIT FINGERPRINT, not the decimal digits it replaces.
+//
+// The string form allocated a fresh std::string per candidate and retained one
+// per pool entry -- 695,697 candidates on this suite, each with a heap
+// allocation and a key kept for the lifetime of the search. RAM is the binding
+// constraint on how deep the pool can go, and spending it on keys rather than on
+// behaviours is the wrong trade. Two 64-bit lanes put a collision at a million
+// entries near 1e-27, far below the rate at which anything else here is wrong.
+struct Sig {
+    std::uint64_t a = 0xcbf29ce484222325ULL, b = 0x9e3779b97f4a7c15ULL;
+    bool operator==(const Sig& o) const noexcept { return a == o.a && b == o.b; }
+    void feed(std::uint64_t x) noexcept {
+        a = (a ^ x) * 0x100000001b3ULL;
+        b = b + x + 0x9e3779b97f4a7c15ULL;
+        b = (b ^ (b >> 29)) * 0xbf58476d1ce4e5b9ULL;
+    }
+};
+struct SigHash {
+    std::size_t operator()(const Sig& s) const noexcept {
+        return static_cast<std::size_t>(s.a ^ (s.b << 1));
+    }
+};
+
+Sig signature(const std::vector<Value>& outs) {
+    Sig s;
     for (const Value& v : outs) {
-        s.push_back('|');
-        for (const auto x : v) { s += std::to_string(x); s.push_back(','); }
+        s.feed(0xF17E5ULL);
+        for (const auto x : v) s.feed(static_cast<std::uint64_t>(x));
+        s.feed(static_cast<std::uint64_t>(v.size()));
     }
     return s;
 }
@@ -698,22 +722,20 @@ BuildResult construct(const Spec& spec, std::size_t max_pool, const Library* lib
     std::vector<Value> target;
     target.reserve(ncase);
     for (const Case& c : spec.cases) target.push_back(c.out);
-    const std::string want = signature(target);
+    const Sig want = signature(target);
 
     std::vector<Expr> pool;
     std::vector<std::vector<Value>> behaviour;
-    std::vector<std::string> sigs;
-    std::unordered_set<std::string> seen;
+    std::unordered_set<Sig, SigHash> seen;
     int found_at = -1;
 
     auto consider = [&](const Expr& e, std::vector<Value> outs) {
         ++r.nodes_considered;
-        std::string sig = signature(outs);
+        const Sig sig = signature(outs);
         if (!seen.insert(sig).second) return;   // observationally equivalent: drop
         const bool is_target = (sig == want);
         pool.push_back(e);
         behaviour.push_back(std::move(outs));
-        sigs.push_back(std::move(sig));
         if (is_target && found_at < 0) found_at = static_cast<int>(pool.size()) - 1;
     };
 

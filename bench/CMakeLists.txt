@@ -60,3 +60,6 @@ target_link_libraries(autopoiesis_bench PRIVATE khora::ribosome khora::plexus kh
 
 add_executable(techne_bench techne_bench.cpp)
 target_link_libraries(techne_bench PRIVATE khora::techne)
+
+add_executable(throughput_bench throughput_bench.cpp)
+target_link_libraries(throughput_bench PRIVATE khora::techne)
