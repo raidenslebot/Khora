@@ -126,3 +126,18 @@ target_link_libraries(causal_bench PRIVATE khora::ligature khora::plexus khora::
 
 add_executable(sequential_bench sequential_bench.cpp)
 target_link_libraries(sequential_bench PRIVATE khora::telos khora::lattice)
+
+add_executable(pretext_bench pretext_bench.cpp)
+target_link_libraries(pretext_bench PRIVATE khora::lattice khora::descent khora::lexicon khora::reservoir)
+
+add_executable(dialect_bench dialect_bench.cpp)
+target_link_libraries(dialect_bench PRIVATE khora::lexicon khora::plexus khora::reservoir khora::lattice)
+
+add_executable(swarm_bench swarm_bench.cpp)
+target_link_libraries(swarm_bench PRIVATE khora::synapse khora::lattice khora::telos)
+
+add_executable(control_bench control_bench.cpp)
+target_link_libraries(control_bench PRIVATE khora::descent khora::telos khora::lattice)
+
+add_executable(verify_bench verify_bench.cpp)
+target_link_libraries(verify_bench PRIVATE khora::logos khora::lattice)

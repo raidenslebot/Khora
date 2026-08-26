@@ -69,6 +69,11 @@ std::string Volition::act() {
     yield_sum_ += out.yield;
     if (learner_) learner_->observe(ctx, static_cast<std::size_t>(chosen), out.yield);
 
+    history_.push_back(Step{ctx, static_cast<std::size_t>(chosen),
+                            prev_act_ == static_cast<std::size_t>(-1) ? acts_.size() : prev_act_,
+                            out.yield});
+    prev_act_ = static_cast<std::size_t>(chosen);
+
     // Acting on an urge relieves it — homeostasis then rotates attention to
     // the next-most-pressing drive, so behaviour doesn't fixate.
     for (std::size_t d = 0; d < kDriveCount; ++d) {

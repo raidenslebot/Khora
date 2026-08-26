@@ -103,6 +103,29 @@ public:
     std::size_t last_context() const noexcept { return last_ctx_; }
     double      total_yield()  const noexcept { return yield_sum_; }
 
+    // IS THIS STREAM EVEN SEQUENTIAL? The question has to be asked before the
+    // answer to it is built.
+    //
+    // A cliff-walk bench established that the bandit driving act selection has
+    // no temporal credit assignment: it closes 74.7% of the gap to optimal where
+    // Q-learning closes 100%, and reaches the goal 0 times in 20. The obvious
+    // conclusion is to replace it with a TD learner. That conclusion depends on
+    // a premise nobody has checked -- that what an act YIELDS depends on what
+    // came before it. If every act pays the same regardless of history, there is
+    // no credit to assign over time, the bandit is the correct tool, and
+    // fitting a Q-table to it would add machinery and learn noise.
+    //
+    // So the transitions are recorded and the dependence is measured. Not a lot
+    // of memory: one triple per act.
+    struct Step {
+        std::size_t context;
+        std::size_t action;
+        std::size_t prev_action;   // acts_.size() means "there was no previous"
+        double      yield;
+    };
+    const std::vector<Step>& history() const noexcept { return history_; }
+    void clear_history() noexcept { history_.clear(); }
+
 private:
     khora::soma::SomaNexus& soma_;
     std::vector<Act>        acts_;
@@ -112,6 +135,8 @@ private:
     bool                    selecting_ = true;
     std::size_t             last_ctx_  = 0;
     double                  yield_sum_ = 0.0;
+    std::vector<Step>       history_;
+    std::size_t             prev_act_  = static_cast<std::size_t>(-1);
 };
 
 } // namespace khora::volition

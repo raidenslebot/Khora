@@ -959,6 +959,81 @@ int main(int argc, char** argv) {
         }
     });
     shell.register_tool({
+        "act_stream",
+        "does what an act YIELDS depend on what came before it -- the question that",
+        [&will](const carapace::Intent&) -> carapace::ToolResult {
+            const auto& h = will.history();
+            std::ostringstream os;
+            if (h.size() < 20)
+                return {true, "  only " + std::to_string(h.size()) +
+                              " acts recorded; run `volition 20` a few times first", ""};
+
+            // MUTUAL INFORMATION between the previous act and this act's yield,
+            // against the same quantity with the pairing shuffled. If the two
+            // agree, the yield does not depend on history and there is nothing
+            // for temporal credit assignment to assign.
+            //
+            // MI is biased upward by finite samples -- with A actions and 2 yield
+            // values there are 2A cells and a short stream fills them unevenly --
+            // so the shuffled control is not optional. It carries exactly the
+            // same bias, and only the DIFFERENCE means anything.
+            const std::size_t A = will.act_count() + 1;   // +1 for "no previous"
+            auto mi_of = [&](const std::vector<std::size_t>& prev) {
+                std::vector<double> joint(A * 2, 0.0), pp(A, 0.0), py(2, 0.0);
+                for (std::size_t i = 0; i < h.size(); ++i) {
+                    const std::size_t y = h[i].yield > 0.5 ? 1 : 0;
+                    joint[prev[i] * 2 + y] += 1.0; pp[prev[i]] += 1.0; py[y] += 1.0;
+                }
+                const double n = (double)h.size();
+                double mi = 0.0;
+                for (std::size_t a = 0; a < A; ++a)
+                    for (std::size_t y = 0; y < 2; ++y) {
+                        const double j = joint[a * 2 + y] / n;
+                        if (j <= 0.0) continue;
+                        mi += j * std::log2(j / ((pp[a] / n) * (py[y] / n)));
+                    }
+                return mi;
+            };
+            std::vector<std::size_t> prev;
+            prev.reserve(h.size());
+            for (const auto& st : h) prev.push_back(std::min(st.prev_action, A - 1));
+            const double mi_real = mi_of(prev);
+
+            double mi_null = 0.0, mi_null_max = 0.0;
+            std::uint64_t sd = 0xC0FFEE;
+            const int trials = 400;
+            for (int t = 0; t < trials; ++t) {
+                for (std::size_t i = prev.size(); i > 1; --i) {
+                    sd ^= sd << 13; sd ^= sd >> 7; sd ^= sd << 17;
+                    std::swap(prev[i - 1], prev[sd % i]);
+                }
+                const double m = mi_of(prev);
+                mi_null += m;
+                mi_null_max = std::max(mi_null_max, m);
+            }
+            mi_null /= (double)trials;
+
+            os << "  " << h.size() << " acts recorded" << "\n";
+            os << "  I(previous act ; this yield) = " << mi_real << " bits\n";
+            os << "  the same with the pairing shuffled, " << trials
+               << " times    = " << mi_null << " bits  (worst " << mi_null_max << ")\n";
+            if (mi_real <= mi_null_max) {
+                os << "\n  THE STREAM IS NOT SEQUENTIAL, on this evidence. What an act yields\n"
+                      "  does not depend on what preceded it by more than a shuffle of the\n"
+                      "  same data produces. A bandit is the RIGHT tool here and fitting a\n"
+                      "  Q-table to this would be learning noise -- which is worth knowing\n"
+                      "  before replacing the bandit on the strength of a gridworld result.";
+            } else {
+                os << "\n  There IS history dependence beyond the shuffle, so a reward here can\n"
+                      "  belong to an earlier act and the bandit cannot represent that.";
+            }
+            os << "\n  Yield is binary, so this MI is bounded by 1 bit and small numbers are\n"
+                  "  expected; the control is what makes the size readable.";
+            return {true, os.str(), ""};
+        }
+    });
+
+    shell.register_tool({
         "act_values",
         "what Khora has learned each act is worth, per drive  "
         "(usage: act_values [on|off])",

@@ -3,6 +3,54 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.132.0 — The upgrade the last bench implied would have been learning noise
+
+**Author:** Claude Opus 5
+
+The cliff-walk bench made a clear case: the bandit driving act selection closes
+74.7% of the gap to optimal where Q-learning closes 100%, and reaches the goal 0
+times in 20. The obvious next move is to replace it with a TD learner.
+
+That move rests on a premise nobody had checked, and the bench said so in its own
+caveats: **nothing establishes that Khora's acts form a Markov chain over an
+observable state.** If what an act yields does not depend on what came before it,
+there is no credit to assign over time, the bandit is already the right tool, and
+a Q-table would be machinery fitted to noise.
+
+### So measure it first
+
+Volition now records every (context, action, previous action, yield) and
+`act_stream` reports the mutual information between the previous act and this
+act's yield, against the same quantity with the pairing shuffled. Over 100 live
+acts:
+
+```
+I(previous act ; this yield)              = 0.0119 bits
+the same with the pairing shuffled, x400  = 0.0393 bits   (worst 0.1535)
+```
+
+**The real value is BELOW the null mean.** Not merely inside it -- smaller than
+the finite-sample bias that a shuffled stream produces for free. There is no
+history dependence to find.
+
+The control is not optional here and that is the point of doing it this way.
+Mutual information over 2A cells from a hundred samples is biased upward, so
+0.0119 bits read on its own looks like a small positive signal. Against a
+shuffle carrying exactly the same bias, it is nothing.
+
+### What that means
+
+The gridworld result does not transfer. Q-learning beats the bandit **when the
+problem is sequential**, and Khora's act stream is not one: study, ruminate,
+dream and reflect pay or fail to pay independently of what preceded them. The
+bandit is the correct tool for this repertoire, and the right conclusion from a
+benchmark that shows a method losing is not always to replace the method.
+
+This does not say Khora will never need temporal credit assignment -- it says the
+five acts it currently has do not, and that the way to know is to measure the
+stream rather than to reason from a gridworld. If the repertoire grows to include
+acts whose payoff genuinely lands later, `act_stream` will say so.
+
 ## v0.131.0 — Attention and adversarial search, built and raced
 
 **Author:** Claude Opus 5
