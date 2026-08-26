@@ -3,6 +3,80 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.141.0 - "A gradient search cannot do this" was too strong, and the bench that said so found three of its own bugs first
+
+**Author:** Claude Opus 5
+
+Optimisation was the last unmeasured axis with nothing in the tree: no CMA-ES, no
+simulated annealing, no Nelder-Mead, no hill climbing as a named method. Khora
+searches program space by enumeration and genome space by mutation, and neither
+had ever been compared to the standard toolkit.
+
+Six hand-written optimisers on sphere / Rosenbrock / Rastrigin / Ackley at
+d = 2, 5, 10, 20, 51 seeds, **10,000 evaluations for every method** enforced by
+the evaluator rather than by each method behaving itself -- the harness prints
+`4896 of 4896 runs spent EXACTLY 10000 evaluations`.
+
+### Three bugs found before any number was believed
+
+**CMA-ES was crippled by a NaN.** `local_best` started at infinity, and
+`inf - 1e-14*(1+inf)` is NaN, so every comparison against it was false, the
+stagnation counter never reset, and it force-restarted every 130 generations
+regardless of progress. On sphere d=10 that cost **ten orders of magnitude**
+(5.4e-12 against 2.1e-22). Every CMA-ES row in the first draft was wrong.
+
+**Simulated annealing was a strawman.** T0 was calibrated from the objective
+spread over the whole box rather than the mean uphill move, so it started about a
+thousand times too hot and lost to random search on sphere.
+
+**And the program-space comparison was rigged in the climbers favour** -- they
+were allowed to continue past a visible-only match while the enumerator halts
+there. They now stop where it stops.
+
+### The continuous results
+
+CMA-ES is the only method whose scaling curve stays flat: Ackley d=2 to d=20 it
+goes 1.8e-11 to 2.0e-10, where Nelder-Mead goes 2.8e-10 to **19.5, worse than
+random**. Simulated annealing loses to hill-climbing-with-restarts everywhere and
+on Rosenbrock at d=2 and d=5 loses to **random search itself**. Random search is
+no formality: at d=2 it reaches 1e-2 on sphere 50 times in 51.
+
+And the ranking depends on the budget. Rastrigin d=10 median at 1k/10k/100k:
+random 86 to 70.9 to 58.7, CMA-ES 36.9 to 5.97 to **0.995**. Random improves like
+a logarithm; CMA-ES improves like a method.
+
+### And the claim in this repository that it overturns
+
+The techne header said, of bottom-up construction: *"the measurement said a
+gradient search CANNOT solve compositional tasks and no amount of tuning will
+change that"*, and *"which is what the gradient search could NEVER arrange"*.
+
+That was written from one measurement of one algorithm. Against this enumerator
+on fifteen tasks, judged by the module own generalisation rule:
+
+| budget | random | hill climb | annealing | enumerate |
+|---|---|---|---|---|
+| matched to enumeration node count | 7/45 | 16/45 [23.2, 50.2] | 6/45 | **11/15 [48.0, 89.1]** |
+| 100,000 candidates each | 30/45 | **36/45 [66.2, 89.1]** | 33/45 | 11/15 [48.0, 89.1] |
+
+At a large budget **the intervals overlap and no difference is established**, so
+"cannot" and "never" are not supported. The flatness argument is still right
+about why the original search failed -- 92.7% of a hundred thousand uniform tapes
+sit at one modal score -- but a climber that ACCEPTS NEUTRAL MOVES walks across a
+plateau instead of stalling on it, and that is the one thing the mutation search
+was not doing.
+
+What enumeration actually keeps is **efficiency**, and it is large: at equal
+candidates it wins with a clear interval, and it spends a median of 340 nodes
+where the climber needs a hundred thousand candidates to draw level -- in a
+currency biased against it, since one node applies one operation to cached
+behaviours while one tape candidate runs a whole program on every case.
+
+The header now says "far cheaper per solution on these tasks" instead of "the
+only thing that works". Fifteen tasks at depth one to three cannot rank two
+search strategies and neither engine reached depth six; the bench says so in
+those words.
+
 ## v0.140.0 - Khora beats gzip, and its own machinery contributes nothing to that
 
 **Author:** Claude Opus 5

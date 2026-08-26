@@ -543,8 +543,35 @@ struct SearchConfig {
 Solution synthesise(const Spec& spec, SearchConfig cfg, Library* lib = nullptr);
 
 // ---------------------------------------------------------------------------
-// BOTTOM-UP CONSTRUCTION, because the measurement said a gradient search cannot
-// solve compositional tasks and no amount of tuning will change that.
+// BOTTOM-UP CONSTRUCTION, because a mutation search over whole programs could
+// not solve compositional tasks at the budget it was given.
+//
+// THIS PARAGRAPH USED TO SAY "a gradient search CANNOT solve compositional tasks
+// and no amount of tuning will change that", and that is too strong. It was
+// written from one measurement of one algorithm. A later bench put hill climbing
+// WITH NEUTRAL-MOVE ACCEPTANCE against this enumerator on fifteen tasks judged by
+// this module own generalisation rule, and at a hundred thousand candidates each
+// the climber scored 36/45 [66.2, 89.1] against enumeration 11/15 [48.0, 89.1].
+// The intervals overlap: no difference is established, so "cannot" and "never"
+// are not supported.
+//
+// The landscape argument below is still right about WHY the original search
+// failed, and the flatness is real -- 92.7% of a hundred thousand uniform tapes
+// sit at a single modal score. What it got wrong is the conclusion. A climber
+// that ACCEPTS NEUTRAL MOVES walks across a plateau instead of stalling on it,
+// which is the one thing the mutation search was not doing.
+//
+// What enumeration actually keeps is EFFICIENCY, and that is measured and large:
+// at a budget matched to enumeration own node count it wins 11/15 against the
+// climber 16/45, with intervals that clear, and it spends a median of 340 nodes
+// where the climber needs a hundred thousand candidates to draw level. The
+// currency is biased against enumeration on top of that -- one node applies a
+// single operation to cached operand behaviours, one tape candidate runs a whole
+// program on every case.
+//
+// Fifteen tasks at depth one to three cannot rank two search strategies, and
+// neither engine reached depth six. The honest claim is "far cheaper per solution
+// on these tasks", not "the only thing that works".
 //
 // Measured: the evolutionary search solved 13 of 20 tasks and every failure was
 // COMPOSITIONAL. `sum_of_squares` is two instructions -- multiply the list by
@@ -569,7 +596,7 @@ Solution synthesise(const Spec& spec, SearchConfig cfg, Library* lib = nullptr);
 // And this is where the library rejoins: a learned primitive is just another
 // one-step expression seeded into the pool at size 1. It does not need to be
 // stumbled upon by a mutation operator -- it is available from the first level,
-// which is what the gradient search could never arrange.
+// which is what a mutation operator has to stumble onto instead.
 // ---------------------------------------------------------------------------
 
 struct BuildResult {
