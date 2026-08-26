@@ -183,7 +183,16 @@ std::string build(Organs& o, const plexus::Plexus& px, const ligature::Ligature&
     std::size_t edges = 0;
     for (std::size_t i = 0; i < o.cb.size(); ++i) {
         std::size_t kept = 0;
-        for (const auto& a : px.associates(std::string(o.cb.name_at(i)), 400)) {
+        // BROAD, and asking for 400 was never going to be enough on its own.
+        // associates() applies three filters before k is even consulted -- pairs
+        // seen fewer than three times, neighbours above 0.6% of tokens, and
+        // non-positive PMI -- which cut the mean list from 42 words to 8.5
+        // whatever k says. The comment above wanted coverage and the readout was
+        // quietly refusing it; retrieve_bench measured that list at recall@100 of
+        // 1.56%, below random ranking. broad() is the setting that gives three
+        // times the recall, which is what an environment graph wants.
+        for (const auto& a : px.associates(std::string(o.cb.name_at(i)), 400,
+                                           khora::plexus::Plexus::Readout::broad())) {
             if (kept >= 32) break;
             const auto it = slot.find(a.first);
             if (it == slot.end()) continue;
@@ -218,7 +227,10 @@ std::string build(Organs& o, const plexus::Plexus& px, const ligature::Ligature&
     // operator that does not beat this has discovered nothing.
     std::size_t top_hits = 0;
     for (const auto& a : o.held) {
-        for (const auto& n : px.associates(std::string(o.cb.name_at(a.from_index)), 400)) {
+        // The same readout the environment was built with, or the baseline is
+        // answering a different question from the organism it is judging.
+        for (const auto& n : px.associates(std::string(o.cb.name_at(a.from_index)), 400,
+                                           khora::plexus::Plexus::Readout::broad())) {
             const auto it = slot.find(n.first);
             if (it == slot.end() || it->second == a.from_index) continue;
             if (it->second == a.to_index) ++top_hits;

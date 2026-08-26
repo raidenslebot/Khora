@@ -3,6 +3,47 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.144.0 - The caller that asked for coverage and was silently refused it
+
+**Author:** Claude Opus 5
+
+The retrieval measurement found `associates()` returns a mean of 8.5 candidates where
+raw co-occurrence over the same graph returns 42.4, at recall@100 below random
+ranking. The immediate question is who inside Khora is receiving that list.
+
+27 call sites. Two of them ask for **k = 400**, and the comment above one says:
+
+> cutting the associate list before intersecting it with the codebook leaves most
+> words with no edges at all, and then the senses are not under test
+
+The author diagnosed the coverage problem and worked around it by raising k. **k
+cannot help.** The three filters run before k is consulted, so a request for 400
+from a list already cut to 8.5 returns 8.5. The workaround was inert and nothing
+said so.
+
+Both sites build the environment graph for the evolutionary organ and the dumb
+baseline it is judged against. Switched to `Readout::broad()`:
+
+| | before | after |
+|---|---|---|
+| environment edges from Plexus | 2,182 | **2,949** |
+| codebook words with at least one edge | 376 / 397 | **394 / 397** |
+| top-associate baseline | 13.79% | **15.52%** |
+
+Orphaned words fall from 21 to 3, and note the direction of the last row: **the
+baseline got stronger**, so the bar an evolved operator has to clear went up. The
+earlier report that an evolved operator scored 7/58 against a baseline 8/58 was
+measured against a baseline the readout had been starving.
+
+### What was left alone, and why
+
+The other 25 call sites are in the Cogitator -- utterance, rumination, analogy,
+abstraction. Those want the single most surprising kin and the sharp list is
+plausibly right for them. Changing 25 sites in a generative module on the
+strength of a retrieval measurement would be speculation, and the retrieval task
+is not the task they perform. They keep `sharp()`, which is the default, so nothing
+moved underneath them.
+
 ## v0.143.0 - The associative memory ties BM25 at an eighth the cost, and its shipped readout is its worst one
 
 **Author:** Claude Opus 5
