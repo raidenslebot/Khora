@@ -3,6 +3,58 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.166.0 - A branching rate that rises with depth, and a prediction that half failed
+
+**Author:** Claude Opus 5
+
+Branching was introduced at a flat one task in three and never swept. With the
+bench reproducible that costs one command, so:
+
+| branch rate | carried at cap 60 | carried at cap 100 |
+|---|---|---|
+| 0 | **214** | 214 |
+| 33 | 210 | **257** |
+| 66 | 194 | -- |
+| 100 | 195 | -- |
+
+Two things at once. At cap 60 more branching is **monotonically worse**, because
+a branch is a harder task and the pipelines have not run out yet. At cap 100
+chains gain **nothing at all** between tier 60 and 100 -- 214 either way -- while
+33% branching is worth 257.
+
+So a constant rate is the wrong shape: it taxes the depths that do not need it in
+order to help the depths that do. The rate should be zero while chains still
+produce novel solvable work and rise once they saturate.
+
+### The ramp, and what it is actually for
+
+Zero below tier 40, climbing linearly to the configured ceiling by tier 80.
+
+| config, cap 100 | carried | empty | gap |
+|---|---|---|---|
+| chains only | 214 | 176 | 38 |
+| flat 33 | 257 | 223 | 34 |
+| ramped 33 | 255 | 218 | 37 |
+| **ramped 66** | **275** | **231** | **44** |
+
+**Half of that is what I predicted and half is not.** I expected the ramp to help
+at 33 by removing the shallow-tier tax the sweep had just measured. It did not --
+255 against 257, slightly worse.
+
+What the ramp is actually for is making a HIGH rate affordable. Flat 66 is worse
+than no branching at all at cap 60 (194 against 214), so 66 is only reachable
+with the ramp holding it off the shallow tiers -- and there it is the best
+configuration measured, **+28% over chains and +7% over the flat 33 it replaces**.
+
+And unlike flat 33, **the gap moves too**: 44 against 38 for chains only. Flat
+branching raised what both arms achieved and left the library-s marginal value
+alone; ramped 66 raises both.
+
+Default is now ramped 66. The sweep is in the source beside the constant, because
+the next person to try a flat rate should be able to see it was measured.
+
+32/32.
+
 ## v0.165.0 - The root of the nondeterminism was mine, and it invalidates four entries
 
 **Author:** Claude Opus 5

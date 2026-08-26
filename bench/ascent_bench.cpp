@@ -269,7 +269,7 @@ const std::vector<char>& shrinking() {
 // Percentage of depth>=4 tasks generated as a BRANCH rather than a pipeline.
 // Zero reproduces the chains-only curriculum, which is what the ceiling at tier
 // 82 was a property of. Set from argv so both arms come from one binary.
-std::size_t g_branch_pct = 33;
+std::size_t g_branch_pct = 66;
 // Whether a length-reducing atom may only be the LAST operation of a chain.
 // Off reproduces the original uniform draw, so the rule can be A/B tested
 // rather than inherited -- it was first measured while an out-of-bounds read
@@ -328,7 +328,33 @@ Chain chain_of(std::size_t depth) {
 Task compose(std::size_t depth) {
     // Shallow tiers stay pipelines: a branch needs two chains worth splitting
     // into, and at depth 3 there is nothing to split.
-    if (depth >= 4 && g_branch_pct > 0 && rnd() % 100 < g_branch_pct) {
+    // THE RATE RISES WITH DEPTH, because a branch is a harder task and it only
+    // pays once the pipelines have run out. Swept at a fixed tier cap of 60,
+    // where chains still produce novel solvable work:
+    //
+    //   branch_pct   0     33     66    100
+    //   carried    214    210    194    195
+    //
+    // Monotonically worse. At a cap of 100, where chains gain NOTHING between
+    // tier 60 and 100, the same 33% is worth 257 against 214. So a constant rate
+    // is the wrong shape: it taxes the depths that do not need it to help the
+    // depths that do. Zero below the ramp, climbing to g_branch_pct at twice it.
+    //
+    // What the ramp is actually FOR is making a high rate affordable. At cap 100:
+    //
+    //   chains only   214 / 176   gap 38
+    //   flat 33       257 / 223   gap 34
+    //   ramped 33     255 / 218   gap 37     <- the ramp alone is a wash
+    //   ramped 66     275 / 231   gap 44     <- best measured, and the gap moves
+    //
+    // Flat 66 is WORSE than no branching at all at cap 60 (194 against 214), so
+    // 66 is only reachable with the ramp holding it off the shallow tiers. The
+    // ramp bought nothing at 33 and everything at 66, which is not what I
+    // predicted from the sweep -- I expected it to pay at both.
+    const std::size_t ramp = 40;
+    const std::size_t eff = depth <= ramp ? 0
+        : std::min(g_branch_pct, g_branch_pct * (depth - ramp) / ramp);
+    if (depth >= 4 && eff > 0 && rnd() % 100 < eff) {
         const std::size_t d1 = 1 + rnd() % (depth - 1);
         const std::size_t d2 = depth - d1;
         Chain A = chain_of(d1);
