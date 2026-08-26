@@ -721,6 +721,10 @@ int main(int argc, char** argv) {
     std::printf("  -----+-------+-----------------+---------------+----------+---------+----------+--------\n");
 
     std::size_t total_carried = 0, total_empty = 0;
+    // Per-tier arms, so the question "does the carried library keep paying as the
+    // ascent deepens" can be answered by the run instead of by grepping its table
+    // afterwards. The total gap cannot answer it: it only ever grows.
+    std::vector<std::size_t> tier_carried, tier_empty;
     const auto started = clk::now();
     std::size_t barren = 0;
     for (std::size_t tier = 1; ; ++tier) {
@@ -780,6 +784,8 @@ int main(int argc, char** argv) {
         Library empty(96);
         const TierResult without = run_tier(tasks, specs, &empty, pool_cap, false);
 
+        tier_carried.push_back(with.verified);
+        tier_empty.push_back(without.verified);
         total_carried += with.verified;
         total_empty += without.verified;
 
@@ -837,6 +843,36 @@ int main(int argc, char** argv) {
         std::printf("  is a haystack: more level-0 entries mean a quadratically larger first\n");
         std::printf("  level, and the budget goes on candidates nobody needed.\n");
     }
+    // DOES THE CARRIED LIBRARY KEEP PAYING AS THE ASCENT DEEPENS?
+    //
+    // The headline of this bench has always been the total carried-minus-empty
+    // gap, and a total cannot fall -- so "the ascent compounds" has never been
+    // tested against depth, only against zero. In bands of forty tiers it is a
+    // different statement.
+    //
+    // Both arms admit task-by-task WITHIN a tier, so the empty arm has a
+    // tier-local library; the gap measures what carrying one ACROSS tiers is
+    // worth. Watch that against the used-lib column, which counts solutions that
+    // called a library entry at all.
+    if (tier_carried.size() >= 40) {
+        std::printf("\n  the carried library-s value, in bands of forty tiers:\n\n");
+        std::printf("    tiers    | carried | empty | gap | gap per tier\n");
+        std::printf("    ---------+---------+-------+-----+--------------\n");
+        for (std::size_t b = 0; b * 40 < tier_carried.size(); ++b) {
+            std::size_t c = 0, e = 0, n = 0;
+            for (std::size_t i = b * 40; i < (b + 1) * 40 && i < tier_carried.size(); ++i) {
+                c += tier_carried[i];
+                e += tier_empty[i];
+                ++n;
+            }
+            std::printf("    %4zu-%-4zu | %7zu | %5zu | %3d | %.2f\n",
+                        b * 40 + 1, b * 40 + n, c, e,
+                        static_cast<int>(c) - static_cast<int>(e),
+                        n ? (static_cast<double>(c) - static_cast<double>(e)) /
+                            static_cast<double>(n) : 0.0);
+        }
+    }
+
     std::printf("\n  library holds %zu learned functions, %zu evicted.\n",
                 carried.size(), carried.evicted());
     return 0;

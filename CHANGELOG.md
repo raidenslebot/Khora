@@ -3,6 +3,54 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.169.0 - The compounding is inside a tier, not across them
+
+**Author:** Claude Opus 5
+
+"The ascent compounds" is the oldest headline in this log and it has always been
+measured as one number: the total carried-minus-empty gap. **A total cannot fall.**
+So the claim has been tested against zero and never against DEPTH -- which is the
+thing it is actually asserting.
+
+In bands of forty tiers, from a reproducible 202-tier run:
+
+| tiers | carried | empty | gap | gap per tier |
+|---|---|---|---|---|
+| 1-40 | 165 | 133 | 32 | **0.80** |
+| 41-80 | 92 | 84 | 8 | 0.20 |
+| 81-120 | 47 | 46 | 1 | **0.03** |
+| 121-160 | 49 | 44 | 5 | 0.12 |
+| 161-200 | 23 | 20 | 3 | 0.07 |
+
+**Two thirds of everything the carried library is ever worth is earned in the
+first forty tiers, and past tier 80 its value per tier falls by more than an
+order of magnitude.** The loop does not accelerate. It decelerates, and the
+library stops mattering.
+
+### And yet every deep solution uses the library
+
+| tiers | verified | used a library entry | chained |
+|---|---|---|---|
+| 1-40 | 165 | 138 (84%) | 20 |
+| 41-80 | 92 | 92 (**100%**) | 5 |
+| 81-120 | 47 | 47 (**100%**) | 16 |
+| 121-160 | 49 | 49 (**100%**) | **28** |
+| 161-200 | 23 | 23 (**100%**) | 12 |
+
+Not a contradiction -- the resolution is in how the control works. **Both arms
+admit task-by-task within a tier**, so the empty arm builds a tier-local library
+as it goes. Deep solutions do depend on library entries, overwhelmingly, and
+those entries are mostly ones learned IN THE SAME TIER, which the control has too.
+
+So the honest statement is not "the ascent compounds". It is: **the ascent
+compounds within a tier, and carrying a library across tiers is worth 0.8
+verified programs per tier early and 0.07 late.**
+
+The bench prints this band table on every run of forty tiers or more now, because
+the total was never going to show it.
+
+32/32.
+
 ## v0.168.0 - With the stopping rule fixed: tier 202, and the generator never once failed
 
 **Author:** Claude Opus 5
