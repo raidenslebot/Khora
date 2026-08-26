@@ -167,15 +167,15 @@ Reading Governor::last() const {
     return r;
 }
 
-double Governor::peak_celsius() const noexcept {
+double Governor::peak_celsius() const {
     std::lock_guard<std::mutex> g(impl_->m);
     return impl_->peak_c;
 }
-std::size_t Governor::min_allowed() const noexcept {
+std::size_t Governor::min_allowed() const {
     std::lock_guard<std::mutex> g(impl_->m);
     return impl_->min_allowed == static_cast<std::size_t>(-1) ? allowed() : impl_->min_allowed;
 }
-std::size_t Governor::throttle_events() const noexcept {
+std::size_t Governor::throttle_events() const {
     std::lock_guard<std::mutex> g(impl_->m);
     return impl_->throttles;
 }

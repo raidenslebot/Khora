@@ -3,6 +3,43 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.145.0 - Two latent defects the orphan wiring found and nobody had fixed
+
+**Author:** Claude Opus 5
+
+Both were reported when ribosome, synapse and governor were first wired into the
+live binary, recorded in the tool file, and left alone. Neither is triggered
+today; both are the kind that surface once something is parallelised.
+
+### A noexcept that could only be honoured by terminating
+
+`peak_celsius()`, `min_allowed()` and `throttle_events()` were declared `const noexcept`
+and all three take the sampler mutex. `std::lock_guard` can throw
+`std::system_error`, and under `noexcept` that is not an exception -- it is
+`std::terminate`. The declaration was claiming something the body cannot honour.
+
+The `noexcept` is gone from the three that lock. `allowed()` keeps it, because it
+really is only a relaxed atomic load. Checked while there: `min_allowed()` calls
+`allowed()` while holding the mutex, which would be a deadlock if `allowed()` locked
+too -- it does not.
+
+### A data race stated as a contract instead of paid for on the hot path
+
+`Codebook::nearest_index` memoises into a mutable unsynchronised `unordered_map`.
+Two threads cleaning up against the same Codebook do not race on a stale value,
+they race on the container.
+
+Nothing does that today -- the Chamber runs on one thread and the evolve tool
+serialises status queries behind a mutex for exactly this reason. A lock here
+would sit on the hot path of every cleanup for a race nothing currently triggers,
+so the contract is written down instead: **one Codebook per thread when cleaning
+up.** Parallelising the Chamber means giving each worker its own, which is cheap
+-- the items are shared and immutable, only the memo is per-caller.
+
+That is a deliberate choice rather than a fix, and it is recorded as one. If the
+Chamber is ever parallelised without reading it, the failure will be a corrupt
+hash map and not a wrong number.
+
 ## v0.144.0 - The caller that asked for coverage and was silently refused it
 
 **Author:** Claude Opus 5

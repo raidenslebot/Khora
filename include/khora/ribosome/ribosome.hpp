@@ -288,6 +288,20 @@ private:
     std::vector<std::vector<std::uint32_t>> adj_;
     std::unordered_map<std::uint64_t, std::uint32_t> exact_;  // glyph hash -> slot
 
+    // NOT THREAD SAFE, and this is the contract rather than an oversight.
+    //
+    // The memo below is mutable and unsynchronised, so two threads calling
+    // nearest_index() on the SAME Codebook race on an unordered_map -- which is
+    // a corrupt container, not a stale value. Nothing in the tree does that
+    // today: the Chamber runs on one thread and the evolve tool serialises
+    // status queries behind a mutex for exactly this reason.
+    //
+    // A lock here would sit on the hot path of every cleanup for a race nothing
+    // currently triggers, so the contract is stated instead: ONE Codebook PER
+    // THREAD when cleaning up. Parallelising the Chamber means giving each
+    // worker its own, and that is cheap -- the items are shared and immutable,
+    // only the memo is per-caller.
+
     // Memo for the scan. Cleanup is a deterministic function of the query, and
     // a population of related genomes recomputes the same intermediates
     // constantly -- the same input word through the same program prefix, across

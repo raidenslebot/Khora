@@ -136,9 +136,19 @@ public:
     // Highest temperature and lowest allowance seen, for the end-of-run report.
     // A run that never throttled and a run that throttled constantly should not
     // look the same afterwards.
-    double      peak_celsius() const noexcept;
-    std::size_t min_allowed() const noexcept;
-    std::size_t throttle_events() const noexcept;
+    // NOT noexcept, and they used to be. All three take the sampler mutex, and
+    // std::lock_guard can throw std::system_error -- under noexcept that is not
+    // an exception, it is std::terminate. The declaration was claiming something
+    // the body cannot honour. allowed() above stays noexcept because it really
+    // is just a relaxed atomic load.
+    //
+    // peak_celsius() returns -1 before the first sample and min_allowed()
+    // returns the current allowance when the loop has never run; both are
+    // sentinels in fields shaped like measurements, so a caller that prints them
+    // raw will print -1 degrees.
+    double      peak_celsius() const;
+    std::size_t min_allowed() const;
+    std::size_t throttle_events() const;
 
     // The ceiling, ignoring thermal state.
     static std::size_t cap_workers(double fraction);
