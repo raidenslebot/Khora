@@ -1359,8 +1359,51 @@ BuildResult construct(const Spec& spec, std::size_t max_pool, const Library* lib
             ++taken;
         }
     }
+    // A BANNED OPERATION CAN WALK IN THROUGH THE LIBRARY, AND IT DID.
+    //
+    // spec.allows() is checked at every site that EMITS an operation, and none of
+    // the three sites that reach into the LIBRARY consulted it -- the level-0
+    // seeding, the Call growth loop, and the MapF/FoldF loop. A library entry is
+    // an arbitrary recipe, so if any of its nodes uses the banned operation then
+    // banning the operation bans nothing.
+    //
+    // Not hypothetical. The self-hosting bench removes a primitive and asks the
+    // system to rebuild it from the rest; `sort` came back as
+    // `append(min(x), lib1(x))` where lib1 was `tail(sort(x))`. Sort defined in
+    // terms of sort. It passes every probe, because the behaviour is correct --
+    // it IS the real implementation, wrapped -- so no amount of testing catches
+    // it. Three of thirteen reported reconstructions were circular this way.
+    //
+    // Computed once rather than per use, and TRANSITIVE: an entry may call
+    // another entry, so checking one level would let the same thing in one step
+    // further out.
+    std::vector<bool> lib_usable;
+    if (lib != nullptr && !spec.banned.empty()) {
+        lib_usable.assign(lib->size(), true);
+        const std::function<bool(const Recipe&, int)> uses_banned =
+            [&](const Recipe& r, int depth) -> bool {
+                if (depth > 8) return true;          // refuse what cannot be checked
+                for (const Expr& n : r.pool) {
+                    if (!spec.allows(n.op)) return true;
+                    if (n.op == Op::Call || n.op == Op::MapF || n.op == Op::FoldF) {
+                        const std::size_t j = n.k;
+                        if (j >= lib->size()) return true;
+                        if (uses_banned(lib->at(j).recipe, depth + 1)) return true;
+                    }
+                }
+                return false;
+            };
+        for (std::size_t li = 0; li < lib->size(); ++li)
+            lib_usable[li] = !uses_banned(lib->at(li).recipe, 0);
+    }
+    // Empty means "nothing banned", so every entry is usable.
+    const auto usable = [&lib_usable](std::size_t li) {
+        return lib_usable.empty() || (li < lib_usable.size() && lib_usable[li]);
+    };
+
     if (lib != nullptr) {
         for (std::size_t li = 0; li < lib->size() && found_at < 0; ++li) {
+            if (!usable(li)) continue;
             std::vector<Value> outs(ncase);
             for (std::size_t c = 0; c < ncase; ++c) {
                 outs[c] = apply_op(Op::Call, spec.cases[c].in, {},
@@ -1556,6 +1599,7 @@ BuildResult construct(const Spec& spec, std::size_t max_pool, const Library* lib
             for (std::size_t i = start; i < call_nodes && found_at < 0 && pool.size() < max_pool; ++i) {
                 for (std::size_t oi = 0; oi < call_bodies && found_at < 0; ++oi) {
                     const std::size_t li = body_order[oi];
+                    if (!usable(li)) continue;      // the body uses a banned op
                     std::vector<Value> outs(ncase);
                     for (std::size_t c = 0; c < ncase; ++c) {
                         outs[c] = apply_op(Op::Call, behaviour[i][c], {},
@@ -1596,6 +1640,7 @@ BuildResult construct(const Spec& spec, std::size_t max_pool, const Library* lib
                     // every tier and roughly 3x the time, because it fed the
                     // per-element loop the deepest recipes in the library.
                     for (std::size_t li = 0; li < body_lim && found_at < 0; ++li) {
+                        if (!usable(li)) continue;  // the body uses a banned op
                         std::vector<Value> outs(ncase);
                         for (std::size_t c = 0; c < ncase; ++c) {
                             outs[c] = apply_op(hop, behaviour[i][c], {},

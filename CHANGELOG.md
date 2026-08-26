@@ -3,6 +3,88 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.146.0 - The self-hosting benchmark was partly measuring itself, and the loop does not compound
+
+**Author:** Claude Opus 5
+
+The stated way to benchmark this system is to get it to develop itself. That is
+what selfhost_bench does: remove a primitive, ask the system to rebuild it from
+the rest, check the result against the real implementation. It reported 13 of 22.
+
+Two findings, and the first invalidates the second-hand version of that number.
+
+### A banned operation could walk in through the library
+
+`Spec::banned` stops the SEARCH from emitting an operation. It did not stop a
+LIBRARY ENTRY whose body contains that operation from being called, and
+`construct()` reaches into the library at **three** sites -- level-0 seeding, the
+`Call` growth loop, and the `MapF`/`FoldF` loop -- consulting `banned` at none of them.
+
+So `sort` was "rebuilt" as `append(min(x), lib1(x))` where `lib1 = tail(sort(x))`.
+Sort defined in terms of sort. **No amount of probing can catch this** -- the
+behaviour is correct because it IS the real implementation, wrapped. Three of the
+thirteen were circular.
+
+Fixed: `construct()` now refuses any library entry whose recipe TRANSITIVELY uses
+a banned operation, computed once per call and checked at all three sites. The
+transitivity matters -- an entry may call another entry, so a one-level check
+would let the same thing in one step further out.
+
+| | rebuilt |
+|---|---|
+| as reported | 13/22, of which 3 circular |
+| circularity removed by hand | 10/22 |
+| **with banning actually enforced** | **12/22 [34.7, 73.1], none circular** |
+
+Note the direction. Enforcing the ban did not just delete rows -- it forced the
+search to find genuine reconstructions for two of the three, so the corrected
+figure is HIGHER than the hand-cleaned one. The audit is kept as a regression
+guard and now prints "none".
+
+### And the loop does not compound
+
+The claim worth testing is not that a primitive can be rebuilt, it is that
+rebuilt primitives make the NEXT rebuild easier. Round 2 must rebuild the
+remaining primitives using round 1 own reconstructions, not the originals.
+
+| pool | gained round 1 | gained later | jointly held |
+|---|---|---|---|
+| 18,750 | 9 | **0** | 9/22 |
+| 37,500 | 9 | **0** | 9/22 |
+| 75,000 | 9 | **0** | 9/22 |
+| 150,000 | 12 | **0** | 12/22 |
+
+Every budget gains everything it will gain in round one. **Eight times the search
+budget buys three more primitives in round one and nothing at all in round two.**
+The one later gain anywhere in the bench is a single primitive in the control arm
+where nothing is withdrawn.
+
+The mechanism is named rather than guessed: reconstructions are MUTUALLY
+dependent, so withdrawing one kills the stand-ins for others, and even with a
+repair cascade allowed to rebuild every orphan under the same withdrawal, one
+bundle cannot be routed around.
+
+### What did not go wrong
+
+No error accumulation. Acceptance is `synthesise_hardened`; grading is 252 inputs
+disjoint BY CONSTRUCTION -- every one is longer than 20 or carries magnitude
+>= 1000 on a list of length >= 5, so it cannot be a spec case, a proof-domain
+input, or a `default_extremes()` entry. 29/29 accepted reconstructions clean at
+every rebuild depth, worst agreement 252/252.
+
+Honestly caveated by the bench itself: the hardened gate rejected **zero**
+candidates the weaker criterion would have taken, so the cleanliness is not
+attributable to the gate on this family, and the loop stalls before stacking deep
+enough for decay to be measurable.
+
+**Incidental:** the pairwise combiners exist so `FoldF` can express "combine every
+element". **0 of 29** accepted reconstructions contain a fold or a map, and `sum`
+is still not rebuilt. The scaffolding did not pay.
+
+The strongest defensible statement is: **12 of 22 primitives can be jointly
+supplied by proof-gated reconstructions of each other, none wrong on 252 held-out
+inputs, and that set does not grow with a second pass.**
+
 ## v0.145.0 - Two latent defects the orphan wiring found and nobody had fixed
 
 **Author:** Claude Opus 5
