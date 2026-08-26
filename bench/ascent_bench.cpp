@@ -810,8 +810,8 @@ int main(int argc, char** argv) {
         // measure, and it is corrected here rather than quietly aligned.
         if (with.verified == 0 && without.verified == 0) {
             if (++barren >= g_barren_limit) {
-                std::printf("  -- two consecutive tiers verified nothing; the ascent ends "
-                            "at tier %zu.\n", tier);
+                std::printf("  -- %zu consecutive tiers verified nothing; the ascent ends "
+                            "at tier %zu.\n", barren, tier);
                 break;
             }
             std::printf("  -- tier %zu barren; continuing in case the depth was unlucky.\n", tier);

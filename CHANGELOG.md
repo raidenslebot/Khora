@@ -3,6 +3,38 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.168.0 - With the stopping rule fixed: tier 202, and the generator never once failed
+
+**Author:** Claude Opus 5
+
+The previous entry raised the barren tolerance from 2 to 5 and measured +30% at a
+tier cap of 100. That cap was itself the limit, so the run never showed where it
+would actually stop. Raising the cap to 250, chains only, tolerance 5:
+
+| | ends at | carried | empty | gap | tiers under-filled |
+|---|---|---|---|---|---|
+| tolerance 2 | tier 60 | 214 | 176 | 38 | 0 of 60 |
+| **tolerance 5** | **tier 202** | **376** | **327** | **49** | **0 of 202** |
+
+**3.4x the depth and +76% verified, from one constant.** And in 202 tiers the
+generator never once failed to fill a tier -- 24 of 24, every time, to the end.
+Twenty-eight individual tiers came back barren and the run recovered from every
+one of them, which is precisely why a tolerance of two was cutting runs short.
+
+It still ends on the stopping rule, at five consecutive barren tiers, with the
+curriculum in no difficulty at all. So the reach of this loop is set by **how
+long it is willing to keep trying**, and that is a heuristic rather than a
+property of the system. Raising the tolerance further would push the number up
+again; at some point that stops being capability and starts being an unwillingness
+to stop, and I do not know where that point is.
+
+Also fixed: the message printed on stopping said "two consecutive tiers verified
+nothing" whatever the tolerance actually was. It now prints the real count. A
+benchmark that misreports why it stopped is how three ceilings in a row got
+called structural.
+
+32/32.
+
 ## v0.167.0 - Branching and patience turn out to be the same fix, and patience is one line
 
 **Author:** Claude Opus 5
