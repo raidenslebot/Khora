@@ -53,21 +53,14 @@ const char* fn_of(Op op) {
     }
 }
 
-bool is_binary(Op op) {
-    switch (op) {
-        case Op::Add: case Op::Sub: case Op::Mul: case Op::Div: case Op::Mod:
-        case Op::Append: case Op::Take: case Op::Drop: case Op::Index:
-        case Op::Filter: case Op::MapAdd: case Op::MapMul: case Op::Count:
-        case Op::Guard: case Op::Else:
-        // Delta is NOT here: it reads one operand. This list mirrors binary()
-        // in techne.cpp, which is what decides how many registers apply_op
-        // reads -- an operation classified differently in the two places would
-        // emit a call with the wrong arity.
-        case Op::Gt: case Op::Member: case Op::Until:
-            return true;
-        default: return false;
-    }
-}
+// THE SAME LIST THE INTERPRETER USES, because this was a copy of it and copies
+// drift. It omitted Eq and Lt -- added to the interpreter, never added here --
+// so any recipe containing either emitted a one-argument call to a
+// two-argument function in every one of the fourteen backends. The old comment
+// here said the list "mirrors binary() in techne.cpp" and that a disagreement
+// "would emit a call with the wrong arity", which was exactly right and did not
+// prevent anything. Now there is one list.
+bool is_binary(Op op) { return reads_two_operands(op); }
 
 // PHP spells every local `$t0` and every parameter `$x`. Putting the sigil in
 // the reference builder rather than at each of the four places a name is
@@ -2344,7 +2337,12 @@ static bool plan_unit(const Recipe& r, const Library& lib, std::size_t depth,
             if (i >= r.pool.size() || live[i]) continue;
             live[i] = true;
             if (r.pool[i].a >= 0) stack.push_back(static_cast<std::size_t>(r.pool[i].a));
-            if (r.pool[i].b >= 0) stack.push_back(static_cast<std::size_t>(r.pool[i].b));
+            // ONLY FOLLOW b WHEN THE OPERATION ACTUALLY READS IT. A unary node
+            // can carry a stale b, and marking that operand live emitted a local
+            // nothing referenced -- a warning in most backends and a COMPILE
+            // ERROR in Go, which rejects unused variables outright.
+            if (reads_two_operands(r.pool[i].op) && r.pool[i].b >= 0)
+                stack.push_back(static_cast<std::size_t>(r.pool[i].b));
         }
     }
 
@@ -2480,7 +2478,12 @@ static std::string emit_inlined(const Recipe& r, Lang l, const std::string& fn,
             if (i >= r.pool.size() || live[i]) continue;
             live[i] = true;
             if (r.pool[i].a >= 0) stack.push_back(static_cast<std::size_t>(r.pool[i].a));
-            if (r.pool[i].b >= 0) stack.push_back(static_cast<std::size_t>(r.pool[i].b));
+            // ONLY FOLLOW b WHEN THE OPERATION ACTUALLY READS IT. A unary node
+            // can carry a stale b, and marking that operand live emitted a local
+            // nothing referenced -- a warning in most backends and a COMPILE
+            // ERROR in Go, which rejects unused variables outright.
+            if (reads_two_operands(r.pool[i].op) && r.pool[i].b >= 0)
+                stack.push_back(static_cast<std::size_t>(r.pool[i].b));
         }
     }
 

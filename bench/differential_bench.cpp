@@ -65,6 +65,68 @@ Recipe chain(std::initializer_list<Expr> nodes) {
     return r;
 }
 
+// SIXTEEN HAND-WRITTEN RECIPES CATCH THE BUGS SOMEBODY ALREADY THOUGHT OF.
+//
+// Each one above exists because a specific defect got through: Op::Call deleted
+// from emitted source, the length clamp missing from every prelude, Op::Mov
+// aliased away with the truncation it carries. They are regression tests, and a
+// regression test cannot find the NEXT defect -- the synthesiser emits arbitrary
+// recipes, and sixteen shapes is not the space it draws from.
+//
+// So: generate well-formed recipes over the WHOLE operation set, by ordinal, so
+// an operation added next week is covered without anybody remembering to add it
+// here. Recipe::apply is the reference for whatever comes out; the emitted code
+// has to agree with it whatever it is.
+//
+// Call, MapF and FoldF are excluded because their bodies live in a Library and
+// this harness passes nullptr; splicing is covered by the named cases.
+std::vector<Named> fuzz_recipes(std::size_t n, std::uint64_t seed) {
+    std::vector<Op> usable;
+    for (int i = 0; i < static_cast<int>(Op::kCount); ++i) {
+        const Op o = static_cast<Op>(i);
+        if (o == Op::Call || o == Op::MapF || o == Op::FoldF || o == Op::Arg) continue;
+        usable.push_back(o);
+    }
+
+    std::uint64_t st = seed | 1;
+    const auto rnd = [&st]() {
+        st ^= st << 13; st ^= st >> 7; st ^= st << 17; return st;
+    };
+
+    std::vector<Named> v;
+    static std::vector<std::string> names;
+    names.clear();
+    names.reserve(n);
+    for (std::size_t f = 0; f < n; ++f) {
+        const std::size_t size = 1 + rnd() % 5;
+        Recipe r;
+        for (std::size_t i = 0; i < size; ++i) {
+            Expr e;
+            // A literal every so often, since has_lit is honoured separately by
+            // evaluation, rendering and emission and has been wrong in one of
+            // them before.
+            if (i + 1 < size && rnd() % 4 == 0) {
+                e.op = Op::Const;
+                e.a = -1; e.b = -1;
+                e.lit = static_cast<std::int64_t>(rnd() % 200) - 100;
+                e.has_lit = true;
+            } else {
+                e.op = usable[rnd() % usable.size()];
+                // -1 is argument 0; anything else must be an EARLIER node, which
+                // is what keeps the pool acyclic and the recipe well formed.
+                e.a = (i == 0 || rnd() % 3 == 0) ? -1 : static_cast<int>(rnd() % i);
+                e.b = (i == 0 || rnd() % 2 == 0) ? -1 : static_cast<int>(rnd() % i);
+                e.k = static_cast<std::uint8_t>(rnd() % 4);
+            }
+            r.pool.push_back(e);
+        }
+        r.root = r.pool.size() - 1;
+        r.found = true;
+        names.push_back("fuzz" + std::to_string(f));
+        v.push_back({names.back().c_str(), r});
+    }
+    return v;
+}
 // The arguments a recipe of this arity gets for input i. A second argument is
 // the NEXT input rather than a repeat of the first, so a program that silently
 // ignores it cannot pass by coincidence.
@@ -474,7 +536,13 @@ std::string driver(Lang l, const std::vector<Named>& rs, const std::vector<Value
 int main(int argc, char** argv) {
     const std::string out_dir = (argc > 1) ? argv[1] : ".";
 
-    const auto rs = recipes();
+    auto rs = recipes();
+    {
+        // Generated shapes alongside the regression cases, in the same run and
+        // graded the same way.
+        const auto fz = fuzz_recipes(48, 0xC0FFEEULL);
+        rs.insert(rs.end(), fz.begin(), fz.end());
+    }
     const auto ins = inputs();
 
     std::printf("Does the emitted code compute what the certified recipe computes?\n\n");

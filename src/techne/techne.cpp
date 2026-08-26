@@ -72,19 +72,10 @@ Value zip(const Value& a, const Value& b, F f) {
 }
 
 
-// Which opcodes read a second register operand. Needed by liveness.
-inline bool binary(Op o) {
-    switch (o) {
-        case Op::Add: case Op::Sub: case Op::Mul: case Op::Div: case Op::Mod:
-        case Op::Append: case Op::Take: case Op::Drop: case Op::Index:
-        case Op::Filter: case Op::MapAdd: case Op::MapMul: case Op::Count:
-        case Op::Guard: case Op::Else:
-        case Op::Gt: case Op::Eq: case Op::Lt:
-        case Op::Member: case Op::Until:
-            return true;
-        default: return false;
-    }
-}
+// Which opcodes read a second register operand. Needed by liveness, and by the
+// emitter, which is the whole reason this is declared in the header rather than
+// written out twice. See reads_two_operands().
+inline bool binary(Op o) { return reads_two_operands(o); }
 
 // The constants a program can name. Small integers dominate real code, and a
 // full 8-bit literal range would spend most of the search on constants nobody
@@ -96,6 +87,19 @@ inline std::int64_t const_of(std::uint8_t b) {
 }
 
 } // namespace
+
+bool reads_two_operands(Op o) {
+    switch (o) {
+        case Op::Add: case Op::Sub: case Op::Mul: case Op::Div: case Op::Mod:
+        case Op::Append: case Op::Take: case Op::Drop: case Op::Index:
+        case Op::Filter: case Op::MapAdd: case Op::MapMul: case Op::Count:
+        case Op::Guard: case Op::Else:
+        case Op::Gt: case Op::Eq: case Op::Lt:
+        case Op::Member: case Op::Until:
+            return true;
+        default: return false;
+    }
+}
 
 const char* op_name(Op o) {
     switch (o) {

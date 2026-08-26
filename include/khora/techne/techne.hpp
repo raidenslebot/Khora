@@ -728,6 +728,18 @@ enum class Lang {
 
 // Operation names, and back again. The name is the stable identifier; the
 // enum ordinal is not, and must never reach a file or a wire.
+// WHICH OPCODES READ A SECOND OPERAND. One definition, because there were two.
+//
+// The interpreter used a `binary()` in an anonymous namespace to decide how many
+// registers apply_op reads, and the emitter kept its own `is_binary()` with a
+// comment saying it mirrored that list and that "an operation classified
+// differently in the two places would emit a call with the wrong arity". Eq and
+// Lt were added to the interpreter and not to the emitter, so every emitted
+// program containing either called a two-argument function with one argument --
+// in all fourteen languages, for two years of operations being added. A comment
+// asking two lists to agree is not a mechanism that makes them agree.
+bool reads_two_operands(Op o);
+
 const char* op_name(Op o);
 bool op_from_name(const std::string& n, Op& out);
 

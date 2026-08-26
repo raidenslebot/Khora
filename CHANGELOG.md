@@ -3,6 +3,68 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.154.0 - Sixteen hand-written recipes, and the two defects they could not see
+
+**Author:** Claude Opus 5
+
+Every recipe in `differential_bench` exists because a specific defect got through:
+Op::Call deleted from emitted source, the length clamp missing from every
+prelude, Op::Mov aliased away with the truncation it carries. They are regression
+tests, and **a regression test cannot find the next defect.** The synthesiser
+emits arbitrary recipes; sixteen shapes is not the space it draws from.
+
+So the bench now also generates well-formed recipes over the whole operation set
+BY ORDINAL, so an operation added next week is covered without anyone remembering
+to add it here. 48 generated alongside the 16 named, graded identically against
+`Recipe::apply`. It found two defects on the first run.
+
+### The emitter and the interpreter disagreed about arity
+
+```
+TypeError: kh_lt() missing 1 required positional argument: b
+```
+
+The interpreter decides how many operands an opcode reads with `binary()`. The
+emitter had its own copy, `is_binary()`, carrying this comment:
+
+> This list mirrors binary() in techne.cpp [...] an operation classified
+> differently in the two places would emit a call with the wrong arity.
+
+Exactly right, and it prevented nothing. `Eq` and `Lt` were added to the
+interpreter and never to the copy, so **any recipe containing either emitted a
+one-argument call to a two-argument function, in all fourteen backends.** Not
+hypothetical: `count_0 = sum(eq(x, 0))` is a reconstruction the self-hosting bench
+produces, and it could not be emitted.
+
+There is one list now. `reads_two_operands()` is declared in the header and both
+call it. A comment asking two lists to agree is not a mechanism that makes them
+agree.
+
+### Liveness followed an operand its operation never reads
+
+```
+emitted.go:450:2: declared and not used: t1
+```
+
+The liveness walk pushed `b` whenever `b >= 0`, including for unary operations
+that never read it. A stale `b` on a unary node therefore marked an operand live,
+and it was emitted as a local nothing referenced -- a warning in most backends and
+a **compile error in Go**, which rejects unused variables outright. Both liveness
+walks now follow `b` only when `reads_two_operands()` says the operation reads it.
+
+Shipped recipes go through `Recipe::compact()` first, which is why this never bit
+in practice -- but it meant `emit` was correct for compacted recipes rather than
+for well-formed ones, and nothing said so.
+
+### After
+
+| backend | 64 recipes x 9 inputs |
+|---|---|
+| Python, JavaScript, Go, Rust, C++ | **all match byte for byte** |
+| the other nine | no toolchain here, not counted |
+
+32/32.
+
 ## v0.153.0 - Five of five, actually run
 
 **Author:** Claude Opus 5
