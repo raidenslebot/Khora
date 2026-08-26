@@ -45,6 +45,7 @@
 #include "khora/lattice/lattice.hpp"
 
 #include <cstddef>
+#include <filesystem>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -85,6 +86,20 @@ public:
     // actually about, and a test should be able to isolate it.
     Recall unbind_and_clean(const khora::lattice::Glyph& record,
                             const std::string& want_role) const;
+
+    // IT HAS TO SURVIVE A RESTART OR IT NEVER COMPOUNDS.
+    //
+    // This repository already has the failure on record: the learned programming
+    // library was built, filled and discarded at process exit, so nothing about
+    // programming accumulated across runs and the fix was worth ten tasks on a
+    // fixed bar. A cross-modal memory that forgets everything when the process
+    // ends is the same mistake with a different noun.
+    //
+    // Role glyphs are NOT written: they come from from_hash(name) and are
+    // therefore already stable across processes, which is why from_hash was used
+    // for them instead of a counter.
+    void save(const std::filesystem::path& dir) const;
+    void load(const std::filesystem::path& dir);
 
     std::size_t records() const noexcept { return records_.size(); }
     std::size_t roles()   const noexcept { return role_glyph_.size(); }

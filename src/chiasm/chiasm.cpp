@@ -1,6 +1,8 @@
 #include "khora/chiasm/chiasm.hpp"
 
 #include <algorithm>
+#include <fstream>
+#include <sstream>
 
 namespace khora::chiasm {
 
@@ -83,6 +85,96 @@ Recall Chiasm::recall(const std::string& cue_role, const Glyph& cue,
         if (s > best_sim) { best_sim = s; best = i; }
     }
     return unbind_and_clean(records_[best], want_role);
+}
+
+
+namespace {
+
+// Hex, one line per glyph. Not compact -- 2,512 characters where 1,250 bytes
+// would do -- and chosen anyway because the archive is diffable, greppable and
+// survives being opened in an editor, which every other persisted format in this
+// tree also is. A memory nobody can inspect is a memory nobody can debug.
+std::string to_hex(const khora::lattice::Glyph& g) {
+    static const char* d = "0123456789abcdef";
+    std::string out;
+    out.reserve(khora::lattice::kGlyphWords * 16);
+    for (const auto w : g.words())
+        for (int i = 15; i >= 0; --i) out += d[(w >> (i * 4)) & 0xF];
+    return out;
+}
+
+bool from_hex(const std::string& h, khora::lattice::Glyph& g) {
+    if (h.size() != khora::lattice::kGlyphWords * 16) return false;
+    auto& w = g.words();
+    for (std::size_t k = 0; k < khora::lattice::kGlyphWords; ++k) {
+        std::uint64_t v = 0;
+        for (std::size_t i = 0; i < 16; ++i) {
+            const char c = h[k * 16 + i];
+            const std::uint64_t nib = (c >= '0' && c <= '9') ? (std::uint64_t)(c - '0')
+                                    : (c >= 'a' && c <= 'f') ? (std::uint64_t)(c - 'a' + 10)
+                                    : 16;
+            if (nib > 15) return false;
+            v = (v << 4) | nib;
+        }
+        w[k] = v;
+    }
+    return true;
+}
+
+} // namespace
+
+void Chiasm::save(const std::filesystem::path& dir) const {
+    std::filesystem::create_directories(dir);
+    // Records first, then the cleanup memories. Two files rather than one so a
+    // corrupt half is obvious rather than silently truncating the other.
+    {
+        std::ofstream out(dir / "records.chi");
+        for (const Glyph& g : records_) out << to_hex(g) << '\n';
+    }
+    {
+        std::ofstream out(dir / "cleanup.chi");
+        for (const auto& [role, lat] : cleanup_)
+            for (const auto& label : lat.labels()) {
+                const auto g = lat.recall(label);
+                if (!g) continue;
+                // Role and label are written before the glyph and neither may
+                // contain a tab; labels here are recipe ids and word tokens, so
+                // that holds, and a caller that breaks it corrupts its own file.
+                out << role << '\t' << label << '\t' << to_hex(*g) << '\n';
+            }
+    }
+}
+
+void Chiasm::load(const std::filesystem::path& dir) {
+    records_.clear();
+    cleanup_.clear();
+    role_glyph_.clear();
+    {
+        std::ifstream in(dir / "records.chi");
+        std::string line;
+        while (std::getline(in, line)) {
+            if (line.empty()) continue;
+            Glyph g;
+            if (from_hex(line, g)) records_.push_back(g);
+        }
+    }
+    {
+        std::ifstream in(dir / "cleanup.chi");
+        std::string line;
+        while (std::getline(in, line)) {
+            const auto t1 = line.find('\t');
+            if (t1 == std::string::npos) continue;
+            const auto t2 = line.find('\t', t1 + 1);
+            if (t2 == std::string::npos) continue;
+            Glyph g;
+            if (!from_hex(line.substr(t2 + 1), g)) continue;
+            const std::string role = line.substr(0, t1);
+            cleanup_[role].store(line.substr(t1 + 1, t2 - t1 - 1), g);
+            // Re-derive the role glyph rather than storing it: from_hash is
+            // stable, so a saved archive stays readable if this list ever grows.
+            role_glyph(role);
+        }
+    }
 }
 
 } // namespace khora::chiasm

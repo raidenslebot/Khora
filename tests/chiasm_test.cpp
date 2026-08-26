@@ -20,6 +20,7 @@
 #include "khora/lattice/glyph.hpp"
 
 #include <cstdio>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -161,6 +162,33 @@ int main() {
         check(small_ok, "a record with dozens of fields still resolves perfectly");
         check(large_degrades,
               "and one with a thousand does not -- capacity is finite and this is where");
+    }
+
+    // --- AND IT SURVIVES A RESTART -------------------------------------------
+    //
+    // A memory that dies at process exit never compounds. This repository has
+    // that failure on record already: the learned programming library was built,
+    // filled and discarded every run.
+    {
+        const auto dir = std::filesystem::temp_directory_path() / "khora_chiasm_test";
+        std::filesystem::remove_all(dir);
+        Chiasm a;
+        std::vector<Glyph> cue;
+        for (std::size_t k = 0; k < 30; ++k) {
+            cue.push_back(g(7000 + k));
+            a.remember({{"task", "t" + std::to_string(k), cue[k]},
+                        {"prog", "p" + std::to_string(k), g(8000 + k)}});
+        }
+        a.save(dir);
+        Chiasm b;
+        b.load(dir);
+        check(b.records() == a.records() && b.known("prog") == a.known("prog"),
+              "a saved memory loads back the same size");
+        std::size_t hit = 0;
+        for (std::size_t k = 0; k < 30; ++k)
+            if (b.recall("task", cue[k], "prog").label == "p" + std::to_string(k)) ++hit;
+        check(hit == 30, "and every association still retrieves after the restart");
+        std::filesystem::remove_all(dir);
     }
 
     std::printf("\n");

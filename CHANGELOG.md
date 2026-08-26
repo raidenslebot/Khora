@@ -3,6 +3,33 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.127.0 — The live system remembers a program across restarts
+
+**Author:** Claude Opus 5
+
+compound_bench measured the loop; this puts it in the running binary. 
+now tries to remember before it searches, runs whatever it remembers on the
+caller's own examples, and searches only if that fails.
+
+
+
+### It failed the first restart, and the reason is worth keeping
+
+A glyph is not a program -- the chiasm stores WHICH program -- so something has
+to hold the programs. I keyed them off the techne Library, which is BUDGETED and
+prunes.  was bound in the memory and evicted from the archive before it
+was written, so the next process retrieved a label it could not resolve, searched
+silently, and looked exactly like a memory that simply was not working.
+
+The program store is now its own, and never pruned. That is a real cost -- it
+grows without bound where the Library deliberately does not -- and it is the
+right trade because the Library's budget exists to keep the SEARCH SPACE small,
+and nothing in this store is ever a search candidate.
+
+/ and  exist for this. The Lattice could
+be queried and not ENUMERATED, the same gap the Ligature had two versions ago: a
+caller wanting to persist the whole thing had to already know every key.
+
 ## v0.126.0 — It gets faster at programming the more it programs
 
 **Author:** Claude Opus 5

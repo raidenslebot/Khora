@@ -12,7 +12,7 @@ target_include_directories(khora_carapace
 
 target_link_libraries(khora_carapace
     PUBLIC khora::lattice khora::cortex khora::soma khora::lexicon khora::cogitator
-           khora::techne khora::logos khora::ligature
+           khora::techne khora::logos khora::ligature khora::chiasm
            khora::ribosome khora::synapse khora::governor
 )
 

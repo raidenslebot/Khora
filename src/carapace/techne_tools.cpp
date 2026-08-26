@@ -29,6 +29,7 @@
 #include "khora/carapace/techne_tools.hpp"
 
 #include "khora/techne/techne.hpp"
+#include "khora/chiasm/chiasm.hpp"
 
 #include <cctype>
 #include <cstdlib>
@@ -124,6 +125,105 @@ khora::techne::Library& shared_library(bool* loaded_out = nullptr) {
 
 } // namespace
 
+// PROGRAMS REMEMBERED BY THE SHAPE OF THE PROBLEM THEY SOLVE.
+//
+// The learned Library makes each search CHEAPER by widening the vocabulary.
+// This skips the search entirely, which is a different mechanism, and the two
+// run together here rather than competing.
+//
+// Measured on a stream of 120 tasks in compound_bench: search every time took
+// 3,362 ms and remember-first took 665 ms for the identical 120 solved, with 21
+// wrong guesses caught by execution and paid for in full. Cost per task fell
+// from 17.0 ms in the first twenty to 1.9 ms once the memory had filled.
+//
+// A WRONG GUESS IS FREE TO BE WRONG, which is the only reason this is safe. The
+// retrieved program is RUN on the caller's own examples before it is offered,
+// and if it fails the search runs exactly as it would have. Retrieval never
+// changes what is returned, only how long it took.
+constexpr const char* kProgramMemoryDir = "data/chiasm_archive/programs";
+
+struct ProgramMemory {
+    khora::chiasm::Chiasm              mem;
+    // ITS OWN RECIPE STORE, and the first version did not have one.
+    //
+    // A glyph is not a program: the chiasm stores WHICH program, so something has
+    // to hold the programs themselves. I keyed them off the techne Library and it
+    // failed on the first restart -- the Library is BUDGETED and prunes, so
+    // `synth5` was bound in the memory and evicted from the archive before it was
+    // written, and the next process retrieved a label it could not resolve. It
+    // then searched, silently, and looked like it was simply not remembering.
+    //
+    // This store is never pruned. That is a real cost -- it grows without bound
+    // where the Library deliberately does not -- and it is the right trade here
+    // because the Library's budget exists to keep the SEARCH SPACE small, and
+    // nothing in this store is ever a search candidate.
+    khora::techne::Library             store{1000000};
+    std::vector<khora::techne::Recipe> recipes;
+    std::vector<std::string>           labels;
+    bool                               loaded = false;
+};
+
+ProgramMemory& program_memory() {
+    static ProgramMemory pm;
+    if (!pm.loaded) {
+        pm.loaded = true;
+        pm.mem.load(kProgramMemoryDir);
+        pm.store.load(std::string(kProgramMemoryDir) + "/recipes.txt");
+        for (std::size_t i = 0; i < pm.store.size(); ++i) {
+            pm.recipes.push_back(pm.store.at(i).recipe);
+            pm.labels.push_back(pm.store.at(i).name);
+        }
+    }
+    return pm;
+}
+
+const khora::lattice::Glyph& tt_pos_glyph(std::size_t i) {
+    static std::vector<khora::lattice::Glyph> tab;
+    while (tab.size() <= i)
+        tab.push_back(khora::lattice::Glyph::from_hash("@" + std::to_string(tab.size())));
+    return tab[i];
+}
+const khora::lattice::Glyph& tt_num_glyph(std::int64_t v) {
+    static std::vector<khora::lattice::Glyph> pos, neg;
+    auto& tab = v < 0 ? neg : pos;
+    const std::size_t i = static_cast<std::size_t>(v < 0 ? -v : v);
+    while (tab.size() <= i)
+        tab.push_back(khora::lattice::Glyph::from_hash(
+            (v < 0 ? std::string("n") : std::string("p")) + std::to_string(tab.size())));
+    return tab[i];
+}
+
+// The encoding capability_bench measured at a +0.557 same-family gap, against
+// +0.131 for bundling the examples themselves: describe WHERE each output
+// element came from, which is the same for every instance of a rearrangement and
+// says nothing about the particular numbers.
+khora::lattice::Glyph encode_task(const std::vector<khora::techne::Case>& cs) {
+    std::vector<khora::lattice::Glyph> terms;
+    for (const auto& c : cs) {
+        for (std::size_t j = 0; j < c.out.size(); ++j) {
+            std::size_t src = c.in.size();
+            for (std::size_t i = 0; i < c.in.size(); ++i)
+                if (c.in[i] == c.out[j]) { src = i; break; }
+            terms.push_back(khora::lattice::bind(tt_pos_glyph(j),
+                            khora::lattice::permute(tt_pos_glyph(src), 1)));
+        }
+        terms.push_back(khora::lattice::bind(khora::lattice::Glyph::from_hash("#len"),
+                        tt_num_glyph(static_cast<std::int64_t>(c.out.size()) -
+                                     static_cast<std::int64_t>(c.in.size()))));
+    }
+    if (terms.empty()) return khora::lattice::Glyph::from_hash("<none>");
+    return khora::lattice::bundle(std::span<const khora::lattice::Glyph>(terms));
+}
+
+bool runs_clean(const khora::techne::Recipe& r,
+                const std::vector<khora::techne::Case>& cs,
+                const khora::techne::Library* lib) {
+    if (cs.empty()) return false;
+    for (const auto& c : cs)
+        if (r.apply_n(c.args(), lib) != c.out) return false;
+    return true;
+}
+
 void register_techne_tools(Carapace& c) {
     c.register_tool({
         "synth",
@@ -166,10 +266,47 @@ void register_techne_tools(Carapace& c) {
 
             bool loaded = false;
             khora::techne::Library& lib = shared_library(&loaded);
+
+            // --- REMEMBER FIRST ----------------------------------------------
+            //
+            // Every case, not just the visible ones: the holdout is part of what
+            // the caller asked for, and a remembered program has to satisfy all
+            // of it or it is not an answer.
+            std::vector<khora::techne::Case> all = spec.cases;
+            all.insert(all.end(), spec.holdout.begin(), spec.holdout.end());
+            ProgramMemory& pm = program_memory();
+            const khora::lattice::Glyph task_glyph = encode_task(all);
+
+            std::ostringstream os;
+            if (pm.mem.records() > 0) {
+                const auto got = pm.mem.recall("task", task_glyph, "prog");
+                const auto at = std::find(pm.labels.begin(), pm.labels.end(), got.label);
+                if (at != pm.labels.end()) {
+                    const auto& rec = pm.recipes[(std::size_t)(at - pm.labels.begin())];
+                    if (runs_clean(rec, all, &lib)) {
+                        const khora::techne::Recipe standalone =
+                            khora::techne::inline_calls(rec, lib);
+                        std::size_t lines = 0;
+                        const std::string src = khora::techne::emit(
+                            standalone, lang_from(langname), "khora_fn", &lines, nullptr);
+                        os << "  " << rec.render() << "\n"
+                           << "  proof   : REMEMBERED -- this program was derived earlier and\n"
+                              "            has just been re-run on every case you gave, all of\n"
+                              "            which it passes. No search was needed.\n"
+                           << "  from    : " << got.label << "   (similarity "
+                           << got.confidence << ", margin " << got.margin << ")\n"
+                           << "  size    : " << rec.size() << " operations, arity "
+                           << rec.arity() << "\n\n" << src;
+                        return make_ok(os.str());
+                    }
+                    // Wrong guess. It cost one execution; the search now runs
+                    // exactly as it would have, and nothing is reported wrongly.
+                }
+            }
+
             const khora::techne::BuildResult b =
                 khora::techne::solve_one(spec, 20000, &lib);
 
-            std::ostringstream os;
             if (!b.recipe.found) {
                 os << "no program found that fits those examples.\n"
                    << "  the search is bounded; more examples, or simpler ones, often help.";
@@ -198,9 +335,30 @@ void register_techne_tools(Carapace& c) {
             // is wrong somewhere nobody looked, and admitting it would put a
             // primitive that lies underneath every later search.
             if (b.proof == khora::techne::Proof::Generalised) {
-                lib.admit_recipe("synth" + std::to_string(lib.size()), b.recipe, lib.size());
+                const std::string label = "synth" + std::to_string(lib.size());
+                lib.admit_recipe(label, b.recipe, lib.size());
                 lib.prune();
                 lib.save("data/techne_library.txt");
+
+                // Bind the answer to the shape of the question, so the next
+                // caller with a task like this one skips the search. Only a
+                // GENERALISED result is remembered, for the same reason it is the
+                // only kind admitted to the library: a merely tested program is
+                // wrong somewhere nobody looked.
+                const std::string mlabel = "mem" + std::to_string(pm.recipes.size());
+                if (pm.store.admit_recipe(mlabel, b.recipe, pm.recipes.size())) {
+                    pm.recipes.push_back(b.recipe);
+                    pm.labels.push_back(mlabel);
+                    pm.mem.remember({
+                        {"task", mlabel, task_glyph},
+                        {"prog", mlabel, khora::lattice::Glyph::from_hash("prog:" + mlabel)}});
+                    pm.mem.save(kProgramMemoryDir);
+                    pm.store.save(std::string(kProgramMemoryDir) + "/recipes.txt");
+                }
+                // A refused admission means this program is already in the store
+                // under another label, so the task it came from is already bound
+                // to something that solves it. Binding it twice would put two
+                // records in the way of every future query for no gain.
             }
             return make_ok(os.str());
         }

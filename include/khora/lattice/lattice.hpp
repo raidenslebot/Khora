@@ -27,6 +27,12 @@ public:
     // k-nearest neighbour by Hamming distance over all stored glyphs.
     std::vector<LatticeMatch> query(const Glyph& probe, std::size_t k = 5) const;
 
+    // Every label, sorted. The store could be queried and not ENUMERATED, which
+    // is the same gap the Ligature had: a caller that wants to persist or hand
+    // over the whole thing had to already know every key. Sorted rather than in
+    // hash order so an archive written twice is byte-identical.
+    std::vector<std::string> labels() const;
+
     std::size_t size() const noexcept { return store_.size(); }
 
     auto begin() const noexcept { return store_.cbegin(); }

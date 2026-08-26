@@ -19,6 +19,14 @@ bool Lattice::contains(const std::string& label) const noexcept {
     return store_.find(label) != store_.end();
 }
 
+std::vector<std::string> Lattice::labels() const {
+    std::vector<std::string> out;
+    out.reserve(store_.size());
+    for (const auto& [k, v] : store_) { (void)v; out.push_back(k); }
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
 std::optional<Glyph> Lattice::recall(const std::string& label) const {
     auto it = store_.find(label);
     if (it == store_.end()) return std::nullopt;
