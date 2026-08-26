@@ -3,6 +3,64 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.126.0 — It gets faster at programming the more it programs
+
+**Author:** Claude Opus 5
+
+Retrieval by itself is a component. This is what it is for: encounter a task, try
+to remember a program, RUN the remembered program on the task cases, and search
+only if it fails. Whatever search produces is bound to the task, so the next
+encounter is a lookup.
+
+### Why verification makes this safe rather than clever
+
+Retrieval is approximate and returns the wrong program often. The cost of being
+wrong is one execution over ten cases and then the same search that would have
+run anyway. So the memory can only save time, never correctness -- the claim is
+not that retrieval is reliable, it is that **retrieval is free to be wrong**.
+That is why 84% is enough where a cache would need 99%.
+
+120 tasks over 10 families, both policies on the identical stream:
+
+| policy | solved | from memory | wrong guesses | searches | total ms |
+|---|---|---|---|---|---|
+| search every time | 120 | 0 | 0 | 120 | 3362 |
+| **remember first** | **120** | 98 | 21 | 22 | **665** |
+
+**5.05x faster, and the solved counts are identical.** 21 wrong guesses were
+caught by execution and paid for in full. On a uniform stream, 9.09x.
+
+### And the compounding, which a total cannot show
+
+| window | zipf: from memory | ms/task | uniform: from memory | ms/task |
+|---|---|---|---|---|
+| 0-19 | 12 of 20 | 17.0 | 9 of 20 | 27.5 |
+| 20-39 | 17 of 20 | 7.5 | 18 of 20 | 1.7 |
+| 40-59 | 19 of 20 | 1.9 | 16 of 20 | 2.4 |
+| 60-79 | 19 of 20 | 2.3 | 20 of 20 | 1.8 |
+| 100-119 | 13 of 20 | 2.3 | 17 of 20 | 2.9 |
+
+The memory is empty at task one and cost per task falls about ninefold as it
+fills. A single total could not distinguish that from a cache that was warm from
+the start.
+
+### A claim I made in the same file and had to withdraw
+
+I ran a uniform stream and called it the no-repetition control. It is not one.
+At ten families over a hundred and twenty tasks a uniform draw still hits each
+family about twelve times, so both streams repeat heavily and the comparison
+isolates nothing. Worse, the uniform stream came out FASTER (9.09x against
+5.05x), the opposite of what I had written -- because Zipf concentrates on the
+families that are cheap to synthesise, so its baseline is smaller. The
+distribution comparison says nothing about repetition and now says so.
+
+### What it does not show
+
+Ten families of list rearrangement, the only class the task encoding can
+describe. The learned LIBRARY techne already has is a different mechanism --
+it makes each search cheaper by widening the vocabulary rather than skipping the
+search -- and it is disabled here so the two are not confused.
+
 ## v0.125.0 — A program retrieved by looking at the problem
 
 **Author:** Claude Opus 5
