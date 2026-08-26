@@ -3,6 +3,46 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.170.0 - The evicted entries were worthless, which rules out the last easy explanation
+
+**Author:** Claude Opus 5
+
+The previous entry found the carried library-s value collapsing with depth --
+0.80 verified programs per tier in the first forty, 0.03 by tier 120 -- and
+ended by naming the obvious suspect: over 120 tiers the run **holds 96 learned
+functions and evicts 152**. Discarding more than it keeps, precisely where the
+value disappears.
+
+The budget was chosen on a 2x2 measured at tier 15 and tier 20, entirely inside
+the band where the library still pays, so it had never been asked at depth. Now
+it is a knob:
+
+| library budget | 1-40 | 41-80 | 81-120 |
+|---|---|---|---|
+| 96 (evicts 152) | 0.80 | 0.20 | 0.03 |
+| 400 | 0.80 | 0.25 | 0.03 |
+| 1000 | 0.80 | 0.25 | 0.03 |
+
+**Four hundred and a thousand are byte-identical to each other**, so at 400 the
+library never evicts at all -- and the answer is the same as at 96 give or take
+two programs in one band. **The 152 discarded entries were worth nothing.**
+
+Which is a good result for the eviction policy and a bad one for my hypothesis.
+`prune` orders by utility and keeps what gets used; it was throwing away exactly
+what deserved throwing away. The last easy explanation for the decay is gone.
+
+What remains is the one the numbers pointed at all along and I kept looking past:
+**100% of deep solutions call a library entry, and the carried library is still
+worth almost nothing, because the entries they call are ones learned in the same
+tier.** Deep tasks are not built out of what earlier tiers learned. Not because
+the earlier work was lost -- it is all still there at budget 1000 -- but because
+it is not what they need.
+
+Budget stays at 96. More costs RAM and buys two programs in one band out of 120
+tiers, and that is now measured rather than inherited.
+
+32/32.
+
 ## v0.169.0 - The compounding is inside a tier, not across them
 
 **Author:** Claude Opus 5

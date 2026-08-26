@@ -281,6 +281,12 @@ bool g_agg_last = true;
 // is not the thing that stopped; the solver is. Seven earlier tiers were
 // barren on their own and recovered, so two in a row may simply be impatient.
 std::size_t g_barren_limit = 5;
+// How many learned functions the carried library may hold before it evicts.
+// 96 was chosen on a 2x2 measured at tier 15 and tier 20 -- entirely inside
+// the band where the library still pays. At depth the run evicts more than it
+// keeps (152 evicted against 96 held over 120 tiers), which is exactly where
+// the cross-tier gap collapses, so the choice is worth re-asking there.
+std::size_t g_lib_budget = 96;
 // One straight pipeline of atoms, which is the only shape this curriculum knew
 // how to ask for.
 struct Chain { Fn f; std::string name; };
@@ -684,6 +690,7 @@ int main(int argc, char** argv) {
     if (argc > 6) g_branch_pct = std::min<std::size_t>(100, std::stoul(argv[6]));
     if (argc > 7) g_agg_last = (std::stoul(argv[7]) != 0);
     if (argc > 8) g_barren_limit = std::max<std::size_t>(1, std::stoul(argv[8]));
+    if (argc > 9) g_lib_budget = std::max<std::size_t>(8, std::stoul(argv[9]));
 
     std::printf("Does it get better at its job, or only finish its job?\n\n");
     std::printf("  %zu tasks per tier, depth rising with no fixed ceiling, pool %zu,\n",
@@ -716,7 +723,7 @@ int main(int argc, char** argv) {
     // library is a haystack as well as a vocabulary -- every entry is another
     // level-0 candidate -- so the right size is a function of how diverse the
     // problems are, not a constant to be tuned once.
-    Library carried(96);
+    Library carried(g_lib_budget);
     std::printf("  tier | tasks | carried library | empty library | used lib | chained |    nodes | seconds\n");
     std::printf("  -----+-------+-----------------+---------------+----------+---------+----------+--------\n");
 
