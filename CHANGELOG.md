@@ -3,6 +3,72 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.157.0 - Fourteen of fourteen, measured, and the one that was silently wrong
+
+**Author:** Claude Opus 5
+
+Four entries ago the fourteen-language guarantee was an unconditional `printf`.
+Replacing it with a live check gave 3. Packages gave 9. The last five wanted real
+SDK downloads, and with those:
+
+| | |
+|---|---|
+| backends with a toolchain here | **14 of 14** |
+| reproduce `Recipe::apply` byte for byte | **14** |
+| disagree | **0** |
+| could not be built | **0** |
+| unrun | **0** |
+
+Python, JavaScript, TypeScript, Go, Rust, C++, C#, PHP, Java, Kotlin, Swift,
+Haskell, Lua and Ruby, over 61 recipes x 9 inputs -- 16 named regression shapes
+and 48 generated ones, including `Call`, `MapF` and `FoldF` against a real library.
+
+**The same number the frozen printf claimed, and this time it is a measurement.**
+`tools/toolchains.ps1` fetches all nine missing toolchains, idempotently.
+
+### PHP was computing a different function
+
+Running PHP for the first time found this in its prelude:
+
+```php
+function kh_eq($a, $b) { ... $o[] = $x > $b[0] ? 1 : 0; ... }
+function kh_lt($a, $b) { ... $o[] = $x > $b[0] ? 1 : 0; ... }
+```
+
+Both `kh_eq` and `kh_lt` were `kh_gt`, copy-pasted and never edited. Emitted PHP
+**compiled, ran, and returned wrong answers** -- the worst failure available,
+because nothing about it looks broken. `eq(x, x)` came back as the exact inverse of
+the truth.
+
+It hid behind two things at once: no named recipe used `Eq` or `Lt` (the same
+blind spot that hid the arity defect two entries ago), and PHP had no toolchain,
+so nothing ever ran it. The `php` on this PATH is a Python script that prints
+"comment in php: parsing input data", which is why every probe checks WHAT
+answered rather than that something did.
+
+### What the last five needed
+
+| | |
+|---|---|
+| PHP | a zip, and the fix above |
+| Java | Temurin JDK 21 |
+| Kotlin | the compiler zip, and the JDK to run it |
+| Haskell | a GHC bindist, which on Windows only needs unpacking |
+| Swift | three environment variables, each failing differently |
+
+Swift is the interesting one. `swiftc` dies with `0xC0000135` unless its Runtimes
+directory is on PATH; then it reports "unable to load standard library" unless
+`SDKROOT` names the Windows SDK **Swift ships itself**; then it fails
+`LNK1104: cannot open file kernel32.lib` because `vcvars64` on this host leaves
+`LIB` without ucrt and um -- the same gap `khora.ps1` documents in
+`Import-WindowsSdk`. `tools/_swiftenv.cmd` carries all three, with why.
+
+None of the fourteen is a reimplementation. Lua and Ruby have no interpreter on
+this host and run as real Lua 5.4 and real CRuby compiled to WebAssembly. A
+backend checked against a mock of its own language is checked against nothing.
+
+32/32.
+
 ## v0.156.0 - The bench written because Call was dropped had stopped testing Call
 
 **Author:** Claude Opus 5

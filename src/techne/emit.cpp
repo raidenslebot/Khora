@@ -2107,13 +2107,13 @@ function kh_gt($a, $b) {
 function kh_eq($a, $b) {
     if (count($b) === 0) return [];
     $o = [];
-    foreach ($a as $x) $o[] = $x > $b[0] ? 1 : 0;
+    foreach ($a as $x) $o[] = $x === $b[0] ? 1 : 0;
     return $o;
 }
 function kh_lt($a, $b) {
     if (count($b) === 0) return [];
     $o = [];
-    foreach ($a as $x) $o[] = $x > $b[0] ? 1 : 0;
+    foreach ($a as $x) $o[] = $x < $b[0] ? 1 : 0;
     return $o;
 }
 // in_array with the strict flag, like kh_count's ===: the loose form matches

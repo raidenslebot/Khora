@@ -277,13 +277,19 @@ std::vector<Runner> runners() {
         {Lang::CSharp,     "dotnet --list-sdks", "sdk",
                            "copy /y emitted.cs data\\toolchains\\cs\\Program.cs >nul && "
                            "dotnet run --project data\\toolchains\\cs -c Release -v q --nologo"},
-        {Lang::Php,        "php -r " + std::string(1, 34) + "echo 42;" + std::string(1, 34),
-                           "42",      "php emitted.php", true},
-        {Lang::Java,       "javac -version",     "javac",   "javac Main.java 2>nul && java Main"},
-        {Lang::Kotlin,     "kotlinc -version",   "kotlinc",
-                           "kotlinc emitted.kt -include-runtime -d kt.jar 2>nul && java -jar kt.jar"},
-        {Lang::Swift,      "swiftc --version",   "Swift",   "swiftc -O main.swift -o sw.exe 2>nul && .\\sw.exe"},
-        {Lang::Haskell,    "runghc --version",   "runghc",  "runghc emitted.hs"},
+        // NOT the `php` on PATH, which on this host is a Python script that
+        // prints "comment in php: parsing input data".
+        {Lang::Php,        "data\\toolchains\\php\\php.exe -v", "PHP",
+                           "data\\toolchains\\php\\php.exe emitted.php"},
+        {Lang::Java,       "data\\toolchains\\jdk21\\bin\\javac.exe -version", "javac",
+                           "data\\toolchains\\jdk21\\bin\\javac.exe -d data\\toolchains\\javaout Main.java "
+                           "2>nul && data\\toolchains\\jdk21\\bin\\java.exe -cp data\\toolchains\\javaout Main"},
+        {Lang::Kotlin,     "tools\\run_kotlin.cmd", "kotlinc",
+                           "tools\\run_kotlin.cmd emitted.kt"},
+        {Lang::Swift,      "tools\\run_swift.cmd", "Swift",
+                           "tools\\run_swift.cmd main.swift"},
+        {Lang::Haskell,    "data\\toolchains\\ghc966\\bin\\ghc.exe --version", "Glasgow",
+                           "data\\toolchains\\ghc966\\bin\\runghc.exe emitted.hs"},
         // Real Lua 5.4 and real CRuby, compiled to WebAssembly and run in
         // process by node -- the implementations, not reimplementations of
         // them. No lua.exe or ruby.exe exists on this host.
@@ -738,9 +744,12 @@ int main(int argc, char** argv) {
                 ran, runners().size(), matched);
     std::printf("  Recipe::apply BYTE FOR BYTE, %zu disagree with it, and %zu could not\n",
                 ran - matched - unbuildable, unbuildable);
-    std::printf("  be built on this host at all. %zu have no toolchain here -- run\n", missing);
-    std::printf("  tools\\toolchains.ps1 to fetch the ones that are a package rather than\n");
-    std::printf("  an SDK download. Only the\n");
+    if (missing == 0) {
+        std::printf("  be built on this host at all, and NONE is unrun. Only the\n");
+    } else {
+        std::printf("  be built on this host at all. %zu have no toolchain here -- run\n", missing);
+        std::printf("  tools\\toolchains.ps1, which fetches every one of them. Only the\n");
+    }
     std::printf("  first of those four is a pass, and none of the others is counted as\n");
     std::printf("  one -- a backend that will not build says nothing about the code it\n");
     std::printf("  emits, and neither does a backend nobody ran.\n\n");
