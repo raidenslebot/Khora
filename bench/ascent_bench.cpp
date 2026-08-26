@@ -245,7 +245,11 @@ const std::vector<char>& shrinking() {
     return tab;
 }
 
-Task compose(std::size_t depth) {
+// One straight pipeline of atoms, which is the only shape this curriculum knew
+// how to ask for.
+struct Chain { Fn f; std::string name; };
+
+Chain chain_of(std::size_t depth) {
     const auto a = g_atoms;
     const std::vector<char>& shrink = shrinking();
     std::vector<std::size_t> keep_len;
@@ -270,9 +274,60 @@ Task compose(std::size_t depth) {
         for (const std::size_t k : pick) v = a[k].f(v);
         return v;
     };
-    return Task{name, f, depth};
+    return Chain{std::move(f), std::move(name)};
 }
 
+// A PROGRAM IS NOT A PIPELINE, AND THE CURRICULUM ONLY EVER ASKED FOR ONE.
+//
+// Every task this generator has ever posed is f1.f2. ... .fn applied to the
+// input -- one straight line. That is a one-dimensional slice of program space,
+// and it is why the ascent ends where it does: chained maps over lists of bounded
+// length form a FINITE set, so compose deeply enough and every new chain is one
+// already seen. "Depth 82 is not reachable by chaining this atom set" is exactly
+// that sentence, and no amount of budget moves it.
+//
+// Real programs BRANCH. append(f(x), g(x)), sub(max(x), min(x)), the whole shape
+// split_bench is about -- two computations over the SAME input, combined. The
+// reachable set there is pairs of chains times combiners, which grows far faster
+// than chains alone, so the wall moves rather than being pushed at.
+//
+// And it is solvable, which is the criterion an earlier cycle paid for: the
+// combiners are Append, Add and Sub, all operations the search already has, so a
+// branch task is harder and not impossible. split_bench measured the shape
+// directly -- concatenations of two several-node halves, 6 of 6 proved.
+Task compose(std::size_t depth) {
+    // Shallow tiers stay pipelines: a branch needs two chains worth splitting
+    // into, and at depth 3 there is nothing to split.
+    if (depth >= 4 && rnd() % 3 == 0) {
+        const std::size_t d1 = 1 + rnd() % (depth - 1);
+        const std::size_t d2 = depth - d1;
+        Chain A = chain_of(d1);
+        Chain B = chain_of(d2);
+        const std::size_t which = rnd() % 3;
+        const char* cname = which == 0 ? "cat" : (which == 1 ? "add" : "sub");
+        Fn af = A.f, bf = B.f;
+        Fn f = [af, bf, which](const Value& in) {
+            const Value x = af(in);
+            const Value y = bf(in);
+            if (which == 0) {                       // append
+                Value o = x;
+                o.insert(o.end(), y.begin(), y.end());
+                if (o.size() > 512) o.resize(512);
+                return o;
+            }
+            // Elementwise over the shorter, which is what the operation set does.
+            Value o;
+            const std::size_t n = std::min(x.size(), y.size());
+            for (std::size_t i = 0; i < n; ++i)
+                o.push_back(which == 1 ? x[i] + y[i] : x[i] - y[i]);
+            return o;
+        };
+        return Task{std::string(cname) + "(" + A.name + "," + B.name + ")",
+                    std::move(f), depth};
+    }
+    Chain c = chain_of(depth);
+    return Task{std::move(c.name), std::move(c.f), depth};
+}
 // IS THIS TASK ACTUALLY AS DEEP AS ITS TIER SAYS?
 //
 // Chaining d atoms does NOT give a depth-d behaviour, and assuming it did made

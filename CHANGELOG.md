@@ -3,6 +3,75 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.164.0 - The wall was made of chains
+
+**Author:** Claude Opus 5
+
+Two entries ago the ascent stopped with
+
+```
+Depth 82 is not reachable by chaining this atom set.
+```
+
+and I wrote that the true ceiling is the vocabulary, that raising it means
+widening the atom set, and that nothing else in the loop is what stops it. **The
+first clause was right and the conclusion was wrong.**
+
+Read the message again. Not reachable BY CHAINING. Every task this generator has
+ever posed is `f1.f2. ... .fn` applied to the input -- one straight pipeline, a
+one-dimensional slice of program space. Chained maps over lists of bounded length
+form a FINITE set, so compose deeply enough and every new chain is one already
+seen. That is the whole of the ceiling, and it is a property of the SHAPE the
+curriculum can express, not of the atoms in it.
+
+### Real programs branch
+
+`append(f(x), g(x))`. `sub(max(x), min(x))`. Two computations over the SAME input,
+combined -- the exact shape `split_bench` is about, and it proved 6 of 6 of them.
+The reachable set is then pairs of chains times combiners, which grows far faster
+than chains alone.
+
+And it is solvable, which is the criterion an earlier cycle paid a third of the
+ascent to learn: the combiners are `Append`, `Add` and `Sub`, all operations the
+search already has. A branch task is harder, not impossible.
+
+One task in three at depth 4 or more is now a branch.
+
+### The wall is gone
+
+Both runs 1500 seconds, everything else identical:
+
+| | chains only | with branching |
+|---|---|---|
+| depth | tier 82 | **tier 239** |
+| stopped because | **depth 82 unreachable** | the clock |
+| verified, carried | 353 | **2082** |
+| verified, empty | 294 | 1647 |
+| carried-minus-empty gap | 59 | **435** |
+| tiers under-filled | 11 of 81 | **0 of 238** |
+
+**Every tier filled, all 238 of them, and it ended on the budget with tier 238
+still verifying.** The structural ceiling that looked fundamental two entries ago
+was an artefact of asking only for pipelines.
+
+### What this is not
+
+It is not unlimited. The run ends on wall clock at tier 239 and says nothing
+about tier 500.
+
+The task distribution changed again, so 2082 against 353 is not a like-for-like
+capability comparison. The robust half is the **within-run gap**, where both arms
+see identical specifications: **435 against 59**. And the empty-library arm rose
+too, 294 to 1647, so this is not the library being flattered -- both arms got a
+curriculum they could work with, and the library got worth more.
+
+Three short runs at the 240 second default give 354, 354 and 422 carried against
+the chain-only 272, 274, 293, 305, 331. **No overlap**, which is the reason to
+believe the direction; the long run is a single sample and the ascent is still
+not reproducible.
+
+32/32.
+
 ## v0.163.0 - Two sources of the variance removed, the root not found
 
 **Author:** Claude Opus 5
