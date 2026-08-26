@@ -100,14 +100,24 @@ Oracle oracle_for(const Target& t) {
 
 struct Row { bool proved; double secs; std::string prog; };
 
-Row run(const Spec& s, const Oracle& o, std::size_t pool, bool split) {
+// `arm` 0 flat hardened, 1 split with an oracle, 2 split WITHOUT one.
+//
+// The third exists because the ascent has no oracle -- it generates its own
+// tasks and judges them on held-out cases -- so the oracle-based version does not
+// apply to the loop that would most like a cheaper solve. construct_split holds
+// its halves to Proof::Generalised instead, which is the standard that caller was
+// already using for everything it accepted.
+Row run(const Spec& s, const Oracle& o, std::size_t pool, int arm) {
     const auto t0 = std::chrono::steady_clock::now();
-    const BuildResult b = split
-        ? synthesise_split(s, pool, o, -2, 2, 4, 3, nullptr, 2)
-        : synthesise_hardened(s, pool, o, -2, 2, 4, 3, nullptr);
+    const BuildResult b =
+        arm == 2 ? construct_split(s, pool, nullptr, 2)
+      : arm == 1 ? synthesise_split(s, pool, o, -2, 2, 4, 3, nullptr, 2)
+                 : synthesise_hardened(s, pool, o, -2, 2, 4, 3, nullptr);
     const auto t1 = std::chrono::steady_clock::now();
     Row r;
-    r.proved = (b.proof == Proof::Exhaustive);
+    // construct_split cannot reach Exhaustive: it has no oracle to prove against.
+    r.proved = (b.proof == Proof::Exhaustive) ||
+               (arm == 2 && b.proof == Proof::Generalised);
     r.secs = std::chrono::duration<double>(t1 - t0).count();
     r.prog = b.recipe.found ? b.recipe.render() : std::string("--");
     return r;
@@ -122,35 +132,41 @@ int main(int argc, char** argv) {
     std::printf("  Every target below is a CONCATENATION of two functions, each of\n");
     std::printf("  which takes several nodes to express -- so written flat the answer\n");
     std::printf("  is deep, and bottom-up search is exponential in depth.\n\n");
-    std::printf("  Three arms. `flat` is the ordinary hardened search at a pool of\n");
+    std::printf("  Four arms. `flat` is the ordinary hardened search at a pool of\n");
     std::printf("  %zu. `split` cuts each case's output at the same place, solves the\n", pool);
     std::printf("  two halves as their own specifications, admits them, and puts the\n");
     std::printf("  ORIGINAL specification back through the ordinary search. `flat x9`\n");
     std::printf("  gives the flat arm nine times the pool, because splitting runs up to\n");
-    std::printf("  nine searches and beating a smaller budget proves nothing.\n\n");
+    std::printf("  nine searches and beating a smaller budget proves nothing.\n");
+    std::printf("  `no oracle` is the same cut held to Proof::Generalised instead,\n");
+    std::printf("  which is what a caller without a reference function can ask for --\n");
+    std::printf("  the ascent generates its own tasks and has no reference.\n\n");
 
-    std::printf("  target     | flat | flat x9 | split | split answer\n");
-    std::printf("  -----------+------+---------+-------+---------------------------\n");
+    std::printf("  target     | flat | flat x9 | split | no oracle | split answer\n");
+    std::printf("  -----------+------+---------+-------+-----------+-----------------\n");
 
-    std::size_t nf = 0, nb = 0, ns = 0;
-    double tf = 0, tb = 0, ts = 0;
+    std::size_t nf = 0, nb = 0, ns = 0, nk = 0;
+    double tf = 0, tb = 0, ts = 0, tk = 0;
     for (const Target& t : targets()) {
         const Spec s = spec_for(t);
         const Oracle o = oracle_for(t);
-        const Row f = run(s, o, pool, false);
-        const Row g = run(s, o, pool * 9, false);
-        const Row h = run(s, o, pool, true);
-        nf += f.proved; nb += g.proved; ns += h.proved;
-        tf += f.secs;   tb += g.secs;   ts += h.secs;
-        std::printf("  %-10s | %-4s | %-7s | %-5s | %s\n", t.name,
+        const Row f = run(s, o, pool, 0);
+        const Row g = run(s, o, pool * 9, 0);
+        const Row h = run(s, o, pool, 1);
+        const Row k = run(s, o, pool, 2);
+        nf += f.proved; nb += g.proved; ns += h.proved; nk += k.proved;
+        tf += f.secs;   tb += g.secs;   ts += h.secs;   tk += k.secs;
+        std::printf("  %-10s | %-4s | %-7s | %-5s | %-9s | %s\n", t.name,
                     f.proved ? "yes" : "no", g.proved ? "yes" : "no",
-                    h.proved ? "yes" : "no",
+                    h.proved ? "yes" : "no", k.proved ? "yes" : "no",
                     h.proved ? h.prog.c_str() : (f.proved ? f.prog.c_str() : "--"));
     }
 
-    std::printf("\n  proved: flat %zu/%zu, flat x9 %zu/%zu, split %zu/%zu\n",
-                nf, targets().size(), nb, targets().size(), ns, targets().size());
-    std::printf("  seconds: flat %.1f, flat x9 %.1f, split %.1f\n", tf, tb, ts);
+    std::printf("\n  proved: flat %zu/%zu, flat x9 %zu/%zu, split %zu/%zu, no oracle %zu/%zu\n",
+                nf, targets().size(), nb, targets().size(), ns, targets().size(),
+                nk, targets().size());
+    std::printf("  seconds: flat %.1f, flat x9 %.1f, split %.1f, no oracle %.1f\n",
+                tf, tb, ts, tk);
     std::printf("\n  A split answer is proved by the same gate as any other: a proof\n");
     std::printf("  over every list of length 0..4 over -2..2, the extremal inputs, and\n");
     std::printf("  counterexample refinement. Solving a half is a search hint and is\n");

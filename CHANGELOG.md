@@ -3,6 +3,53 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.159.0 - The decomposition that is worth 9x, and costs two thirds of the ascent
+
+**Author:** Claude Opus 5
+
+The previous entry measured `synthesise_split` -- cut the target-s own output,
+solve the halves, admit them, put the original specification back through the
+ordinary search -- at **6 of 6 against 1 of 6 at an equal pool, and the same 6 of
+6 as a nine-times-larger flat search at a ninth of the time.**
+
+The obvious next move is to run it in the ascent, which is the loop this project
+benchmarks itself with and which is bound by **wall clock**, not by pool. A 9x
+cheaper solve should buy depth. And it should be free where it does not apply,
+because it only runs when the three existing arms have already failed.
+
+### It cost two thirds of the depth
+
+| | verified | depth |
+|---|---|---|
+| without | 179 carried / 147 empty | **tier 42**, stopping rule |
+| split on failure | 135 / 125 | tier 15, **budget reached** |
+
+Failure is the common case at depth. Most of those failures are not
+concatenations, and a rule that fires on every one of them spends the wall clock
+the tiers are paid for -- up to nine searches each, on tasks where the cut cannot
+help. Reverted, with the numbers written into `solve_one` beside the decision, so
+the next person to have this obvious idea can see it was tried.
+
+**Splitting belongs where the caller has reason to think the target is a
+concatenation. Not as a blanket fallback in a loop bound by time.**
+
+### And the version for callers with no oracle
+
+`synthesise_split` proves each half over a bounded domain, which needs a reference
+function. The ascent has none -- it generates its own tasks and judges them on
+held-out cases -- so the variant that could actually serve it is
+`construct_split`, holding its halves to `Proof::Generalised` instead. It is a
+fourth arm in the bench rather than an untested function nobody calls:
+
+| arm | proved | seconds |
+|---|---|---|
+| flat, pool 30,000 | 1 of 6 | 1.0 |
+| flat, pool 270,000 | 6 of 6 | 10.2 |
+| split, with an oracle | 6 of 6 | 1.1 |
+| **split, no oracle** | **6 of 6** | **1.3** |
+
+32/32.
+
 ## v0.158.0 - The target tells you how to decompose it
 
 **Author:** Claude Opus 5

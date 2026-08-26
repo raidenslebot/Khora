@@ -1009,6 +1009,15 @@ const std::vector<Value>& default_extremes();
 // account. Two exponentials of half the depth, instead of one of the full depth.
 //
 // `max_depth` bounds recursion: a half that does not solve is split again.
+// The same cut, for callers that have no ORACLE -- the ascent generates its own
+// tasks and judges them on held-out cases rather than on a reference function, so
+// synthesise_split, which proves over a bounded domain, does not apply to it.
+// This one solves each half with construct_best and requires Proof::Generalised,
+// which is the standard the caller was already holding its answers to.
+BuildResult construct_split(const Spec& spec, std::size_t max_pool,
+                            const Library* lib = nullptr,
+                            std::size_t max_depth = 1);
+
 BuildResult synthesise_split(Spec spec, std::size_t pool_cap,
                              const Oracle& oracle,
                              std::int64_t lo, std::int64_t hi,

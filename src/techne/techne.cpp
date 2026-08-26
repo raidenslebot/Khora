@@ -1200,6 +1200,28 @@ BuildResult solve_one(const Spec& spec, std::size_t max_pool, const Library* lib
     if (fwd.proof  == Proof::Generalised) return fwd;
     if (bid.proof  == Proof::Generalised) return bid;
     if (bare.proof == Proof::Generalised) return bare;
+
+    // NO SPLIT FALLBACK HERE, AND IT WAS MEASURED RATHER THAN ASSUMED.
+    //
+    // construct_split cuts the target-s own output and poses the halves as their
+    // own specifications. On concatenation-shaped targets it is worth 9x the
+    // budget -- split_bench: 6 of 6 at a pool of 30,000 against 6 of 6 needing
+    // 270,000 flat, at a ninth of the time. The obvious next move was to run it
+    // here whenever the three arms fail, where it would cost nothing on a task
+    // that already answers.
+    //
+    // It cost the ascent two thirds of its depth:
+    //
+    //                          verified            depth
+    //   without            179 / 147 empty     tier 42, stopping rule
+    //   split on failure   135 / 125 empty     tier 15, BUDGET REACHED
+    //
+    // Failure is the common case at depth, most of those failures are not
+    // concatenations, and a rule that fires on every one of them spends the wall
+    // clock the tiers are paid for. Splitting belongs where the caller has reason
+    // to think the target is a concatenation -- not as a blanket fallback in a
+    // loop bound by time.
+
     BuildResult best = std::move(fwd);
     if (bid.cases_passed  > best.cases_passed) best = std::move(bid);
     if (bare.cases_passed > best.cases_passed) best = std::move(bare);

@@ -596,4 +596,42 @@ BuildResult synthesise_split(Spec spec, std::size_t pool_cap,
     return direct;
 }
 
+BuildResult construct_split(const Spec& spec, std::size_t max_pool,
+                            const Library* lib, std::size_t max_depth) {
+    BuildResult direct = construct_best(spec, max_pool, lib);
+    if (direct.proof == Proof::Generalised || max_depth == 0) return direct;
+
+    struct Rule { bool front; std::size_t k; };
+    static const Rule rules[] = {{true, 1}, {false, 1}, {true, 2}, {false, 2}};
+
+    for (const Rule& r : rules) {
+        bool useful = false;
+        for (const Case& c : spec.cases) {
+            const std::size_t p = cut_at(c.out.size(), r.front, r.k);
+            if (p != 0 && p != c.out.size()) { useful = true; break; }
+        }
+        if (!useful) continue;
+
+        const BuildResult a = construct_split(cut_spec(spec, r.front, r.k, true, "_a"),
+                                              max_pool, lib, max_depth - 1);
+        if (a.proof != Proof::Generalised) continue;
+        const BuildResult b = construct_split(cut_spec(spec, r.front, r.k, false, "_b"),
+                                              max_pool, lib, max_depth - 1);
+        if (b.proof != Proof::Generalised) continue;
+
+        bool copied = true;
+        const Library ext = extend(lib, a.recipe, b.recipe, copied);
+        if (!copied) continue;
+        BuildResult joined = construct_best(spec, max_pool, &ext);
+        if (joined.proof == Proof::Generalised) {
+            // INLINE BEFORE RETURNING. The two halves live in a library that dies
+            // with this call, so a recipe still naming Call 7 would mean nothing
+            // to the caller -- and the caller admits what it is given.
+            joined.recipe = inline_calls(joined.recipe, ext);
+            return joined;
+        }
+    }
+    return direct;
+}
+
 } // namespace khora::techne
