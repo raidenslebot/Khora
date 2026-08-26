@@ -987,6 +987,35 @@ BuildResult synthesise_hardened(Spec spec, std::size_t pool_cap,
 // one should supply its own, and because a hidden list is a hidden assumption.
 const std::vector<Value>& default_extremes();
 
+// SPLIT THE TARGET-S OWN OUTPUT AND SOLVE THE HALVES.
+//
+// Bottom-up construction is exponential in depth and the pool cap truncates it,
+// so a program that is nine nodes written flat is not reachable at 400,000
+// behaviours -- measured, on `roll`, which sends [a1..ak, next] to [next, a1..ak].
+// Admit `last` and `init` to a library first and the same program is THREE nodes
+// and falls out immediately. That is the whole of it: reach is bounded by node
+// count, and a library entry costs one node however deep it is.
+//
+// What made that work was knowing to ask for `last` and `init`. The target
+// supplies that itself. Its output is a list, the dominant way to build a list
+// is to append two of them, so cut every case-s OUTPUT at the same place and ask
+// for the two halves as their own specifications. `roll` cut after one element is
+// exactly `last` and `init`.
+//
+// Each half is solved by synthesise_hardened, admitted to a local library, and
+// then the ORIGINAL specification is put back through the ordinary search, which
+// now finds append(libA, libB) as a three-node program and proves it the same way
+// it proves anything. The halves are a search hint; nothing is accepted on their
+// account. Two exponentials of half the depth, instead of one of the full depth.
+//
+// `max_depth` bounds recursion: a half that does not solve is split again.
+BuildResult synthesise_split(Spec spec, std::size_t pool_cap,
+                             const Oracle& oracle,
+                             std::int64_t lo, std::int64_t hi,
+                             std::size_t max_len, std::size_t rounds,
+                             const Library* lib = nullptr,
+                             std::size_t max_depth = 2);
+
 // Synthesise, then refine against counterexamples until none can be found.
 // `probes` bounds the hunt; `rounds` bounds how many counterexamples are fed
 // back before giving up.

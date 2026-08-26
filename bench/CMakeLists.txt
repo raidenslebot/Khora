@@ -159,3 +159,6 @@ target_link_libraries(retrieve_bench PRIVATE khora::plexus khora::lexicon khora:
 
 add_executable(fold_bench fold_bench.cpp)
 target_link_libraries(fold_bench PRIVATE khora::techne)
+
+add_executable(split_bench split_bench.cpp)
+target_link_libraries(split_bench PRIVATE khora::techne)

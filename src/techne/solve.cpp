@@ -485,4 +485,115 @@ BuildResult synthesise_hardened(Spec spec, std::size_t pool_cap,
     return BuildResult{};
 }
 
+// One cut rule. `front` counts from the start of the output, otherwise from the
+// end, and both are TOTAL: p is clamped to the output length, so append(A, B) is
+// the output by construction for every input including the empty one. A rule
+// that is undefined anywhere would hand the sub-search a specification the
+// combination cannot satisfy.
+namespace {
+
+std::size_t cut_at(std::size_t len, bool front, std::size_t k) {
+    const std::size_t kk = (k < len) ? k : len;
+    return front ? kk : (len - kk);
+}
+
+Case cut_case(const Case& c, bool front, std::size_t k, bool take_front) {
+    const std::size_t p = cut_at(c.out.size(), front, k);
+    Value part = take_front ? Value(c.out.begin(), c.out.begin() + static_cast<long>(p))
+                            : Value(c.out.begin() + static_cast<long>(p), c.out.end());
+    return Case(c.in, c.extra, std::move(part));
+}
+
+Spec cut_spec(const Spec& s, bool front, std::size_t k, bool take_front,
+              const char* suffix) {
+    Spec o;
+    o.name   = s.name + suffix;
+    o.banned = s.banned;
+    o.cases.reserve(s.cases.size());
+    for (const Case& c : s.cases)   o.cases.push_back(cut_case(c, front, k, take_front));
+    for (const Case& c : s.holdout) o.holdout.push_back(cut_case(c, front, k, take_front));
+    return o;
+}
+
+Oracle cut_oracle(const Oracle& f, bool front, std::size_t k, bool take_front) {
+    return [f, front, k, take_front](const Value& in) {
+        const Value o = f(in);
+        const std::size_t p = cut_at(o.size(), front, k);
+        return take_front ? Value(o.begin(), o.begin() + static_cast<long>(p))
+                          : Value(o.begin() + static_cast<long>(p), o.end());
+    };
+}
+
+// A copy of the caller-s library with two more entries. Indices have to survive
+// the copy, because a stored recipe naming Call 3 means the third entry.
+Library extend(const Library* lib, const Recipe& a, const Recipe& b, bool& ok) {
+    Library out(64);
+    ok = true;
+    if (lib != nullptr) {
+        for (std::size_t i = 0; i < lib->size(); ++i) {
+            if (!out.admit_recipe(lib->at(i).name, lib->at(i).recipe, 0)) ok = false;
+        }
+    }
+    out.admit_recipe("_split_a", a, 0);
+    out.admit_recipe("_split_b", b, 0);
+    return out;
+}
+
+}  // namespace
+
+BuildResult synthesise_split(Spec spec, std::size_t pool_cap,
+                             const Oracle& oracle,
+                             std::int64_t lo, std::int64_t hi,
+                             std::size_t max_len, std::size_t rounds,
+                             const Library* lib,
+                             std::size_t max_depth) {
+    // The ordinary answer first. Splitting is what happens when there is not one.
+    BuildResult direct =
+        synthesise_hardened(spec, pool_cap, oracle, lo, hi, max_len, rounds, lib);
+    if (direct.proof == Proof::Exhaustive || max_depth == 0) return direct;
+
+    // Cut one element off the front, then two, then the same from the back. Those
+    // are the shapes that occur -- peeling an element off an end is how a list is
+    // built -- and each extra rule costs two more sub-searches.
+    struct Rule { bool front; std::size_t k; };
+    static const Rule rules[] = {{true, 1}, {false, 1}, {true, 2}, {false, 2}};
+
+    for (const Rule& r : rules) {
+        // A cut that takes everything or nothing on every case has not split it.
+        bool useful = false;
+        for (const Case& c : spec.cases) {
+            const std::size_t p = cut_at(c.out.size(), r.front, r.k);
+            if (p != 0 && p != c.out.size()) { useful = true; break; }
+        }
+        if (!useful) continue;
+
+        const BuildResult a = synthesise_split(
+            cut_spec(spec, r.front, r.k, true, "_a"), pool_cap,
+            cut_oracle(oracle, r.front, r.k, true), lo, hi, max_len, rounds, lib,
+            max_depth - 1);
+        if (a.proof != Proof::Exhaustive) continue;
+
+        const BuildResult b = synthesise_split(
+            cut_spec(spec, r.front, r.k, false, "_b"), pool_cap,
+            cut_oracle(oracle, r.front, r.k, false), lo, hi, max_len, rounds, lib,
+            max_depth - 1);
+        if (b.proof != Proof::Exhaustive) continue;
+
+        // Both halves in hand. Put the ORIGINAL specification back through the
+        // ordinary search with them available: it now has append(libA, libB) as a
+        // three-node candidate and proves it exactly as it proves anything else.
+        // Nothing is accepted because a half was solved.
+        bool copied = true;
+        const Library ext = extend(lib, a.recipe, b.recipe, copied);
+        if (!copied) continue;   // an index moved; the entries would not mean what they say
+        BuildResult joined =
+            synthesise_hardened(spec, pool_cap, oracle, lo, hi, max_len, rounds, &ext);
+        if (joined.proof == Proof::Exhaustive) {
+            joined.recipe = inline_calls(joined.recipe, ext);
+            return joined;
+        }
+    }
+    return direct;
+}
+
 } // namespace khora::techne

@@ -3,6 +3,63 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.158.0 - The target tells you how to decompose it
+
+**Author:** Claude Opus 5
+
+Two entries ago `roll` -- which sends `[a1..ak, next]` to `[next, a1..ak]` -- did
+not derive at a pool of **400,000**, and became PROVED in seconds once `last` and
+`init` were library entries. The reason is not subtle: bottom-up search is
+exponential in depth and the pool cap truncates it, and a library entry costs ONE
+NODE however deep it is. Nine nodes flat, three with a library.
+
+**What made that work was knowing to ask for `last` and `init`, and I chose them by
+hand.** That is the part worth automating, and it is the only part that was not
+already there.
+
+### The target supplies its own rungs
+
+Its output is a list. The dominant way to build a list is to append two of them.
+So cut every case-s OUTPUT at the same place and pose the two halves as their own
+specifications -- and cutting `roll` after one element **is** `last` and `init`.
+
+Four cut rules, one and two elements from each end. Each half is solved by
+`synthesise_hardened`, both are admitted to a local library, and then the
+ORIGINAL specification goes back through the ordinary search, which now has
+`append(libA, libB)` as a three-node candidate and proves it exactly as it proves
+anything else. **Nothing is accepted because a half was solved** -- the halves are
+a search hint and the gate is unchanged. A half that does not solve is cut again,
+to a bounded depth.
+
+### Measured, with the control that matters
+
+Splitting runs up to nine searches where the flat arm runs one, so beating it at
+an equal pool proves nothing -- it just spent more. The third arm gives the flat
+search **nine times the pool**, so it may do the same total work in one search.
+
+| arm | proved | seconds |
+|---|---|---|
+| flat, pool 30,000 | 1 of 6 | 1.1 |
+| flat, pool 270,000 | 6 of 6 | **10.3** |
+| **split, pool 30,000** | **6 of 6** | **1.1** |
+
+**Said precisely: splitting does not reach anything the big-budget flat search
+cannot. It reaches the same set at a ninth of the cost.** Six of six against one
+of six is the equal-pool comparison and it is the less honest one; the equal-work
+comparison is a 9x speedup at identical capability.
+
+That is the currency that matters here, because the ascent is bound by wall clock
+and not by pool -- it stops at a 240 second budget, and every tier it reaches is
+paid for in seconds.
+
+**Scope, said plainly rather than buried:** every target in this bench is a
+CONCATENATION, which is the structure the cut is for. It measures the shapes the
+mechanism addresses and says nothing about any other shape. `rev` is not among
+them and would not be helped -- cutting `rev` gives `last(x)` and
+`reverse(init(x))`, and the second half is the target again.
+
+32/32.
+
 ## v0.157.0 - Fourteen of fourteen, measured, and the one that was silently wrong
 
 **Author:** Claude Opus 5
