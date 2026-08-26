@@ -134,6 +134,34 @@ std::vector<Atom> atoms() {
                         o.push_back(v[i] * static_cast<std::int64_t>(i + 1)); return o; }},
         {"ziprev", [](const Value& v) { Value o; const std::size_t n = v.size();
                         for (std::size_t i = 0; i < n; ++i) o.push_back(v[i] + v[n-1-i]); return o; }},
+        // NO cummax HERE, AND IT WAS RE-TESTED RATHER THAN INHERITED.
+        //
+        // `cummax` was rejected once as an atom for a stated reason: an atom must
+        // be OUTSIDE the span of the other atoms and INSIDE the span of the
+        // operations, and Scan sums and cannot take a running maximum, so a task
+        // built from cummax was not harder, it was impossible. Op::ScanMax and
+        // Op::ScanMin were then added to fix exactly that, "added together with
+        // the atom, because the conclusion was that depth and reach have to move
+        // together" -- and the operations went in while the atom never did.
+        //
+        // So the obvious thing was to finish it: the solver has been able to
+        // express a running maximum for several cycles and the curriculum has
+        // never once asked for one. Both are length-preserving, so the rule that
+        // an aggregation may only be last does not exclude them.
+        //
+        //   without cummax, cummin   331 / 276   tier 68, clock
+        //   with them                102 /  86   tier 20, STOPPING RULE
+        //
+        // Two thirds of the ascent, and the rejection survives its own repair.
+        //
+        // WHICH SAYS THE LENGTH RULE IS NOT THE WHOLE OF ABSORPTION. A running
+        // maximum keeps every position and still destroys the space: it is
+        // monotone, it is IDEMPOTENT, and after the maximum appears every later
+        // position repeats it, so a chain through cummax heads for a constant
+        // without ever getting shorter. The classifier above sees length and
+        // cannot see that. An idempotence-aware one is the open lever here, and
+        // it is not a free swap -- `sort` is idempotent too and is one of the
+        // atoms that pays.
         // WHAT AN ATOM HAS TO BE, which took a negative result to state precisely.
         //
         // The obvious next lever at curriculum saturation is "atoms outside the

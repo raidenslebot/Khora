@@ -3,6 +3,57 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.162.0 - The ascent is not deterministic, and I reported my best sample as the figure
+
+**Author:** Claude Opus 5
+
+The two entries above report the aggregation fix as **331 carried against 276
+empty, tier 68, 0 of 67 tiers under-filled**, and the long run as tier 82. Those
+are all ONE RUN EACH, and this bench does not give the same answer twice.
+
+Five runs of the identical binary:
+
+| | carried | empty | gap | depth | ended on |
+|---|---|---|---|---|---|
+| | 331 | 276 | 55 | 68 | clock |
+| | 305 | 247 | 58 | 50 | clock |
+| | 293 | 237 | 56 | 58 | clock |
+| | 274 | 205 | 69 | 49 | clock |
+| | 272 | 225 | 47 | 41 | **stopping rule** |
+
+| | before | after, median of 5 | after, range |
+|---|---|---|---|
+| verified, carried | 179 | **293** | 272 - 331 |
+| carried-minus-empty gap | 32 | **56** | 47 - 69 |
+| depth | 42 | **50** | 41 - 68 |
+
+**The finding survives and the numbers I quoted do not.** Every one of the five
+beats the baseline by a wide margin -- the worst is 272 against 179 -- so the
+aggregation fix is real. But 331 at tier 68 is the best of five reported as if it
+were the figure, and "0 of 67 tiers under-filled" is from that same run.
+
+### Why it varies, and why that matters beyond this entry
+
+Verified solutions BECOME ATOMS for later tiers. Which tasks get solved inside a
+240 second budget depends on thread timing, so the atom set diverges between
+runs, so the curriculum diverges, so the tiers that come out barren diverge --
+one run of the five ended on the stopping rule at 41 while another was still
+going at 68. A loop whose vocabulary is its own output cannot be reproducible
+while it is also wall-clock bound.
+
+That is a property of the benchmark, not of this change, and **it applies
+backwards.** Single-run comparisons appear throughout this log -- 232 against
+192, 271 against 223, 214 against 179 -- and none of them carries an interval.
+The within-run carried-minus-empty gap is the robust half, because both arms see
+identical specifications in the same run; the absolute totals are the fragile
+half, and I have been quoting them.
+
+The pre-fix baseline is stable at 179 / 147 across every run in this session,
+which is what made the trap easy to fall into: the number it was being compared
+against did not move.
+
+32/32.
+
 ## v0.161.0 - Given time, the ascent now stops for a real reason
 
 **Author:** Claude Opus 5
