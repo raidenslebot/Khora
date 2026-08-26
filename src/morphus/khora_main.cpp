@@ -8,6 +8,7 @@
 #include "khora/carapace/builtin_tools.hpp"
 #include "khora/carapace/techne_tools.hpp"
 #include "khora/carapace/reason_tools.hpp"
+#include "khora/telos/telos.hpp"
 #include "khora/carapace/carapace.hpp"
 #include "khora/cogitator/cogitator.hpp"
 #include "khora/crystallize/crystallize.hpp"
@@ -62,6 +63,7 @@ constexpr const char* kCortexArchivePrefix  = "data/cortex_archive/main";
 constexpr const char* kLexiconArchivePrefix = "data/lexicon_archive/main";
 constexpr const char* kPlexusArchivePrefix  = "data/plexus_archive/main";
 constexpr const char* kLigatureArchivePrefix = "data/ligature_archive/main";
+constexpr const char* kTelosArchivePath      = "data/telos_archive/acts.telos";
 constexpr const char* kYieldLedgerPath       = "data/ledger/yield.tsv";
 constexpr const char* kYieldParamsPath       = "data/ledger/params.txt";
 constexpr const char* kAttractorsPath       = "data/cogitator_archive/attractors.txt";
@@ -792,7 +794,7 @@ int main(int argc, char** argv) {
         rum.name = "ruminate";
         rum.affinity.per_drive[D(Drive::Curiosity)] = 1.0;
         rum.affinity.per_drive[D(Drive::Mastery)]   = 0.2;
-        rum.perform = [&mind, pick_seed, &ferment_seed, &chaos_rate, &abstraction_bar]() -> std::string {
+        rum.perform = [&mind, pick_seed, &ferment_seed, &chaos_rate, &abstraction_bar]() -> volition::Outcome {
             // Chaos is woven into curiosity: sometimes Khora collides concepts
             // instead of wandering. And it MASTERS its own chaos — leaning in
             // when collisions forge strong ideas, easing off when they fizzle.
@@ -805,8 +807,8 @@ int main(int argc, char** argv) {
                 chaos_rate += 0.04 * (strength - 0.55);          // self-mastery of chaos
                 chaos_rate = std::max(0.10, std::min(0.60, chaos_rate));
                 if (!s.emergent.empty())
-                    return "ferment " + s.a + " x " + s.b + " ~> " + s.emergent.front().label
-                         + "  [chaos " + std::to_string(static_cast<int>(chaos_rate * 100 + 0.5)) + "%]";
+                    return {"ferment " + s.a + " x " + s.b + " ~> " + s.emergent.front().label
+                         + "  [chaos " + std::to_string(static_cast<int>(chaos_rate * 100 + 0.5)) + "%]", 1.0};
             }
             // Curiosity also BUILDS — every so often Khora chunks a cluster of
             // concepts into a higher abstraction, raising its tower.
@@ -816,16 +818,20 @@ int main(int argc, char** argv) {
                     const std::string name = mind.form_abstraction(aseed, 4, abstraction_bar);
                     if (!name.empty()) {
                         abstraction_bar = std::min(0.72, abstraction_bar + 0.01);   // succeeded -> demand more
-                        return "abstract '" + aseed + "' ~> " + name
+                        return volition::Outcome{"abstract '" + aseed + "' ~> " + name
                              + "  [depth " + std::to_string(mind.abstraction_depth())
-                             + ", bar " + std::to_string(static_cast<int>(abstraction_bar * 100 + 0.5)) + "%]";
+                             + ", bar " + std::to_string(static_cast<int>(abstraction_bar * 100 + 0.5)) + "%]", 1.0};
                     }
                     abstraction_bar = std::max(0.20, abstraction_bar - 0.015);      // refused -> ease, keep striving
                 }
             }
+            // A rumination that concludes nothing is the commonest outcome here
+            // and used to be indistinguishable from one that did.
             const std::string seed = pick_seed();
             auto r = mind.ruminate(seed, 5);
-            return "ruminate '" + seed + "' ~> " + (r.conclusion.empty() ? r.seed : r.conclusion);
+            return volition::Outcome{
+                "ruminate '" + seed + "' ~> " + (r.conclusion.empty() ? r.seed : r.conclusion),
+                r.conclusion.empty() ? 0.0 : 1.0};
         };
         will.add(std::move(rum));
 
@@ -833,12 +839,14 @@ int main(int argc, char** argv) {
         del.name = "deliberate";
         del.affinity.per_drive[D(Drive::OperatorAffinity)] = 1.0;  // reason on the operator's behalf
         del.affinity.per_drive[D(Drive::Mastery)]          = 0.4;
-        del.perform = [&mind, pick_focus]() -> std::string {
+        del.perform = [&mind, pick_focus]() -> volition::Outcome {
             const std::string seed = pick_focus();   // deepen a preoccupation
             auto d = mind.deliberate(seed);
             const std::string w = (d.winner >= 0 && d.winner < static_cast<int>(d.facets.size()))
                                   ? d.facets[static_cast<std::size_t>(d.winner)].label : std::string{};
-            return "deliberate '" + seed + "' ~> " + (w.empty() ? std::string("(novel)") : w);
+            return volition::Outcome{
+                "deliberate '" + seed + "' ~> " + (w.empty() ? std::string("(novel)") : w),
+                w.empty() ? 0.0 : 1.0};
         };
         will.add(std::move(del));
 
@@ -846,16 +854,23 @@ int main(int argc, char** argv) {
         stu.name = "study";
         stu.affinity.per_drive[D(Drive::Mastery)]   = 1.0;   // build competence from sources
         stu.affinity.per_drive[D(Drive::Curiosity)] = 0.4;
-        stu.perform = [&curator]() -> std::string { return curator.act(60000); };
+        stu.perform = [&curator, &lex]() -> volition::Outcome {
+            // Rereading what it already knows is a real outcome and a null one.
+            // The vocabulary is the observable, not the curator's own note.
+            const std::size_t before = lex.vocabulary_size();
+            std::string note = curator.act(60000);
+            return {std::move(note), lex.vocabulary_size() > before ? 1.0 : 0.0};
+        };
         will.add(std::move(stu));
 
         volition::Act dre;
         dre.name = "dream";
         dre.affinity.per_drive[D(Drive::Efficiency)]   = 1.0;
         dre.affinity.per_drive[D(Drive::Preservation)] = 0.5;
-        dre.perform = [&dream]() -> std::string {
+        dre.perform = [&dream]() -> volition::Outcome {
             const auto ret = dream.dream_n(60);
-            return "dreamt 60 cycles, retained " + std::to_string(ret);
+            return volition::Outcome{"dreamt 60 cycles, retained " + std::to_string(ret),
+                                     ret > 0 ? 1.0 : 0.0};
         };
         will.add(std::move(dre));
 
@@ -865,7 +880,7 @@ int main(int argc, char** argv) {
         ref.name = "reflect";
         ref.affinity.per_drive[D(Drive::Preservation)]     = 1.0;  // self-maintenance
         ref.affinity.per_drive[D(Drive::OperatorAffinity)] = 0.3;  // leave the operator a trace
-        ref.perform = [&mind, &lex, &reflection_n]() -> std::string {
+        ref.perform = [&mind, &lex, &reflection_n]() -> volition::Outcome {
             namespace fs = std::filesystem;
             fs::create_directories("data/chronicle");
             const auto themes = mind.top_attractors(6);
@@ -883,11 +898,35 @@ int main(int argc, char** argv) {
             }
             std::ofstream f("data/chronicle/khora.chronicle", std::ios::app);
             f << entry.str();
-            return "reflected -> chronicle (#" + std::to_string(reflection_n) + ", "
-                   + std::to_string(themes.size()) + " themes held)";
+            return volition::Outcome{
+                "reflected -> chronicle (#" + std::to_string(reflection_n) + ", "
+                + std::to_string(themes.size()) + " themes held)",
+                themes.empty() ? 0.0 : 1.0};
         };
         will.add(std::move(ref));
     }
+
+    // WHAT EACH ACT IS ACTUALLY WORTH, learned instead of declared.
+    //
+    // Volition scored every act as drive-pressure times a constant affinity, and
+    // the constant is a judgement a human wrote down that nothing could revise.
+    // Khora could be told an act serves Curiosity and never notice it had not
+    // paid once. The drive system still decides what is pressing -- that is what
+    // it is for -- and the learner chooses within that context.
+    //
+    // It persists, because a value estimate that dies at process exit is a value
+    // estimate that never accumulates, which is the failure the learned
+    // programming library already had on record here.
+    telos::Valuer act_value(khora::soma::kDriveCount, will.act_count());
+    {
+        namespace fs = std::filesystem;
+        fs::create_directories("data/telos_archive");
+        if (act_value.load(kTelosArchivePath)) {
+            std::cout << "  -> act values   : loaded from " << kTelosArchivePath << "\n";
+        }
+        act_value.fit(khora::soma::kDriveCount, will.act_count());
+    }
+    will.learn_with(&act_value);
 
     shell.register_tool({
         "volition",
@@ -898,13 +937,58 @@ int main(int argc, char** argv) {
             if (n < 1) n = 1;
             if (n > 20) n = 20;
             std::ostringstream os;
+            const double before = will.total_yield();
             for (int i = 0; i < n; ++i) {
                 const auto c = will.decide();
                 const std::string note = will.act();
                 os << "  [" << (c.dominant.empty() ? "-" : c.dominant) << "] " << note << "\n";
                 nexus.tick(std::chrono::milliseconds(400));  // gentle recovery; relief persists
             }
-            os << "[volition: " << will.performed() << " acts taken this session]";
+            // YIELD, not just count. An act that ran and produced nothing used to
+            // be indistinguishable from one that produced something.
+            const double got = will.total_yield() - before;
+            os << "[volition: " << will.performed() << " acts this session; "
+               << got << " of " << n << " produced something ("
+               << (100.0 * got / n) << "%)]";
+            return {true, os.str(), ""};
+        }
+    });
+    shell.register_tool({
+        "act_values",
+        "what Khora has learned each act is worth, per drive  "
+        "(usage: act_values [on|off])",
+        [&will, &act_value](const carapace::Intent& in) -> carapace::ToolResult {
+            if (!in.args.empty()) {
+                if (in.args[0] == "off") { will.select_with_learner(false);
+                    return {true, "  selection is drive-pressure x affinity again -- the learner"
+                                  " keeps watching, so the two policies are scored on one table", ""}; }
+                if (in.args[0] == "on")  { will.select_with_learner(true);
+                    return {true, "  selection is learned", ""}; }
+                return {false, "", "usage: act_values [on|off]"};
+            }
+            std::ostringstream os;
+            os << "  selection: " << (will.selecting() ? "learned (UCB1 within the dominant drive)"
+                                                     : "fixed affinity")
+               << "\n  mean yield by drive and act, with the number of tries:\n";
+            os << "    drive              ";
+            for (std::size_t a = 0; a < will.act_count(); ++a)
+                os << " " << std::setw(12) << will.at(a).name;
+            os << "\n";
+            for (std::size_t d = 0; d < khora::soma::kDriveCount; ++d) {
+                if (act_value.total(d) == 0) continue;
+                os << "    " << std::setw(18)
+                   << khora::soma::drive_name(static_cast<khora::soma::Drive>(d));
+                for (std::size_t a = 0; a < will.act_count(); ++a) {
+                    const auto e = act_value.estimate(d, a);
+                    std::ostringstream cell;
+                    if (e.count == 0) cell << "     -";
+                    else cell << std::fixed << std::setprecision(2) << e.mean
+                              << " (" << e.count << ")";
+                    os << " " << std::setw(12) << cell.str();
+                }
+                os << "\n";
+            }
+            os << "  a dash is an act never tried under that drive; UCB1 will try it next.";
             return {true, os.str(), ""};
         }
     });
@@ -2743,7 +2827,7 @@ int main(int argc, char** argv) {
     // Helper: persist lattice + cortex silently. Used both at
     // single-command exit and at interactive-loop exit so state actually
     // accumulates across runs.
-    auto persist_silently = [&memory, &column, &lex, &mind, &plex, &lig]() {
+    auto persist_silently = [&memory, &column, &lex, &mind, &plex, &lig, &act_value, &will]() {
         try { (void)lattice::save(memory, kArchivePath); }
         catch (...) { /* swallow — best effort */ }
         try { column.save(kCortexArchivePrefix); }
@@ -2752,6 +2836,9 @@ int main(int argc, char** argv) {
         catch (...) { /* swallow — best effort */ }
         try { plex.save(kPlexusArchivePrefix); }
         catch (...) { /* swallow — best effort */ }
+        if (act_value.save(kTelosArchivePath))
+            std::cout << "[saved act values (" << will.performed()
+                      << " acts weighed) to " << kTelosArchivePath << "]\n";
         try { lig.save(kLigatureArchivePrefix); }
         catch (...) { /* swallow — best effort */ }
         try { mind.save_attractors(kAttractorsPath); }

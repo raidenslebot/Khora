@@ -19,6 +19,7 @@ target_link_libraries(khora PRIVATE
     khora::ballast
     khora::maelstrom
     khora::volition
+    khora::telos
 )
 
 # khora_next — the SUCCESSOR target for `ascend` (binary self-replacement). A running
@@ -44,6 +45,7 @@ target_link_libraries(khora_next PRIVATE
     khora::ballast
     khora::maelstrom
     khora::volition
+    khora::telos
 )
 
 # plexus_forge — fast standalone (re)builder of the associative graph, decoupled

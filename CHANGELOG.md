@@ -3,6 +3,95 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.123.0 — Khora notices when an act never pays
+
+**Author:** Claude Opus 5
+
+Volition has been the layer where cognition becomes action since it was written
+and it had no test and no memory. It scored every act as drive-pressure times an
+AFFINITY -- a constant a human wrote down -- so Khora could be told an act serves
+Curiosity and never notice it had not paid once.
+
+`telos::Valuer` has been in the tree, tested, benchmarked at 0.677 against 0.409
+for the fixed policy it was written to replace, and never run by the live binary.
+
+### The blocker was that there was no reward, and the obvious ones are circular
+
+`perform()` returned a note and nothing else, so nothing could distinguish a
+rumination that formed an abstraction from one that came back empty. The tempting
+reward is drive relief -- except relief is applied as `-relief * affinity`, so
+learning from it would be learning the affinity table back. Knowledge growth is
+the other candidate and it collapses the multi-drive design into "always study".
+
+What is actually observable, uniform across acts, and independent of the declared
+affinity is whether the act **produced anything at all**. It is deliberately
+binary -- a weighted score would be a set of numbers I invented, and the point of
+measuring is to stop doing that. Each act now reports it from something real: a
+rumination whose conclusion is empty yields 0, a deliberation with no winner
+yields 0, a study pass yields 1 only if the vocabulary actually grew, a dream
+yields 1 only if it retained something.
+
+### The drive system keeps its job
+
+A bandit that replaced the whole decision would throw away the homeostatic
+rotation that stops behaviour fixating. So the dominant drive is the CONTEXT and
+the learner chooses within it -- which is exactly the contextual-bandit shape
+telos already implements. Affinity stops being the policy and becomes the prior
+for an untried act, which UCB1 already handles by returning infinity for one.
+
+Observation and selection are separate, and conflating them made the comparison
+impossible at first: with the learner detached nothing was recorded, so the fixed
+policy could not be scored on the table it was being compared against.
+
+### On the live system, 100 acts each
+
+| block of 20 | fixed affinity | learned |
+|---|---|---|
+| 1 | 80% | 75% |
+| 2 | 80% | 75% |
+| 3 | 80% | **90%** |
+| 4 | 80% | **90%** |
+| 5 | 80% | **90%** |
+
+The fixed policy is deterministic here -- exactly 16 of 20, five times running.
+The learner pays two blocks of exploration and then holds 90%, which is **half
+the wasted acts removed**. It does not reach 100% because UCB1 keeps re-trying
+the barren arms occasionally, which is the price of being able to notice if one
+of them ever starts paying.
+
+What the table shows is why:
+
+```
+drive               ruminate   deliberate      study       dream     reflect
+Curiosity           1.00 (12)          -           -    0.00 (4)          -
+OperatorAffinity            -   1.00 (12)          -    0.00 (4)          -
+Preservation                -           -          -           -   1.00 (8)
+```
+
+That is the FIXED policy, watched. Under Curiosity it chose `dream` four times
+per twenty and got nothing every single time, and `study` was never chosen at
+all -- the affinities simply do not reach it. The learner tries everything once
+per context, which is how it found `study` and also how it learned that `study`
+yields nothing in these contexts either. Both are things the system previously
+had no way to find out.
+
+The estimates persist to `data/telos_archive/acts.telos`, because a value
+estimate that dies at process exit never accumulates -- the failure the learned
+programming library already had on record here.
+
+`act_values` shows the table and switches selection; the `volition` tool now
+reports yield rather than only a count.
+
+### And Volition finally has a test
+
+Thirteen checks on a synthetic repertoire where the right answer is known: a
+decoy with the strongest affinity that produces nothing, and a worker with a
+weaker one that always does. The fixed policy takes the decoy forty times and
+gains zero. The learner reaches 38 of 40 having been told nothing about which is
+which, and is checked to still explore rather than lock on.
+
+30/30 suites pass. Still orphaned: ribosome, synapse, governor, retina, descent.
+
 ## v0.122.0 — Khora can be told a rule, at runtime, and use it
 
 **Author:** Claude Opus 5
