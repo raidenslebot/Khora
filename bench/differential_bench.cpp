@@ -231,16 +231,20 @@ std::vector<Runner> runners() {
     return {
         {Lang::Python,     "python -V",          "Python",  "python emitted.py"},
         {Lang::JavaScript, "node -v",            "v",       "node emitted.js"},
-        {Lang::TypeScript, "npx --no-install tsc -v", "Version",
-                           "npx --no-install tsc emitted.ts --outFile ts_out.js "
-                           "--target es2020 --lib es2020 2>nul && node ts_out.js"},
+        {Lang::TypeScript, "data\\toolchains\\node_modules\\.bin\\tsc.cmd --version", "Version",
+                           "data\\toolchains\\node_modules\\.bin\\tsc.cmd emitted.ts --outFile ts_out.js "
+                           "--target es2020 --lib es2020,dom 2>nul && node ts_out.js"},
         {Lang::Go,         "go version",         "go1",     "go run emitted.go"},
         {Lang::Rust,       "rustc --version",    "rustc",
                            "rustc -O -o emitted_rs.exe emitted.rs 2>nul && .\\emitted_rs.exe"},
         {Lang::Cpp,        "cl",                 "Microsoft",
                            "cl /nologo /EHsc /std:c++20 /O2 /Fe:emitted_cpp.exe emitted.cpp "
                            ">nul 2>nul && .\\emitted_cpp.exe"},
-        {Lang::CSharp,     "dotnet script --version", ".",  "dotnet script emitted.cs"},
+        // dotnet will not run a bare .cs file, so the emitted source goes into a
+        // scaffolded console project. tools/toolchains.ps1 creates it.
+        {Lang::CSharp,     "dotnet --list-sdks", "sdk",
+                           "copy /y emitted.cs data\\toolchains\\cs\\Program.cs >nul && "
+                           "dotnet run --project data\\toolchains\\cs -c Release -v q --nologo"},
         {Lang::Php,        "php -r " + std::string(1, 34) + "echo 42;" + std::string(1, 34),
                            "42",      "php emitted.php", true},
         {Lang::Java,       "javac -version",     "javac",   "javac Main.java 2>nul && java Main"},
@@ -248,8 +252,13 @@ std::vector<Runner> runners() {
                            "kotlinc emitted.kt -include-runtime -d kt.jar 2>nul && java -jar kt.jar"},
         {Lang::Swift,      "swiftc --version",   "Swift",   "swiftc -O main.swift -o sw.exe 2>nul && .\\sw.exe"},
         {Lang::Haskell,    "runghc --version",   "runghc",  "runghc emitted.hs"},
-        {Lang::Lua,        "lua -v",             "Lua",     "lua emitted.lua"},
-        {Lang::Ruby,       "ruby -v",            "ruby",    "ruby emitted.rb"},
+        // Real Lua 5.4 and real CRuby, compiled to WebAssembly and run in
+        // process by node -- the implementations, not reimplementations of
+        // them. No lua.exe or ruby.exe exists on this host.
+        {Lang::Lua,        "node --no-warnings tools\\run_lua.js", "Lua",
+                           "node --no-warnings tools\\run_lua.js emitted.lua"},
+        {Lang::Ruby,       "node --no-warnings tools\\run_ruby.js", "ruby",
+                           "node --no-warnings tools\\run_ruby.js emitted.rb"},
     };
 }
 std::vector<Named> recipes() {
@@ -661,7 +670,9 @@ int main(int argc, char** argv) {
                 ran, runners().size(), matched);
     std::printf("  Recipe::apply BYTE FOR BYTE, %zu disagree with it, and %zu could not\n",
                 ran - matched - unbuildable, unbuildable);
-    std::printf("  be built on this host at all. %zu have no toolchain here. Only the\n", missing);
+    std::printf("  be built on this host at all. %zu have no toolchain here -- run\n", missing);
+    std::printf("  tools\\toolchains.ps1 to fetch the ones that are a package rather than\n");
+    std::printf("  an SDK download. Only the\n");
     std::printf("  first of those four is a pass, and none of the others is counted as\n");
     std::printf("  one -- a backend that will not build says nothing about the code it\n");
     std::printf("  emits, and neither does a backend nobody ran.\n\n");

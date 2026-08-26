@@ -3,6 +3,56 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.155.0 - Nine of fourteen, and none of them a reimplementation
+
+**Author:** Claude Opus 5
+
+Two entries ago the fourteen-language guarantee turned out to be a `printf`, and
+replacing it with a live check left an honest but thin result: 3 backends
+verified, 11 unrun. That gap was the top item on the remaining-risk list, so:
+
+| | before | now |
+|---|---|---|
+| verified byte for byte, live | 3 | **9** |
+| disagree with `Recipe::apply` | 0 | **0** |
+| could not be built here | 1 | **0** |
+| no toolchain here | 10 | 5 |
+
+Python, JavaScript, **TypeScript**, Go, Rust, C++, **C#**, **Lua** and **Ruby**,
+on 64 recipes x 9 inputs -- 16 named regression shapes and 48 generated ones.
+
+### What the four new ones actually run on
+
+**Lua and Ruby have no interpreter on this host at all.** They run as real Lua
+5.4 and real CRuby 4.1 compiled to WebAssembly and executed in-process by node --
+the implementations, not reimplementations of their semantics in JavaScript. A
+backend checked against a mock of its own language is checked against nothing.
+
+Two things there each look exactly like "the program printed nothing":
+
+- WASI buffers the guest-s stdout, and calling `process.exit()` the instant
+  `eval` returns truncates every line the program wrote.
+- The emitted Ruby driver RETURNS the joined output as its last expression
+  rather than printing it, so the host has to print the value of the eval.
+  `ruby emitted.rb` on a real CRuby prints nothing, and that is a fact about the
+  driver rather than about the emitted functions.
+
+**TypeScript** needed the real `tsc`, and **C#** needed a scaffolded console
+project because `dotnet` will not run a bare `.cs` file.
+
+### Reproducible, or it is the printf again
+
+`tools/toolchains.ps1` fetches all four, idempotently, into `data/toolchains` --
+which is gitignored, because the runner scripts belong in git and the hundreds of
+megabytes they load do not. The bench names the script when a toolchain is
+missing.
+
+Still absent, each wanting a full SDK rather than a package: **PHP, Java, Kotlin,
+Swift, Haskell**. They are reported as "skipped, no toolchain here", which is not
+a pass and is not counted as one.
+
+32/32.
+
 ## v0.154.0 - Sixteen hand-written recipes, and the two defects they could not see
 
 **Author:** Claude Opus 5

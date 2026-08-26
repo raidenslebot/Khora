@@ -47,3 +47,8 @@ o.rs.txt
 Main.java
 main.swift
 data/techne_library.txt
+
+# differential_bench scratch: emitted sources, their outputs and the reference
+*.out
+ts_out.js
+reference.txt
