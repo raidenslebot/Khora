@@ -8,6 +8,7 @@
 #include "khora/carapace/builtin_tools.hpp"
 #include "khora/carapace/techne_tools.hpp"
 #include "khora/carapace/reason_tools.hpp"
+#include "khora/carapace/organ_tools.hpp"
 #include "khora/telos/telos.hpp"
 #include "khora/carapace/carapace.hpp"
 #include "khora/cogitator/cogitator.hpp"
@@ -244,6 +245,10 @@ int main(int argc, char** argv) {
     carapace::register_techne_tools(shell);
     // know, rule, ask, why -- the resolver, seeded from the relations Khora read.
     carapace::register_reason_tools(shell, lig);
+    // evolve, organism, pulse, governor -- ribosome, synapse and governor were
+    // built, tested and named nowhere in this file. `evolve` runs on its own
+    // thread: every dispatch below holds `shared_mu`, and a run is minutes.
+    carapace::register_organ_tools(shell, plex, lig);
     carapace::register_memory_tools(shell, memory, &lex);
     carapace::register_cortex_tools(shell, column, &lex);
     carapace::register_soma_tools(shell, nexus);

@@ -26,9 +26,20 @@
 //
 // Reading the 13700K's digital thermal sensor needs ring 0. LibreHardwareMonitor
 // and HWiNFO ship the driver for it and publish over WMI; neither is installed
-// here and installing software is not mine to decide. `probe()` looks for them
-// every time it starts, so the moment one exists this becomes a true 85 C limit
-// with no code change.
+// here and installing software is not mine to decide.
+//
+// THIS COMMENT USED TO SAY `probe()` LOOKS FOR THEM EVERY TIME IT STARTS, so that
+// the moment one existed this would become a true 85 C limit with no code change.
+// That was false. There is no WMI path, no LibreHardwareMonitor lookup and no
+// HWiNFO lookup anywhere in governor.cpp; `die_temp_available` is assigned
+// `false` at one site and never assigned anything else. Installing either tool
+// would change nothing at all.
+//
+// It is exactly the defect the paragraph above it preaches against -- a value
+// that means something other than it says -- written into the file that warns
+// about it. Wiring a real source is a genuine piece of work (a WMI query against
+// root\WMI or root\LibreHardwareMonitor, guarded on the provider existing) and
+// until somebody does it, this reads the ACPI thermal zone and says so.
 //
 // WHAT IT DOES IN THE MEANTIME, stated so nobody mistakes it for the full thing:
 //
