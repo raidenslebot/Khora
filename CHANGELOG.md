@@ -3,6 +3,100 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.128.0 — Two properties I claimed, measured: one is an identity bug, one is not a security property
+
+**Author:** Claude Opus 5
+
+I listed a set of things the binding substrate gives for free. Two of them got
+benchmarks and neither survived as stated.
+
+### Nested structure does not reach depth three, and the reason is algebraic
+
+The textbook encoding of a tree into one glyph is nested role-filler binding:
+a node is `bundle{bind(OP, op), bind(LEFT, l), bind(RIGHT, r)}`, and a path is read
+by unbinding the roles in order. It does not degrade with depth. It is WRONG at
+depth three, exactly:
+
+```
+  LEFT              vs  RIGHT,RIGHT,LEFT      similarity 1.0000
+  LEFT,RIGHT        vs  RIGHT,LEFT            similarity 1.0000
+```
+
+1.0000 means literally the same bits. bind is XOR, which is commutative and
+involutive, so a path is only its PARITY -- two RIGHTs cancel and a transposition
+is invisible. The retrieval does not get noisier, it returns the wrong leaf with
+full confidence: at depth 3 it answers with the depth-1 leaf **98.4%** of the
+time while scoring 1.6% correct against 1.56% chance.
+
+Tagging the role by depth alone is not enough either -- `L@0^R@1 == R@0^L@1`.
+A per-(role, level) tag closes both, and `position_glyph` was already in the
+algebra for it. With that fix:
+
+| depth | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+|---|---|---|---|---|---|---|---|---|
+| accuracy | 100.0% | 99.7% | 99.0% | **98.2%** | 74.5% | 24.4% | 9.5% | 3.5% |
+
+Four levels reliably, five marginal, six gone. Signal halves per level against a
+fixed noise floor, so the bound is arithmetic. Enough for an arithmetic
+expression or a short dependency parse; not enough for a program.
+
+**Size is free; only depth costs.** At a fixed depth of 2, accuracy is 100.0%
+from 4 leaves to 128 (255 nodes, max depth 21). And structure is genuinely
+represented rather than approximated: the two parses of the same symbols,
+(a+(b*c)) against ((a+b)*c), score **0.1218**, where a bag-of-symbols encoder
+scores 1.0000 on every distinct shape.
+
+### Holographic privacy is a property of the algebra and not of this code
+
+I listed it as a strength. Against the stated threat model it holds cleanly: an
+adversary with the record and the whole 128-value codebook but no role glyph
+lands **exactly on chance** at every width from 2 to 16 fields, by direct
+similarity and by unbinding with guessed roles. Hand the same adversary the role
+and it recovers the value **100%** of the time against 0.78% chance. Averaging
+1,024 records that share a role leaks nothing.
+
+Two attacks break it and both are practical:
+
+**The secret is an English word.** `role_glyph()` is `from_hash(role_name)`, so
+the key is a public function of a dictionary entry. A 24-word list of plausible
+field names recovered **100% of the roles present and 100% of full (role, value)
+pairs**, against chances of 12.5% and 0.10%. from_hash was chosen so an archive
+stays readable in the next process, and that is precisely why it cannot also be
+a secret: stability across processes and secrecy are the same property with the
+sign flipped.
+
+**XOR is a one-time pad and the role is reused.** Two groups of records sharing
+a role and a repeated value: bundle each, XOR them, the role cancels and the
+value pair falls out. Searching all 8,128 codebook pairs recovers them **100%
+from a single record per group** at up to 8 fields. This one is inherent to any
+self-inverse bind with a repeated key, and no amount of key entropy helps.
+
+The header now says all of this where nobody can miss it. Opacity holds for ONE
+record against an adversary who genuinely lacks the role. It is not a property
+of a corpus, and here it is not a property of a role name either.
+
+### And the forgetting claim, which also did not survive intact
+
+Catastrophic forgetting is real for the MLP and the substrate is not simply
+immune to it. The prototype design holds **100.0% retention on task 1 across 10
+tasks and again across 40 tasks / 160 classes**, where the sequential MLP loses
+28.5 to 79.4 points against its own jointly-trained reference of 100.0%.
+
+But a `std::vector` that stores every example retains **95.6%** on the same
+stream. Non-overwriting storage is what buys the retention; hyperdimensionality
+buys the constant-size-per-class encoding, not the immunity. Anyone quoting the
+flat line has to quote the 1-NN row beside it.
+
+And the design that actually bundles -- one glyph, fixed memory -- **does
+forget**: 100% to 38.6% over 10 tasks, to 9.5% over 40, with the margin decaying
+monotonically from +0.070 to +0.003. So "storing a new association never touches
+the old ones" is false at the bit level past roughly a thousand terms.
+
+The agent that ran this threw out its own first experiment before reporting:
+with independently drawn task centres the tasks never competed for the same
+weights and the MLP kept 100%, which is a benchmark on which the failure cannot
+occur. The permuted-axis construction replaced it.
+
 ## v0.127.0 — The live system remembers a program across restarts
 
 **Author:** Claude Opus 5

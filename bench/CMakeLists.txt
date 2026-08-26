@@ -111,3 +111,6 @@ target_link_libraries(compound_bench PRIVATE khora::chiasm khora::techne)
 
 add_executable(forgetting_bench forgetting_bench.cpp)
 target_link_libraries(forgetting_bench PRIVATE khora::descent khora::lattice)
+
+add_executable(structure_bench structure_bench.cpp)
+target_link_libraries(structure_bench PRIVATE khora::lattice)

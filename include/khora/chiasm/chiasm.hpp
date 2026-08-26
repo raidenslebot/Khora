@@ -41,6 +41,41 @@
 // or a cleanup memory with too many candidates, stops resolving. substrate_bench
 // measures where that is. Nothing here is free; what is free is the TRAINING.
 
+// THIS IS NOT A PRIVACY MECHANISM. DO NOT USE IT AS ONE.
+//
+// A bound record looks like it hides its contents, and in the algebra it does.
+// structure_bench put an adversary in front of one holding the record and the
+// entire 128-value codebook but no role glyph: every attack it could mount --
+// direct similarity, and unbinding with guessed roles -- landed exactly on
+// chance, at every record width from 2 to 16 fields. Hand the same adversary the
+// role glyph and it recovers the value 100% of the time against a 0.78% chance.
+// The contrast is real and it is the whole of the property.
+//
+// Two things break it in practice, and both are properties of THIS CODE rather
+// than of the mathematics.
+//
+//   THE SECRET IS AN ENGLISH WORD. role_glyph() is from_hash(role_name), so the
+//   "key" is a public function of a dictionary entry. An adversary with a
+//   24-word list of plausible field names recovered 100% of the roles present
+//   and 100% of full (role, value) pairs, against chances of 12.5% and 0.10%.
+//   from_hash was chosen so a saved archive stays readable in the next process,
+//   and that is exactly why it cannot also be a secret: STABILITY ACROSS
+//   PROCESSES AND SECRECY ARE THE SAME PROPERTY WITH THE SIGN FLIPPED. Fixing it
+//   means a caller-supplied key and an archive that is worthless without it,
+//   which is a different product decision, not a patch.
+//
+//   XOR IS A ONE-TIME PAD AND THE ROLE IS REUSED. Take two groups of records
+//   that share a role and share a value, bundle each group and XOR the two: the
+//   role cancels itself out and what is left is the pair of values. Searching
+//   all 8,128 codebook pairs recovers them 100% of the time from a SINGLE record
+//   per group at up to 8 fields, and from about 16 records per group at any
+//   width. This one is inherent: any self-inverse bind with a repeated key has
+//   it, and no amount of key entropy helps.
+//
+// So: opacity holds for ONE record against an adversary who genuinely lacks the
+// role. It is not a property of a corpus, and in this implementation it is not a
+// property of a role name either.
+
 #include "khora/lattice/glyph.hpp"
 #include "khora/lattice/lattice.hpp"
 
