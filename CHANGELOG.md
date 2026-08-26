@@ -3,6 +3,83 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.133.0 — A 64-dimension embedding beats the 10,000-bit glyph by ten points
+
+**Author:** Claude Opus 5
+
+The last of the four field absences from the audit. Zero self-supervised
+learning existed here: no contrastive objective, no masked prediction, no pretext
+task, no augmentation. Every representation in the tree is either hand-designed
+(the char-trigram glyph) or trained on labels, and eight million tokens of
+unlabelled text had never been used to learn one.
+
+Four pretext tasks over 58 books, all unlabelled, then a frozen representation
+and a nearest-centroid probe on WordNet categories the pretext task never saw.
+
+| representation | dim | 5/class | 20/class | 100/class | all |
+|---|---|---|---|---|---|
+| chance | - | - | - | - | 8.3 |
+| majority class | - | - | - | - | 23.1 |
+| hand-designed glyph (incumbent) | 10000 | 13.0 | 18.8 | 23.7 | 23.3 |
+| random glyph, same dim | 10000 | 7.9 | 8.4 | 8.6 | 8.4 |
+| untrained MLP hidden | 64 | 12.8 | 17.7 | 20.9 | 20.7 |
+| A: masked context (descent MLP) | 64 | 13.9 | 18.8 | 20.8 | 21.0 |
+| **B: masked token (CBOW+neg)** | **64** | **22.7** | **31.5** | **33.6** | **33.7** |
+| C: contrastive NT-Xent | 64 | 10.3 | 12.1 | 12.8 | 12.4 |
+| D: context bundling (Glyph algebra) | 10000 | 16.0 | 19.2 | 23.6 | 23.6 |
+
+### One of the four wins, decisively
+
+CBOW with negative sampling beats the incumbent by **9.6 to 12.6 points at every
+label budget, intervals disjoint at all four**. The margin is largest exactly
+where self-supervision is supposed to matter: at five labels per class it scores
+22.7% against 13.0%, so **sixty labels already exceed what the hand-designed
+glyph reaches with all 452**. It is also the only arm that clearly clears the
+majority class.
+
+This is a measured challenge to the substrate's word representation, which the
+lexicon, the Plexus and everything above them are built on. It is one downstream
+task with one probe, so it is a signal and not yet a mandate -- but it is a
+64-dimension float vector beating 10,000 hand-designed bits by ten points.
+
+### And three do not, which is the more instructive half
+
+**Contrastive NT-Xent is the worst arm in the table** -- 11 points BELOW the
+incumbent and barely above its own random initialisation -- while its pretext
+loss fell monotonically the entire time, 0.918 to 0.788. The flagship objective
+of modern self-supervision produced a representation worse than a hand-written
+char-trigram bundle. Part is a compute imbalance that could not be closed (13.4M
+row updates against CBOW's 106M, both printed so the reader can discount), and
+part is that mean-pooled bag-of-words views make the task solvable by topic
+frequency alone.
+
+**The MLP arm learned essentially nothing.** Its own untrained control -- the
+same network's hidden layer before a single gradient step -- scores 20.7%, and
+after four epochs it scores 21.0%. Both sit below the raw glyph.
+
+**And that untrained control is a finding about the incumbent.** A random 64-dim
+projection of trigram features scores within 2.6 points of the 10,000-bit glyph,
+intervals overlapping. Most of what the incumbent achieves on this probe survives
+an arbitrary 156-fold dimensionality reduction, so the ten thousand bits are not
+buying much of it.
+
+**Context bundling in the Glyph algebra ties the incumbent** (+0.3 at full
+labels) and wins in the low-label regime (+3.0 at five per class, disjoint). It
+is not new -- it is what the Lexicon's random indexing has computed all along --
+and this is the first time anything probed it.
+
+### Pretext loss against downstream accuracy
+
+Pearson r over the trained checkpoints: A **-0.706**, B **-0.944**, C **-0.768**.
+All negative, so falling loss does track rising accuracy WITHIN an arm. It says
+nothing across arms: C had the second-best correlation and the worst
+representation in the table.
+
+Both random controls sit at 7.2-8.6% against 8.3% chance, so the probe is not
+doing the work. Polysemous words were discarded and only words seen ten or more
+times are evaluated, which leaves untested exactly the rare-word regime where a
+spelling prior should win most.
+
 ## v0.132.0 — The upgrade the last bench implied would have been learning noise
 
 **Author:** Claude Opus 5
