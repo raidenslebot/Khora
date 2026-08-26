@@ -3,6 +3,53 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.142.0 - The verifier that refuses is now a library function, not a bench arm
+
+**Author:** Claude Opus 5
+
+The previous entry measured a verification strategy that reaches **100% correct
+on everything it accepts** where the default path reaches 84%. It existed only
+inside a benchmark. It is now `techne::synthesise_hardened`, and the bench
+measures the shipped function rather than a copy that could drift.
+
+| arm | accepted | right in the wild | seconds |
+|---|---|---|---|
+| certified (Generalised) | 271/276 | 84.1% | 1.2 |
+| + 300 random probes | 272/276 | 89.0% | 2.1 |
+| + exhaustive proof | 274/276 | 86.1% | 6.3 |
+| **+ proof AND extremes (shipped)** | **260/276** | **100.0%** | 10.0 |
+
+Identical to the inline version it replaces, including 24/36 on the trap tasks
+where exhaustive proof scores 0/36.
+
+### Pinned by a test that shows the difference rather than asserting it
+
+`techne_test` now synthesises "the fifth element, or nothing" from examples drawn
+entirely inside a domain of lists up to length 4 -- so the behaviour that defines
+the task is invisible to the proof:
+
+```
+exhaustive: proved=yes, and wrong outside the domain=yes
+hardened  : claims proof=yes, and right outside=yes
+```
+
+The first line is the defect stated as a passing test: **a bounded proof accepts
+a program that is wrong outside its bound.** The second is the fix. A later
+simplification that collapses one into the other now fails.
+
+### And the limitation that stops it reaching the user-facing tool
+
+`synthesise_hardened` needs an ORACLE -- a reference implementation to check a
+candidate against on inputs nobody supplied. The `synth` tool takes examples
+typed at a prompt and has no reference, so it **cannot** use the stronger path and
+still tops out at Generalised. That is the difference between synthesising FROM
+examples and synthesising AGAINST a specification, and it is now written where
+someone looking at the weaker call will find it.
+
+Where an oracle does exist -- rebuilding a primitive the system already has, or
+re-deriving a program to check a refactor -- the hardened path applies. That is
+exactly the self-rebuilding loop, which is where it belongs.
+
 ## v0.141.0 - "A gradient search cannot do this" was too strong, and the bench that said so found three of its own bugs first
 
 **Author:** Claude Opus 5

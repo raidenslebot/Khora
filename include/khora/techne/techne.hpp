@@ -915,6 +915,58 @@ BuildResult synthesise_exhaustive(Spec spec, std::size_t pool_cap,
                                   const Library* lib = nullptr,
                                   Exhaust* out = nullptr);
 
+// THE STRONGEST VERIFICATION THIS MODULE OFFERS, and the reason it is not just
+// the exhaustive one.
+//
+// A proof over a bounded domain does not survive outside that bound, and the
+// measurement is not subtle. On 36 tasks whose behaviour changes only outside a
+// domain of every list of length 0..4 over -2..2 -- take the fifth element, clamp
+// at three, keep values past two -- exhaustive checking accepted 36 of 36 and got
+// ZERO right on held-out inputs. It was not lying: it genuinely checked all 781
+// inputs it said it checked. The domain simply did not contain the inputs the
+// program would meet.
+//
+// Worse, it lost to random probing there, 0/36 against 6/36, for one reason: a
+// prober draws {1000000000} and a proof over -2..2 never looks there.
+//
+// So this keeps the exhaustive pass and adds a hunt over the EXTREMES of the
+// range the program is actually for -- zero, one, both signs, values past the
+// domain, the value cap, and lengths past every example it was shown -- refining
+// on anything found and RE-PROVING the small domain each time, so the two
+// guarantees hold together rather than in sequence.
+//
+// Measured over 276 tasks against a wilderness of 213 held-out inputs outside the
+// domain in both directions:
+//
+//     certified (Generalised)   271 accepted   84.1% right
+//     + 300 random probes       272 accepted   89.0% right
+//     + exhaustive proof        274 accepted   86.1% right
+//     + proof AND extremes      260 accepted  100.0% right   [98.5, 100.0]
+//
+// It accepts FEWER and is right about everything it accepts. That is the trade,
+// and it is the right way round: a synthesiser that says yes to 274 things and is
+// wrong about 38 of them is worse than one that says yes to 260 and is wrong
+// about none, because only the second can be built on.
+//
+// IT IS STILL NOT A PROOF and must not be described as one. It is a bounded proof
+// plus a strictly better sample. The honest claim is "proved on the small domain
+// and unbroken at the edges of the large one". A real guarantee needs a decision
+// procedure over the program TEXT rather than its inputs.
+//
+// Returns Proof::Exhaustive only when BOTH halves pass. Anything less is reported
+// as whatever the weaker check earned.
+BuildResult synthesise_hardened(Spec spec, std::size_t pool_cap,
+                                const Oracle& oracle,
+                                std::int64_t lo, std::int64_t hi,
+                                std::size_t max_len, std::size_t rounds,
+                                const Library* lib = nullptr,
+                                Exhaust* out = nullptr);
+
+// The extremal inputs the hardened check hunts over: the boundary cases a fitted
+// program breaks on. Exposed because a caller whose deployment range is not this
+// one should supply its own, and because a hidden list is a hidden assumption.
+const std::vector<Value>& default_extremes();
+
 // Synthesise, then refine against counterexamples until none can be found.
 // `probes` bounds the hunt; `rounds` bounds how many counterexamples are fed
 // back before giving up.

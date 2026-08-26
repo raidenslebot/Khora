@@ -531,6 +531,60 @@ int main() {
                   "and still computes the same function");
     }
 
+    // --- A BOUNDED PROOF IS NOT A PROOF, AND THIS IS THE CASE THAT SHOWS IT ---
+    //
+    // synthesise_exhaustive checks every input of a stated finite domain, which
+    // is a real proof over that domain and nothing more. On a task whose
+    // behaviour changes only OUTSIDE the domain it accepts with full confidence
+    // and is wrong. Measured over 36 such tasks it accepted 36 and got 0 right,
+    // losing to random probing, which at least draws a big number occasionally.
+    //
+    // synthesise_hardened keeps that pass and adds the extremes of the range the
+    // program is actually for. It accepts less and is right about what it
+    // accepts. These two checks pin exactly that difference, so a later
+    // simplification cannot quietly collapse one into the other.
+    {
+        // "the fifth element, or nothing" -- invisible below length 5, and the
+        // proof domain below stops at length 4.
+        auto fifth = [](const Value& v) -> Value {
+            return v.size() < 5 ? Value{} : Value{v[4]};
+        };
+        Spec spec;
+        spec.name = "fifth";
+        std::uint64_t sd = 20260827;
+        auto nxt = [&sd]() { sd ^= sd << 13; sd ^= sd >> 7; sd ^= sd << 17; return sd; };
+        for (int k = 0; k < 12; ++k) {
+            Value in;
+            const std::size_t len = nxt() % 5;          // 0..4, inside the domain
+            for (std::size_t j = 0; j < len; ++j)
+                in.push_back(static_cast<std::int64_t>(nxt() % 5) - 2);
+            Case c(in, fifth(in));
+            if (k >= 9) spec.holdout.push_back(c); else spec.cases.push_back(c);
+        }
+        Oracle oracle = [&fifth](const Value& in) { return fifth(in); };
+        const Value outside = {1, 2, 3, 4, 5};          // length 5: outside the domain
+
+        Exhaust ex;
+        const BuildResult be = synthesise_exhaustive(spec, 8000, oracle, -2, 2, 4, 6,
+                                                     nullptr, &ex);
+        const bool e_proved = (be.proof == Proof::Exhaustive);
+        const bool e_wrong  = e_proved && be.recipe.apply(outside, nullptr) != fifth(outside);
+        std::printf("      exhaustive: proved=%s, and wrong outside the domain=%s\n",
+                    e_proved ? "yes" : "no", e_wrong ? "yes" : "no");
+        check(e_proved && e_wrong,
+              "a bounded proof accepts a program that is wrong outside its bound");
+
+        const BuildResult bh = synthesise_hardened(spec, 8000, oracle, -2, 2, 4, 6,
+                                                   nullptr, &ex);
+        const bool h_claims = (bh.proof == Proof::Exhaustive);
+        const bool h_right  = !h_claims ||
+                              bh.recipe.apply(outside, nullptr) == fifth(outside);
+        std::printf("      hardened  : claims proof=%s, and right outside=%s\n",
+                    h_claims ? "yes" : "no", h_right ? "yes" : "no");
+        check(h_right,
+              "and the hardened check never claims a proof for one that is not");
+    }
+
     std::printf("\n");
     if (failures == 0) std::printf("ALL PASS\n");
     else               std::printf("%d FAILURE(S)\n", failures);

@@ -392,4 +392,65 @@ BuildResult synthesise_exhaustive(Spec spec, std::size_t pool_cap,
     return best;
 }
 
+const std::vector<Value>& default_extremes() {
+    // Boundary-value analysis, which is older than any of this and still the
+    // highest-yield thing in testing. Ordered cheapest-first so a program that
+    // breaks on the empty list is caught before one that breaks at the cap.
+    static const std::vector<Value> v = {
+        {}, {0}, {1}, {-1}, {0, 0}, {1, 1, 1, 1, 1, 1},
+        // lengths past anything a small proof domain contains
+        {1, 2, 3, 4, 5}, {1, 2, 3, 4, 5, 6}, {5, 4, 3, 2, 1, 0, -1},
+        {9, 8, 7, 6, 5, 4, 3, 2},
+        // values past anything a small proof domain contains, and the cap
+        {3}, {-3}, {10}, {-10}, {2, 3}, {-3, -2}, {0, 10, 0},
+        {kValueCap}, {-kValueCap}, {kValueCap - 1, 1}, {20000, -20000},
+        {7, 7, 7, 7, 7},
+    };
+    return v;
+}
+
+BuildResult synthesise_hardened(Spec spec, std::size_t pool_cap,
+                                const Oracle& oracle,
+                                std::int64_t lo, std::int64_t hi,
+                                std::size_t max_len, std::size_t rounds,
+                                const Library* lib, Exhaust* out) {
+    const std::vector<Value>& edges = default_extremes();
+
+    for (std::size_t round = 0; round <= rounds; ++round) {
+        Exhaust ex;
+        BuildResult b = synthesise_exhaustive(spec, pool_cap, oracle, lo, hi, max_len,
+                                              rounds, lib, &ex);
+        if (b.proof != Proof::Exhaustive) {
+            // The bounded proof did not even hold. Report what was actually
+            // earned rather than dressing it up.
+            if (out) *out = ex;
+            return b;
+        }
+
+        // Proved on the small domain. Now the edges of the large one.
+        bool clean = true;
+        for (const Value& in : edges) {
+            if (b.recipe.apply(in, lib) != oracle(in)) {
+                if (round == rounds) {
+                    // Out of refinements with a known counterexample in hand.
+                    // Downgrade: it is proved on the domain and BROKEN outside
+                    // it, and Exhaustive would say the wrong thing.
+                    b.proof = Proof::Generalised;
+                    if (out) *out = ex;
+                    return b;
+                }
+                spec.cases.push_back(Case{in, oracle(in)});
+                clean = false;
+                break;
+            }
+        }
+        if (clean) {
+            if (out) *out = ex;
+            return b;     // proved on the domain AND unbroken at the edges
+        }
+    }
+
+    return BuildResult{};
+}
+
 } // namespace khora::techne

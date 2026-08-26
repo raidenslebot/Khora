@@ -279,71 +279,16 @@ int main(int argc, char** argv) {
 
         // --- arm D: the proof AND the edges of the deployment range ---------
         //
-        // The traps say the proof is not wrong, it is looking in the wrong place:
-        // it checks every input of a domain that does not contain the inputs the
-        // program will meet. Sampling beat it 6/36 to 0/36 for exactly one
-        // reason -- the prober draws {1000000000} and the proof domain stops at 2.
-        //
-        // So: keep the exhaustive pass, and add a hunt over the EXTREMES of the
-        // range the program is actually for. Not more random draws; the specific
-        // places a fitted program breaks -- zero, one, the signs, the value cap,
-        // and lengths past every example it was shown. Boundary-value analysis,
-        // which is older than any of this and still the highest-yield thing in
-        // testing.
-        //
-        // THIS IS NOT A PROOF and must not be called one. It is a bounded proof
-        // plus a strictly better sample. The honest claim is "proved on the small
-        // domain and unbroken at the edges of the large one", which is weaker
-        // than a guarantee and much stronger than either half.
+        // This was written inline here first and is now techne::synthesise_hardened,
+        // so the bench measures the SHIPPED function rather than a copy of it that
+        // could drift. If this arm regresses, the library regressed.
         {
-            auto ps = std::make_shared<std::uint64_t>(0x0EDE9ULL);
-            Prober edge_prober = [ps](std::size_t k) -> Value {
-                static const Value edges[] = {
-                    {}, {0}, {1}, {-1}, {0, 0}, {1, 1, 1, 1, 1, 1},
-                    // lengths past anything the proof domain contains
-                    {1, 2, 3, 4, 5}, {1, 2, 3, 4, 5, 6}, {5, 4, 3, 2, 1, 0, -1},
-                    {9, 8, 7, 6, 5, 4, 3, 2},
-                    // values past anything the proof domain contains
-                    {3}, {-3}, {10}, {-10}, {1000000000}, {-1000000000},
-                    {2, 3}, {-3, -2}, {0, 10, 0}, {20000, -20000},
-                    {999999999, 1}, {7, 7, 7, 7, 7},
-                };
-                if (k < sizeof(edges) / sizeof(edges[0])) return edges[k];
-                Value v;
-                const std::size_t len = mix(*ps) % 9;
-                for (std::size_t j = 0; j < len; ++j)
-                    v.push_back((std::int64_t)(mix(*ps) % 40001) - 20000);
-                return v;
-            };
             const auto t0 = clk::now();
             Exhaust ex;
-            // ITS OWN COPY. The refinement below appends counterexamples, and the
-            // first version of this mutated the shared spec -- so the arm that ran
-            // after it silently inherited them and its score jumped from 236 to
-            // 260. Cross-arm contamination reads exactly like an improvement.
-            Spec hspec = spec;
-            BuildResult b = synthesise_exhaustive(hspec, cap, oracle, lo, hi, mlen, 6,
-                                                  nullptr, &ex);
-            bool proved = (b.proof == Proof::Exhaustive);
-            if (proved) {
-                // Now hunt the edges of the real range and refine on anything
-                // found, re-proving the small domain each time so the two
-                // guarantees hold together rather than in sequence.
-                for (int round = 0; round < 6 && proved; ++round) {
-                    Value bad;
-                    bool found = false;
-                    for (std::size_t k = 0; k < 60 && !found; ++k) {
-                        const Value in = edge_prober(k);
-                        if (b.recipe.apply(in, nullptr) != oracle(in)) { bad = in; found = true; }
-                    }
-                    if (!found) break;
-                    hspec.cases.emplace_back(bad, oracle(bad));
-                    b = synthesise_exhaustive(hspec, cap, oracle, lo, hi, mlen, 6, nullptr, &ex);
-                    proved = (b.proof == Proof::Exhaustive);
-                }
-            }
+            const BuildResult b = synthesise_hardened(spec, cap, oracle, lo, hi, mlen, 6,
+                                                      nullptr, &ex);
             a_hyb.seconds += std::chrono::duration<double>(clk::now() - t0).count();
-            if (proved) {
+            if (b.proof == Proof::Exhaustive) {
                 ++a_hyb.accepted;
                 if (is_trap) ++a_hyb.trap_accepted;
                 const bool ok = right_in_the_wild(b.recipe, t.f, wild);

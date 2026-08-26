@@ -304,6 +304,20 @@ void register_techne_tools(Carapace& c) {
                 }
             }
 
+            // WHY NOT synthesise_hardened, WHICH IS STRICTLY STRONGER.
+            //
+            // It reaches 100% correct on everything it accepts where this path
+            // reaches 84%, and it cannot be used here. It needs an ORACLE -- a
+            // reference implementation to check a candidate against on inputs
+            // nobody supplied -- and a caller typing examples at a prompt has no
+            // reference. That is the whole difference between synthesising
+            // FROM examples and synthesising AGAINST a specification.
+            //
+            // So the guarantee available here tops out at Generalised: correct on
+            // cases the search never saw, which is evidence and not proof. Where
+            // an oracle does exist -- rebuilding a primitive the system already
+            // has, or re-deriving a program to check a refactor -- the hardened
+            // path applies and should be used.
             const khora::techne::BuildResult b =
                 khora::techne::solve_one(spec, 20000, &lib);
 
