@@ -3,6 +3,52 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.149.0 - Testing the previous entry against the entry point callers actually use
+
+**Author:** Claude Opus 5
+
+The previous entry reported, from `fold_bench`, that `max` comes back overfitted as
+`drop(pair_max(x), 4)` -- correct on six-element lists and no others -- and called
+that "a separate defect", reasoning that `construct()` returns the first behavioural
+match in size order, a length-specific program is smaller than a fold, and
+rejecting it on the holdout is not the same as looking for another one.
+
+That reasoning describes the raw engine correctly and **the conclusion was
+wrong**, because `fold_bench` called `construct()` directly and nothing ships that
+way. Put the identical tasks through `synthesise_hardened()`:
+
+| primitive | raw `construct()` | `synthesise_hardened()` |
+|---|---|---|
+| max | OVERFIT `drop(pair_max(x), 4)` | **proved, `fold[pair_max](x)`** |
+| min | `sub(sum(x), sum(pair_max(x)))` | proved, `head(sort(x))` |
+| sum | `fold[pair_add](x)` | nothing matched |
+
+Counterexample refinement already covers it. The self-hosting bench was right
+about `max` all along, and the "separate defect" reading is withdrawn.
+
+### The sharper form of the empty-list limit
+
+The same table says something the previous entry did not know. **`sum` fails the
+hardened path even when the specification contains no empty case at all.**
+
+The proof domain is every list of length 0..4 over -2..2, and that INCLUDES the
+empty one. A caller cannot dodge it by leaving it out of the cases. So a bare
+fold can never be CERTIFIED for an aggregation with an identity element -- not
+merely "when the empty list is in the spec", which is how the previous entry put
+it.
+
+Which explains the result it reported rather than leaving it as a curiosity: the
+self-hosting bench answers with
+
+```
+sum = append(fold[pair_add](x), drop(0, len(x)))
+```
+
+**because the proof domain forced the composition.** The limit is on FoldF, the
+proof refuses to look away from it, and the search goes around it.
+
+32/32.
+
 ## v0.148.0 - A cap on the wrong quantity hid the fold, and the fold hid a wrong answer
 
 **Author:** Claude Opus 5

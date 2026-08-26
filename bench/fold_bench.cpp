@@ -140,6 +140,42 @@ Row try_agg(const Library& lib, const Agg& a, std::size_t ncase, std::size_t len
             if (n.op == Op::FoldF || n.op == Op::MapF) r.folded = true;
     return r;
 }
+// PART THREE asks the same question of the entry point callers actually use.
+// construct() returns the first behavioural match in size order and stops; a
+// length-specific program is smaller than a fold, so it can win and then fail
+// the holdout. synthesise_hardened() proves over a bounded domain and refines
+// against counterexamples, so if the difference is refinement it will show here
+// and the "construct() stops too early" reading is about the raw engine only.
+Row try_hardened(const Library& lib, const Agg& a, std::size_t ncase,
+                 std::size_t len, bool empty_case) {
+    Spec s;
+    s.name = a.name;
+    s.banned.push_back(a.op);
+    if (empty_case) s.cases.push_back({Value{}, a.ref(Value{})});
+    for (std::size_t c = 0; c < ncase; ++c) {
+        Value in;
+        for (std::size_t j = 0; j < len; ++j)
+            in.push_back(static_cast<std::int64_t>(rnd() % 30) - 12);
+        s.cases.push_back({in, a.ref(in)});
+    }
+    const Oracle oracle = [&a](const Value& v) { return a.ref(v); };
+    const BuildResult b = synthesise_hardened(s, 20000, oracle, -2, 2, 4, 3, &lib);
+    Row r;
+    r.found = (b.proof == Proof::Exhaustive);
+    r.prog  = b.recipe.found ? b.recipe.render() : std::string("nothing matched");
+    switch (b.proof) {
+        case Proof::Generalised: r.proof = "generalised"; break;
+        case Proof::Exhaustive:  r.proof = "exhaustive";  break;
+        case Proof::Verified:    r.proof = "verified";    break;
+        case Proof::Tested:      r.proof = "OVERFIT";     break;
+        default:                 r.proof = "none";        break;
+    }
+    r.folded = false;
+    if (b.recipe.found)
+        for (const Expr& n : b.recipe.pool)
+            if (n.op == Op::FoldF || n.op == Op::MapF) r.folded = true;
+    return r;
+}
 }  // namespace
 
 int main() {
@@ -216,19 +252,44 @@ int main() {
     std::printf("           Without it the search takes sub(sum(x), sum(pair_max(x))),\n");
     std::printf("           which is correct and is not a fold. With it that route dies\n");
     std::printf("           -- 0 - 0 is not {} -- and the fold is what is left.\n\n");
-    std::printf("  max   -- OVERFITS both ways, and this is a separate defect. It\n");
-    std::printf("           returns drop(pair_max(x), 4): sort, drop the first, drop\n");
-    std::printf("           four more, which is the last element of a SIX-element list\n");
-    std::printf("           and of no other length. The holdout catches it. But\n");
-    std::printf("           fold[pair_max](x) was available and correct, and the search\n");
-    std::printf("           never reached it, because construct() stops at the FIRST\n");
-    std::printf("           behavioural match in size order and a length-specific\n");
-    std::printf("           program is smaller than a fold. Rejecting it on the holdout\n");
-    std::printf("           is not the same as looking for another one.\n\n");
+    std::printf("  max   -- OVERFITS here, and part three shows this is a property of\n");
+    std::printf("           the RAW ENGINE rather than a defect in the shipped path.\n");
+    std::printf("           It returns drop(pair_max(x), 4): sort, drop the first,\n");
+    std::printf("           drop four more -- the last element of a SIX-element list\n");
+    std::printf("           and of no other length. construct() returns the first\n");
+    std::printf("           behavioural match in size order and stops, and a\n");
+    std::printf("           length-specific program is smaller than a fold, so it wins\n");
+    std::printf("           the race and then fails the holdout. Refinement is what\n");
+    std::printf("           covers that, and callers get it.\n\n");
     std::printf("  The self-hosting bench rebuilds max as fold[pair_max](x) with 28\n");
     std::printf("  visible cases, where the length-specific program cannot survive the\n");
     std::printf("  spread of lengths. So both halves of this point the same way: more\n");
     std::printf("  evidence should buy more capability. Under the old cap it bought\n");
     std::printf("  LESS, which is what part one measures.\n\n");
+
+    std::printf("\n\n  PART THREE -- the same tasks through synthesise_hardened(), which is\n");
+    std::printf("  what callers actually use: a proof over every list of length 0..4 over\n");
+    std::printf("  -2..2, the extremal inputs, and counterexample refinement.\n\n");
+    std::printf("  primitive | empty case | proof       | program\n");
+    std::printf("  ----------|------------|-------------|--------------------------\n");
+    for (const Agg& a : aggregations())
+        for (const bool ec : {false, true}) {
+            const Row r = try_hardened(lib, a, 12, 6, ec);
+            std::printf("  %-9s | %-10s | %-11s | %s\n", a.name, ec ? "yes" : "no",
+                        r.proof, r.prog.c_str());
+        }
+    std::printf("\n  max IS answered here -- fold[pair_max](x), proved -- and overfits in\n");
+    std::printf("  part two. So stopping at the first match is a property of the raw\n");
+    std::printf("  engine that counterexample refinement already covers. The shipped\n");
+    std::printf("  path is not the thing at fault, and part two should not be read as\n");
+    std::printf("  saying it is.\n\n");
+    std::printf("  AND `sum` FAILS HERE EVEN WITH NO EMPTY CASE IN THE SPECIFICATION,\n");
+    std::printf("  which is the sharper form of part two. The proof domain is every\n");
+    std::printf("  list of length 0..4 -- and that INCLUDES the empty one. A caller\n");
+    std::printf("  cannot avoid it by leaving it out of the cases, so a bare fold can\n");
+    std::printf("  never be certified for an aggregation with an identity element, no\n");
+    std::printf("  matter what it is asked. That is why the self-hosting bench answers\n");
+    std::printf("  with append(fold[pair_add](x), drop(0, len(x))) rather than a fold:\n");
+    std::printf("  the proof domain forced the composition, and the search found it.\n\n");
     return 0;
 }
