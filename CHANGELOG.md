@@ -3,6 +3,69 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.160.0 - The curriculum was not saturating. An aggregation was in the wrong place
+
+**Author:** Claude Opus 5
+
+"The curriculum saturates" has been the standing block on the ascent for many
+cycles and has been attacked four times: richer atoms (rejected), novelty-gated
+atoms (rejected), three concurrent searches (tier 17 to 29), and the generator-s
+patience (tier 29 to 40). It has never been the same problem twice and it has
+never gone away.
+
+The atom set-s own comment has said what is wrong the whole time:
+
+> len, sum, take3, tail and drop2 funnel into ABSORBING STATES -- the singleton
+> and the empty list -- after which sort, rev and pos are all identity and the
+> chain-s behaviour was settled long before its last operation. Measured, 99.3%
+> of depth-15 draws were rejected for exactly that.
+
+The response was to ADD five atoms with no absorbing state. That raises the odds
+of drawing a safe one and does nothing about the odds of drawing an absorbing
+one, and `compose()` samples uniformly at every position -- so a depth-40 chain
+takes roughly forty independent chances to hit one. **It was never that deep
+tasks do not exist. The generator could hardly draw one.**
+
+### An aggregation belongs at the end of a chain
+
+A length-reducing atom may now only be the LAST operation. That is where an
+aggregation belongs semantically -- the sum of a transformed list is a sensible
+task, a transform of a sum is a transform of one number -- and it makes the chain
+length mean what the tier says it means.
+
+Classified by measurement, not by a list to maintain: an atom shrinks if it ever
+returns fewer elements than it was given. An atom added next week is classified
+without anyone remembering this exists.
+
+| | before | after |
+|---|---|---|
+| tiers under-filled | 4 of 42 | **0 of 67** |
+| depth reached | tier 42 | **tier 68** |
+| ended because | the curriculum ran out | **the clock ran out** |
+| verified, carried / empty | 179 / 147 | 331 / 276 |
+| carried-minus-empty gap | 32 | **55** |
+
+**The binding constraint has moved from the curriculum to the wall clock.** After
+four cycles of the generator failing to fill a tier, it now fills every tier at
+every depth it reaches, and tier 67 still verifies three.
+
+### What this does not show
+
+The task DISTRIBUTION changed, so 331 against 179 is not a like-for-like
+capability comparison and is not offered as one. What is defensible:
+
+- tiers fill at every depth reached, which is the thing that was failing;
+- the run is bound by time rather than by the curriculum, which is a change of
+  KIND and not of degree;
+- the carried-minus-empty gap is measured within one run against identical
+  specifications, and it grew from 32 to 55;
+- **shallow tiers are unchanged** -- tier 5 solves 10 where it solved 11, tier 10
+  solves 5 where it solved 4 -- so this is not a blanket easing. The gain is
+  concentrated exactly where absorption was destroying draws: tier 15 goes 1 to
+  8, tier 30 goes 0 to 4, tier 40 goes 2 to 6.
+
+32/32.
+
 ## v0.159.0 - The decomposition that is worth 9x, and costs two thirds of the ascent
 
 **Author:** Claude Opus 5

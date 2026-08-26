@@ -179,12 +179,60 @@ std::vector<Atom> g_atoms = atoms();
 
 // A tier-d task is d atoms composed. Drawn at random rather than hand-picked, so
 // the suite is not a set of problems chosen because they are solvable.
+// AN AGGREGATION BELONGS AT THE END OF A CHAIN, NOT IN THE MIDDLE.
+//
+// The comment on the atom set says it already: len, sum, take3, tail and drop2
+// funnel into ABSORBING STATES -- the singleton and the empty list -- after which
+// sort, rev and pos are all identity and the chain-s behaviour was settled long
+// before its last operation. 99.3% of depth-15 draws were rejected for exactly
+// that. The response then was to ADD five atoms with no absorbing state, which
+// raised the odds of drawing one and did nothing about the odds of drawing an
+// absorbing one -- and compose() still samples uniformly at every position, so a
+// depth-40 chain draws roughly forty independent chances to hit one. It is not
+// that deep tasks do not exist. It is that this generator can hardly draw one.
+//
+// So: a length-REDUCING atom may only be the LAST operation. That is where an
+// aggregation belongs semantically -- sum of a transformed list is a sensible
+// task, a transform of a sum is a transform of one number -- and it makes the
+// chain length mean what the tier says it means.
+//
+// Classified by MEASUREMENT rather than by a list I would have to maintain: an
+// atom shrinks if it ever returns fewer elements than it was given. An atom
+// added next week is classified without anyone remembering this exists.
+const std::vector<char>& shrinking() {
+    static const std::vector<char> tab = [] {
+        std::vector<char> t(g_atoms.size(), 0);
+        std::vector<Value> probes;
+        for (std::size_t i = 0; i < 8; ++i) {
+            Value v;
+            for (std::size_t j = 0; j < 3 + i; ++j)
+                v.push_back(static_cast<std::int64_t>(j * 7 % 13) - 5);
+            probes.push_back(std::move(v));
+        }
+        for (std::size_t k = 0; k < g_atoms.size(); ++k)
+            for (const Value& v : probes)
+                if (g_atoms[k].f(v).size() < v.size()) { t[k] = 1; break; }
+        return t;
+    }();
+    return tab;
+}
+
 Task compose(std::size_t depth) {
     const auto a = g_atoms;
+    const std::vector<char>& shrink = shrinking();
+    std::vector<std::size_t> keep_len;
+    for (std::size_t k = 0; k < a.size(); ++k) if (!shrink[k]) keep_len.push_back(k);
+
     std::vector<std::size_t> pick;
     std::string name;
     for (std::size_t i = 0; i < depth; ++i) {
-        const std::size_t k = rnd() % a.size();
+        // Every position but the last is drawn from the length-preserving atoms.
+        // If there are none the restriction cannot apply and this is the old
+        // uniform draw.
+        const bool last = (i + 1 == depth);
+        const std::size_t k = (last || keep_len.empty())
+                            ? rnd() % a.size()
+                            : keep_len[rnd() % keep_len.size()];
         pick.push_back(k);
         name += (i ? "." : "");
         name += a[k].name;
