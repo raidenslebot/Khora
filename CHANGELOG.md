@@ -3,6 +3,59 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.147.0 - Why self-rebuilding cannot compound, and a fix proven inert where it should be
+
+**Author:** Claude Opus 5
+
+The previous entry measured the self-hosting loop stalling: 9, 9, 9, 12 gained in
+round one and **0 later at every budget**. It named the mechanism as mutual
+dependence between reconstructions. There is a simpler one underneath it, and it
+is worth stating because it settles the question rather than describing it.
+
+### The stall is structural, not a Library rejection
+
+The tempting explanation is that the Library dedups behaviourally, so a rebuild
+is refused. **It is not that** -- `admit_recipe` compares op, a, b and k node by
+node, so it dedups by SYNTAX, and a differently-shaped reconstruction IS
+admitted. Nothing is being turned away.
+
+The real reason is that a CORRECT reconstruction restores exactly the behaviour
+that was withdrawn. Round two therefore faces the same problem round one did:
+nothing was ADDED, something was RECREATED. **A loop that re-derives behaviours
+it already has cannot compound by construction**, and no budget fixes that --
+which is exactly what the flat 0-at-every-budget column showed.
+
+So self-hosting measures REDUNDANCY -- how much of its own primitive set the
+system can supply from the rest, honestly 12 of 22 with the circularity hole
+closed -- and redundancy was never going to show growth. The loop that acquires
+behaviours it does NOT have is the ascent, and that one has compounded in every
+measurement since the entry titled "The ascent compounds: 185 verified against
+138". **This is not a new result and is not claimed as one.**
+
+### Which makes the ascent the regression check for the circularity fix
+
+The fix touches `construct()`, which every search in the tree goes through, so it
+needed checking in both directions.
+
+Inert where nothing is banned: forced the guard to `if (false && ...)`, rebuilt,
+diffed the fixed-task-set bench output -- **byte-identical**.
+
+Harmless where the library matters: `ascent_bench` at its shipped defaults (24
+tasks per tier, 240 s, pool 20,000) still separates the arms --
+
+| | verified | |
+|---|---|---|
+| carrying the library | **179** | 156 used a library primitive, 21 chained one into another |
+| empty library, same specs | 147 | |
+| gap | **+32, +21.8%** | over 42 tiers, ending on the stopping rule |
+
+Read that as a regression check, not as a headline. The best recorded ascent is
+**271 against 223 at 40 tasks per tier**, which costs about 1,000 s at tier 40;
+the default configuration is smaller and cheaper and lands lower. And the
+standing warning from the novelty-gate result applies to every gap this bench
+prints: **a difference can be widened from either end**, so the control number is
+the one to watch.
+
 ## v0.146.0 - The self-hosting benchmark was partly measuring itself, and the loop does not compound
 
 **Author:** Claude Opus 5
