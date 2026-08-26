@@ -3,6 +3,98 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.135.0 — A model checker found a live trap in a default I shipped today
+
+**Author:** Claude Opus 5
+
+Formal verification and continuous control, the last two absences with agents on
+them. One of them found a correctness bug in code committed eight hours ago.
+
+### The trap
+
+A DPLL solver and a bounded model checker, applied to `logos::solve()` itself.
+The solver is checked in both directions on 1,200 instances -- every SAT answer
+by evaluating the assignment, every UNSAT against brute force -- with zero
+mismatches, and its phase transition interpolates to ratio 4.36 against a
+literature value of 4.26, which drifts up at the n=60 the bench uses.
+
+The finding is not in the SAT tables. It is this:
+
+**`max_depth` is not a tree depth. It is a budget of RESOLUTION STEPS, and a
+transitive chain of k links costs 2k-1 of them.** Measured directly against the
+real engine, not inferred from the model:
+
+```
+links     1    2    3    4    5    6
+depth     1    3    5    7    9   11
+```
+
+`reason_tools` -- committed today, v0.122.0 -- calls `ask(goal, 4, 32)`. **That
+reaches chains of two links.** The `transitive` and `chain` rules installed in the
+same commit could barely chain at all, and nothing said so: a query that runs out
+of budget returns an empty result indistinguishable from "no such fact". The
+library default of 8 answers four links and silently answers nothing beyond.
+
+Fixed. The tools now name the number of LINKS and convert, `know` prints both
+numbers, and the logos header says what the budget actually counts.
+
+Over the resolver's full reachable set the checker also found **39 states
+reachable, 20 of them (51%) provably answer-free** -- an absorbing region with no
+move back, which `solve()` keeps expanding until the budget hits zero. A one-line
+guard removes 19 of those states, loses no answer state, and does not lengthen
+the shortest proof.
+
+### Control: the learned controller loses, and the reason generalises
+
+Cart-pole at 50 Hz with RK4, a cascade PID, LQR from the continuous Riccati
+equation, and three learned controllers on `khora::descent`.
+
+| controller | balanced | ISE | effort | J = ISE + 0.1·effort |
+|---|---|---|---|---|
+| zero / random | 0/200 | — | — | falls in 0.7 s |
+| PID (cascade) | 200/200 | 0.19 | 2.3 | 0.42 |
+| **LQR (optimal)** | 200/200 | 0.18 | 1.8 | **0.36** |
+| CEM policy (descent) | 200/200 | 0.15 | 3.6 | 0.51 |
+| BC of LQR (descent) | 197/200 | 0.41 | 10.1 | 1.42 |
+
+**The learned controller loses to both classical ones** -- 42% worse than LQR on
+the objective LQR provably minimises. CEM reaches a lower ISE and a higher J: it
+buys tracking with twice the effort, and reporting ISE alone would have called
+that a win. Behaviour cloning of LQR, the only arm using `descent` exactly as
+designed, is the worst thing in the table -- 98.2% action agreement with the
+expert and 5.6x its effort from chattering across quantisation bins.
+
+LQR is also the cheapest non-trivial controller and needed **zero plant
+interactions**; it needed a model instead. PID's tuning grid cost 5,832 episodes,
+more than CEM's 4,320 -- hand tuning is not free.
+
+Two real bugs were found and fixed inside the work: the DISCRETE Riccati
+recursion diverges on this plant (at dt=0.02 the discretised A is within 0.3% of
+identity, so each iteration subtracts near-equal matrices; P overflowed after
+~9,000 iterations and produced NaN gains that looked like an algebra error), and
+an integrator on ANGLE error cannot remove a position offset however it is tuned.
+And forward Euler would have destroyed the plant on its own -- 1.096 rad of error
+against RK4's 2.1e-6.
+
+### The one finding that transfers out of the cart-pole
+
+Under a constant force bias, LQR's ISE goes **0.15 to 21.3** while PID holds at
+2.23. A tenfold difference from one term: LQR has no integral state, so it cannot
+see a standing offset.
+
+**Nothing in Khora accumulates a persistent error signal over time.** Whetstone
+measures faculty yield, Telos estimates returns, the Plexus counts
+co-occurrences -- every estimator in the tree is memoryless in exactly the way an
+LQR is memoryless, and inherits exactly the same failure: a standing bias it
+cannot perceive because nothing integrates it. That is worth more than the
+controller.
+
+As a capability, continuous control is worth near zero here -- Khora has no
+actuator and no plant, and nothing evolving in time that needs regulating at
+50 Hz. As a measuring instrument it is worth a lot, because LQR provides a
+PROVABLE floor for a STATED objective, so "42% off optimal" is a fact rather than
+a ranking. Almost no other bench in this tree can say that.
+
 ## v0.134.0 — Khora reads eight million tokens and cannot predict the next one
 
 **Author:** Claude Opus 5

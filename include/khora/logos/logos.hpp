@@ -104,9 +104,25 @@ public:
               const std::string& obj);
     void rule(Rule r);
 
-    // Every binding that satisfies the goal. `max_depth` bounds the resolution
-    // and `max_answers` bounds the result, because a rule base with a cycle in
-    // it can otherwise enumerate for a very long time even when it terminates.
+    // Every binding that satisfies the goal. `max_answers` bounds the result,
+    // because a rule base with a cycle in it can otherwise enumerate for a very
+    // long time even when it terminates.
+    //
+    // MAX_DEPTH IS NOT A TREE DEPTH. It is a budget of RESOLUTION STEPS, and it
+    // is spent one unit per goal removed from the stack -- so a rule with a
+    // two-atom body costs one step and adds two more goals to pay for. A
+    // transitive chain of k links therefore costs 2k-1, measured against this
+    // engine:
+    //
+    //     links   1   2   3   4   5   6
+    //     depth   1   3   5   7   9  11
+    //
+    // The default of 8 answers chains of four links and SILENTLY ANSWERS NOTHING
+    // beyond -- not an error, not a truncation warning, just an empty result that
+    // looks exactly like "no such fact". A bounded model check of the resolver
+    // found this; `reason_tools` was passing 4 and reaching two links.
+    //
+    // Callers who think in chain length should pass 2k-1 rather than k.
     std::vector<Answer> ask(const Atom& goal, int max_depth = 8,
                             std::size_t max_answers = 64) const;
 

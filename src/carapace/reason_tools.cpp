@@ -49,6 +49,18 @@ namespace {
 ToolResult make_ok(std::string output) { return {true, std::move(output), ""}; }
 ToolResult make_err(std::string error) { return {false, "", std::move(error)}; }
 
+// HOW DEEP TO SEARCH, EXPRESSED IN SOMETHING A CALLER CAN REASON ABOUT.
+//
+// logos::Engine counts RESOLUTION STEPS, not links, and a transitive chain of k
+// links costs 2k-1 of them. These tools were passing 4, which reaches chains of
+// TWO -- so the `transitive` and `chain` rules installed below could barely
+// chain at all, and said nothing about it: an over-budget query returns an empty
+// result that is indistinguishable from "no such fact".
+//
+// A bounded model check of the resolver is what turned that up. The tools now
+// name the number of links and convert.
+constexpr int kMaxLinks = 4;
+constexpr int depth_for_links(int links) { return 2 * links - 1; }
 struct Reasoner {
     logos::Engine engine;
     std::uint32_t floor = 2;
@@ -118,7 +130,10 @@ void register_reason_tools(Carapace& c, const ligature::Ligature& lig) {
             os << "    chain      : causes(?x,?z) :- causes(?x,?y), causes(?y,?z)\n";
             os << "    transitive : is-a(?x,?z)   :- is-a(?x,?y), is-a(?y,?z)\n";
             os << "  the first two were written into Ligature::deduce as C++ and are\n"
-                  "  now ordinary clauses; add a fourth with `rule`.";
+                  "  now ordinary clauses; add a fourth with `rule`.\n";
+            os << "  chains are followed " << kMaxLinks << " links deep ("
+               << depth_for_links(kMaxLinks) << " resolution steps -- the engine counts\n"
+                  "  steps, and a k-link chain costs 2k-1 of them).";
             return make_ok(os.str());
         }
     });
@@ -168,10 +183,11 @@ void register_reason_tools(Carapace& c, const ligature::Ligature& lig) {
             ensure(*state, lig);
             const logos::Atom goal{i.args[0], logos::Term::parse(i.args[1]),
                                    logos::Term::parse(i.args[2])};
-            // Depth four rather than the default eight. The rules here are
-            // transitive over a real graph, and each extra level multiplies the
-            // search by the branching factor of the relation.
-            const auto answers = state->engine.ask(goal, 4, 32);
+            // The budget is expressed in LINKS and converted, because the engine
+            // counts resolution steps and the two differ by a factor of two. Four
+            // links is 7 steps; passing 4 directly, which is what this did, buys
+            // two links and looks identical to the relation not holding.
+            const auto answers = state->engine.ask(goal, depth_for_links(kMaxLinks), 32);
             if (answers.empty()) return make_ok("  nothing satisfies " + goal.str());
             std::ostringstream os;
             os << "  " << answers.size() << " answer" << (answers.size() == 1 ? "" : "s")
@@ -207,7 +223,7 @@ void register_reason_tools(Carapace& c, const ligature::Ligature& lig) {
             ensure(*state, lig);
             const logos::Atom goal{i.args[0], logos::Term::parse(i.args[1]),
                                    logos::Term::parse(i.args[2])};
-            const std::string e = state->engine.explain(goal, 4);
+            const std::string e = state->engine.explain(goal, depth_for_links(kMaxLinks));
             if (e.empty()) return make_ok("  " + goal.str() + " does not hold, so there is "
                                                               "nothing to explain");
             return make_ok("  " + e);
