@@ -228,23 +228,53 @@ std::vector<Atom> g_atoms = atoms();
 // atom shrinks if it ever returns fewer elements than it was given. An atom
 // added next week is classified without anyone remembering this exists.
 const std::vector<char>& shrinking() {
-    static const std::vector<char> tab = [] {
-        std::vector<char> t(g_atoms.size(), 0);
-        std::vector<Value> probes;
+    // EXTENDED, NOT CACHED ONCE, AND THAT DISTINCTION WAS A BUG I SHIPPED.
+    //
+    // g_atoms GROWS -- every verified task becomes an atom for later tiers, which
+    // is the entire point of the loop. The first version of this computed the
+    // table once into a `static const` sized to g_atoms.size() at first call, and
+    // chain_of then indexed it with k running over the CURRENT set. Every atom
+    // learned after the first call was read past the end of that vector.
+    //
+    // Undefined behaviour reading heap bytes, so the classification of a learned
+    // atom was whatever happened to be in memory: the ascent was reproducible
+    // before this function existed and stopped being reproducible the moment it
+    // did, diverging at tier 2 or 3 -- exactly when the first learned atoms
+    // arrive. Six other causes were ruled out by measurement before I re-read my
+    // own code, which is the lesson worth keeping.
+    //
+    // Atoms are only ever appended, so classify the new ones and keep the rest.
+    // Single-threaded by construction: compose() runs in the tier-fill loop, and
+    // the speculation threads call solve_one, never this.
+    static std::vector<char> tab;
+    static const std::vector<Value> probes = [] {
+        std::vector<Value> ps;
         for (std::size_t i = 0; i < 8; ++i) {
             Value v;
             for (std::size_t j = 0; j < 3 + i; ++j)
                 v.push_back(static_cast<std::int64_t>(j * 7 % 13) - 5);
-            probes.push_back(std::move(v));
+            ps.push_back(std::move(v));
         }
-        for (std::size_t k = 0; k < g_atoms.size(); ++k)
-            for (const Value& v : probes)
-                if (g_atoms[k].f(v).size() < v.size()) { t[k] = 1; break; }
-        return t;
+        return ps;
     }();
+    for (std::size_t k = tab.size(); k < g_atoms.size(); ++k) {
+        char sh = 0;
+        for (const Value& v : probes)
+            if (g_atoms[k].f(v).size() < v.size()) { sh = 1; break; }
+        tab.push_back(sh);
+    }
     return tab;
 }
 
+// Percentage of depth>=4 tasks generated as a BRANCH rather than a pipeline.
+// Zero reproduces the chains-only curriculum, which is what the ceiling at tier
+// 82 was a property of. Set from argv so both arms come from one binary.
+std::size_t g_branch_pct = 33;
+// Whether a length-reducing atom may only be the LAST operation of a chain.
+// Off reproduces the original uniform draw, so the rule can be A/B tested
+// rather than inherited -- it was first measured while an out-of-bounds read
+// was corrupting this very classifier.
+bool g_agg_last = true;
 // One straight pipeline of atoms, which is the only shape this curriculum knew
 // how to ask for.
 struct Chain { Fn f; std::string name; };
@@ -261,7 +291,7 @@ Chain chain_of(std::size_t depth) {
         // Every position but the last is drawn from the length-preserving atoms.
         // If there are none the restriction cannot apply and this is the old
         // uniform draw.
-        const bool last = (i + 1 == depth);
+        const bool last = (i + 1 == depth) || !g_agg_last;
         const std::size_t k = (last || keep_len.empty())
                             ? rnd() % a.size()
                             : keep_len[rnd() % keep_len.size()];
@@ -298,7 +328,7 @@ Chain chain_of(std::size_t depth) {
 Task compose(std::size_t depth) {
     // Shallow tiers stay pipelines: a branch needs two chains worth splitting
     // into, and at depth 3 there is nothing to split.
-    if (depth >= 4 && rnd() % 3 == 0) {
+    if (depth >= 4 && g_branch_pct > 0 && rnd() % 100 < g_branch_pct) {
         const std::size_t d1 = 1 + rnd() % (depth - 1);
         const std::size_t d2 = depth - d1;
         Chain A = chain_of(d1);
@@ -619,6 +649,8 @@ int main(int argc, char** argv) {
     // came to disagree by sixty verified programs. Zero keeps the old behaviour.
     const std::size_t max_tier = (argc > 4) ? std::stoul(argv[4]) : 0;
     if (argc > 5) g_spec_width = std::max<std::size_t>(1, std::stoul(argv[5]));
+    if (argc > 6) g_branch_pct = std::min<std::size_t>(100, std::stoul(argv[6]));
+    if (argc > 7) g_agg_last = (std::stoul(argv[7]) != 0);
 
     std::printf("Does it get better at its job, or only finish its job?\n\n");
     std::printf("  %zu tasks per tier, depth rising with no fixed ceiling, pool %zu,\n",

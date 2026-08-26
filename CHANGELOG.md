@@ -3,6 +3,84 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.165.0 - The root of the nondeterminism was mine, and it invalidates four entries
+
+**Author:** Claude Opus 5
+
+Two entries ago I ruled out six causes of the ascent-s nondeterminism by
+measurement and wrote that the root was unfound. It was thirteen lines above the
+code I was staring at, in a function I had added myself the same day.
+
+```cpp
+const std::vector<char>& shrinking() {
+    static const std::vector<char> tab = [] {
+        std::vector<char> t(g_atoms.size(), 0);   // sized ONCE, at first call
+        ...
+    }();
+    return tab;
+}
+```
+
+`g_atoms` **grows** -- every verified task becomes an atom for later tiers, which
+is the entire point of the loop. `chain_of` indexes this table with `k` running
+over the CURRENT atom set, so every atom learned after the first call was read
+**past the end of the vector**. Undefined behaviour reading heap bytes, so the
+classification of a learned atom was whatever happened to be in memory.
+
+That is why the bench was reproducible before this function existed and stopped
+being reproducible the moment it did, diverging at tier 2 or 3 -- exactly when
+the first learned atoms arrive. Fixed by extending the table instead of caching
+it once. **Two capped runs are now identical apart from wall-clock timings.**
+
+### Which invalidates the numbers in four entries, including the good ones
+
+Everything measured after the classifier landed was measured under that read.
+Re-run with it fixed, at fixed tier caps, one binary with knobs for each arm:
+
+| claim as published | measured cleanly |
+|---|---|
+| aggregation-last: 179 -> 331 carried, median 293 | **184 -> 214** at cap 60, chains only |
+| "Depth 82 is not reachable by chaining this atom set" | **withdrawn** -- chains run 100 tiers with no wall |
+| branching: tier 82 -> 239, 353 -> 2082 verified | **214 -> 257** at cap 100 |
+| nondeterminism: "a loop whose vocabulary is its own output cannot be reproducible" | **wrong** -- it was the out-of-bounds read |
+
+**Both mechanisms survive and neither is what I said it was.**
+
+| chains only, cap 60 | carried | empty | gap |
+|---|---|---|---|
+| original uniform draw | 184 | 152 | 32 |
+| aggregation-last | **214** | **176** | 38 |
+
+| cap 100 | carried | empty | gap |
+|---|---|---|---|
+| chains only | 214 | 176 | 38 |
+| one task in three a branch | **257** | **223** | 34 |
+
+Aggregation-last is worth **+16%**, branching a further **+20%**. Not +85% and
+not +490%. And the tier-82 ceiling I built a whole entry around, calling it "the
+true one" and "a property of the vocabulary", was heap garbage.
+
+Note the gap does not move with branching -- 34 against 38 -- so branching raises
+what BOTH arms achieve rather than what the library is worth. The absolute
+totals rise; the library-s marginal value does not.
+
+### What is actually worth having here
+
+Not the two percentages. **The bench is reproducible now**, and it was not before
+-- so every comparison after this one means something, and every ascent number
+in this log before it is a single draw from an unmeasured distribution.
+
+Both arms of both mechanisms are knobs on one binary rather than edits between
+runs: `ascent_bench <per_tier> <budget_s> <pool> <max_tier> <spec_width>`
+`<branch_pct> <agg_last>`. A/B without recompiling is what made the corrections
+above cheap enough to actually do.
+
+I ruled out six causes with measurements before re-reading thirty lines I had
+written that morning. The eliminations were all correct and the search was
+aimed at the wrong half of the program.
+
+32/32.
+
 ## v0.164.0 - The wall was made of chains
 
 **Author:** Claude Opus 5
