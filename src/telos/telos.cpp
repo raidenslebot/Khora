@@ -101,9 +101,11 @@ std::uint64_t mix(std::uint64_t x) {
 }
 
 // True with probability 1/k, deterministically for a given (ctx, a, k, n).
-bool take_tie(std::size_t ctx, std::size_t a, std::size_t k, std::size_t n) {
+bool take_tie(std::size_t ctx, std::size_t a, std::size_t k, std::size_t n,
+              std::uint64_t salt) {
     if (k <= 1) return true;
-    const std::uint64_t h = mix(0x9E3779B97F4A7C15ULL ^ (std::uint64_t)ctx * 0x100000001B3ULL
+    const std::uint64_t h = mix(0x9E3779B97F4A7C15ULL ^ salt * 0xD6E8FEB86659FD93ULL
+                                ^ (std::uint64_t)ctx * 0x100000001B3ULL
                                 ^ (std::uint64_t)a * 0x9E3779B1ULL
                                 ^ (std::uint64_t)n * 0x85EBCA77ULL
                                 ^ (std::uint64_t)k);
@@ -125,7 +127,7 @@ std::size_t Valuer::choose(std::size_t context, double c,
         // Equal bounds are the common case, not the rare one: with an untried
         // arm scoring infinity, EVERY untried arm ties, and after learning any
         // two arms with the same mean and the same count do too.
-        if (v == best_v) { ++ties; if (take_tie(context, a, ties, seen)) best_a = a; }
+        if (v == best_v) { ++ties; if (take_tie(context, a, ties, seen, salt_)) best_a = a; }
     };
     if (allowed.empty()) { for (std::size_t a = 0; a < n; ++a) consider(a); }
     else                 { for (std::size_t a : allowed) consider(a); }
@@ -145,7 +147,7 @@ std::size_t Valuer::best(std::size_t context,
         // question that asks what the learner has CONCLUDED.
         if (e.count == 0) return;
         if (e.mean > best_v) { best_v = e.mean; best_a = a; ties = 1; return; }
-        if (e.mean == best_v) { ++ties; if (take_tie(context, a, ties, seen)) best_a = a; }
+        if (e.mean == best_v) { ++ties; if (take_tie(context, a, ties, seen, salt_)) best_a = a; }
     };
     if (allowed.empty()) { for (std::size_t a = 0; a < n; ++a) consider(a); }
     else                 { for (std::size_t a : allowed) consider(a); }

@@ -1028,7 +1028,69 @@ int main(int argc, char** argv) {
                       "  belong to an earlier act and the bandit cannot represent that.";
             }
             os << "\n  Yield is binary, so this MI is bounded by 1 bit and small numbers are\n"
-                  "  expected; the control is what makes the size readable.";
+                  "  expected; the control is what makes the size readable.\n";
+
+            // --- AND IS THE YIELD STATIONARY? ---------------------------------
+            //
+            // Telos estimates an act's value as a running MEAN, which is the
+            // right estimator only if the thing being averaged is not moving. A
+            // cart-pole bench made the general form of this concrete: an LQR has
+            // no integral state, so a constant bias sends its error from 0.15 to
+            // 21.3 while a PID with one integral term holds at 2.23. Every
+            // estimator in this tree is memoryless in the same way.
+            //
+            // If an act's yield drifts -- study stops paying once the corpus is
+            // read, say -- a mean over all history chases it at 1/n and is stale
+            // for a long time. A constant-step (recency-weighted) average would
+            // track it. Which is right is an empirical question about THIS
+            // stream, so it gets measured before anything is changed.
+            os << "\n  per-act yield, first half of the stream against the second:\n";
+            os << "    act            first     second      shift\n";
+            const std::size_t half = h.size() / 2;
+            double worst_shift = 0.0;
+            for (std::size_t a = 0; a < will.act_count(); ++a) {
+                double s1 = 0, n1 = 0, s2 = 0, n2 = 0;
+                for (std::size_t i = 0; i < h.size(); ++i) {
+                    if (h[i].action != a) continue;
+                    if (i < half) { s1 += h[i].yield; ++n1; } else { s2 += h[i].yield; ++n2; }
+                }
+                if (n1 < 3 || n2 < 3) {
+                    os << "    " << std::setw(12) << will.at(a).name
+                       << "   (seen " << (int)(n1 + n2) << " times -- too few to split)\n";
+                    continue;
+                }
+                const double m1 = s1 / n1, m2 = s2 / n2;
+                // A SHIFT IS NOT A DRIFT UNTIL THE SAMPLES CAN TELL THEM APART.
+                // The first version of this compared the shift to a fixed 0.10
+                // and duly announced a drift because  went from ONE
+                // success in five to zero in four. That is noise with a verdict
+                // attached. Both halves get a Wilson interval and only disjoint
+                // intervals count, which is the convention every bench here uses.
+                auto wil = [](double k, double n) {
+                    const double z = 1.96, ph = k / n, d = 1.0 + z * z / n;
+                    const double c = ph + z * z / (2 * n);
+                    const double m = z * std::sqrt(ph * (1 - ph) / n + z * z / (4 * n * n));
+                    return std::pair<double, double>{(c - m) / d, (c + m) / d};
+                };
+                const auto i1 = wil(s1, n1), i2 = wil(s2, n2);
+                const bool disjoint = i1.first > i2.second || i1.second < i2.first;
+                if (disjoint) worst_shift = std::max(worst_shift, std::fabs(m2 - m1));
+                os << "    " << std::setw(12) << will.at(a).name
+                   << std::fixed << std::setprecision(2)
+                   << "  " << std::setw(6) << m1 << " (" << (int)n1 << ")"
+                   << "  " << std::setw(6) << m2 << " (" << (int)n2 << ")"
+                   << "  " << std::setw(6) << (m2 - m1)
+                   << (disjoint ? "  *" : "   ") << "\n";
+            }
+            if (worst_shift <= 0.0) {
+                os << "\n  NOTHING DRIFTS DETECTABLY -- no act shifts by more than its own\n"
+                      "  sampling error. A running mean is the correct estimator here, and a\n"
+                      "  recency weight would only add a forgetting rate to tune.";
+            } else {
+                os << "\n  SOMETHING DRIFTS -- largest half-to-half shift " << worst_shift
+                   << ". A running mean chases that at 1/n; a constant step\n"
+                      "  size would track it. (* marks the acts whose halves are disjoint.)";
+            }
             return {true, os.str(), ""};
         }
     });

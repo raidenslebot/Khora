@@ -57,6 +57,22 @@ public:
     Valuer() = default;
     Valuer(std::size_t contexts, std::size_t actions);
 
+    // A PER-LEARNER SALT, because the tie-break is derived and not drawn.
+    //
+    // Ties are broken by hashing (context, action, tie index, evidence) rather
+    // than by a mutable RNG, so a const method holds no state and two identical
+    // queries agree. That is right for one learner and wrong for several: N
+    // Valuers that have seen the same yields are bit-identical, so they all
+    // break a tie the same way and all choose the same arm.
+    //
+    // A swarm bench measured it -- bid collisions at 100%% of the theoretical
+    // maximum at every N, with the whole value of the mechanism coming from a
+    // clearing rule bolted on afterwards to undo it. Give each learner a
+    // different salt and they diverge on ties while each stays reproducible.
+    // Zero is the default and reproduces the single-learner behaviour exactly.
+    void set_salt(std::uint64_t s) noexcept { salt_ = s; }
+    std::uint64_t salt() const noexcept { return salt_; }
+
     // Grow to fit. Called implicitly by observe(); exposed because a caller that
     // knows its repertoire up front should say so rather than discover it.
     void fit(std::size_t contexts, std::size_t actions);
@@ -94,6 +110,7 @@ private:
     std::size_t contexts_ = 0;
     std::size_t actions_  = 0;
     std::vector<Estimate> cell_;      // contexts_ x actions_, row-major
+    std::uint64_t         salt_ = 0;
 
     Estimate&       at(std::size_t c, std::size_t a);
     const Estimate& at(std::size_t c, std::size_t a) const;

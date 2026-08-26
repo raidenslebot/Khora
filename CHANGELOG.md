@@ -3,6 +3,91 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.136.0 — No swarm beats one agent, and the swarm found the flaw in yesterday's fix
+
+**Author:** Claude Opus 5
+
+The last field absence. No coalition, no negotiation, no auction, no consensus,
+no shared state -- Khora is one agent, and the synapse bus had zero publishers in
+the whole binary until today.
+
+### The question that is usually dodged
+
+Not "can many agents do more than one" -- trivially yes, if you give them more
+compute. **At the SAME TOTAL BUDGET, do N agents beat one?** 4,096 evaluations of
+a 256x256 landscape, split N ways, over 300 identical landscapes with paired
+McNemar tests because overlapping Wilson intervals were hiding real differences.
+
+| mechanism | N=1 | N=2 | N=4 | N=8 | N=16 |
+|---|---|---|---|---|---|
+| independent (0 msgs) | **82.3%** | 83.0% | 76.7% | 75.0% (p=.030) | 72.0% (p=.003) |
+| partition (0 msgs) | 82.3% | 82.0% | 80.7% | 77.7% | 73.7% (p=.011) |
+| board-cells (4,096 msgs) | 82.3% | 85.3% (p=.34) | 79.0% | 78.3% | 73.3% (p=.010) |
+| auction (telos bids) | 62.0% | 44.7% | 27.0% | 26.7% | 38.0% |
+
+**No swarm beats one agent.** The best cell anywhere is board-cells at N=2, 85.3%
+against 82.3%, paired p=0.34 -- not significant. Every mechanism at N=16 is
+significantly WORSE than a single agent. The curve is monotone downward:
+splitting a fixed budget costs performance, and coordination only reduces how
+much it costs. It is damage control, not a gain.
+
+The construction is what makes that sharp. Every agent memoises its own
+evaluations, so **one agent has a perfect shared cache for free** -- everything
+communication can buy is at best recovering what one agent gets for nothing.
+
+### Communication and parallelism are different things and the bench separates them
+
+Holding N fixed, sharing evaluations beats the same agent count with no messages
+at N=2 (p=.016), N=4 (p=.016) and N=8 (p=.002), never losing a trial. So
+communication buys something real, worth 7-10 trials in 300. It stops being
+detectable at exactly N=16 -- where **23.7% of deliveries are dropped**, because
+broadcast is O(N^2) and draining is O(1).
+
+And a static partition sending **zero messages** cuts duplicated work from 417 to
+201, recovering most of what a 4,096-message blackboard achieves, for nothing.
+
+A payload note worth recording: the bus carries Glyphs only, so each 16-byte fact
+moves **1,250 bytes**.
+
+### And it found the flaw in a fix I made this morning
+
+The tie-break I added to `telos::Valuer` derives its randomness by hashing
+(context, action, tie index, evidence) rather than drawing it, deliberately, so a
+const method holds no mutable RNG and two identical queries agree.
+
+**Correct for one learner and wrong for several.** N Valuers that have observed
+the same yields are bit-identical, so they break every tie the same way and all
+choose the same arm. Measured: bid collisions at **100% of the theoretical
+maximum at every N**. Removing only the clearing rule that papers over it drops
+N=16 from 38.0% to 6.7% and raises duplicated work from 280 to 2,437 of 4,096 --
+so the negotiation was the entire value of that mechanism and the shared learning
+contributed nothing to diversity.
+
+Fixed with a per-learner salt mixed into the hash. Zero is the default and
+reproduces single-learner behaviour exactly; a swarm gives each agent its own and
+they diverge on ties while each stays reproducible.
+
+### The other cross-domain analogy that did not survive contact
+
+The cart-pole bench observed that nothing in Khora accumulates a persistent error
+signal, and that an LQR without an integral term cannot see a standing offset.
+The obvious application is Telos, which estimates act value as a running MEAN --
+memoryless in exactly that way.
+
+So `act_stream` now also reports each act's yield in the first half of the
+stream against the second. Over 100 live acts, four of five acts shift by exactly
+0.00 and the fifth (`dream`) goes from one success in five to zero in four.
+
+The first version of that check compared the shift to a fixed 0.10 and duly
+announced a drift. **That is noise with a verdict attached** -- the same error
+this session has now caught four times. Both halves get a Wilson interval and
+only disjoint intervals count. Nothing is disjoint: **nothing drifts detectably,
+and a running mean is the correct estimator here.**
+
+Two cross-domain analogies in a row -- Q-learning from a gridworld, integrators
+from a cart-pole -- each argued for changing the live system, and each was
+refused by measuring the live system instead. That is what the breadth is for.
+
 ## v0.135.0 — A model checker found a live trap in a default I shipped today
 
 **Author:** Claude Opus 5
