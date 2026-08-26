@@ -3,6 +3,94 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.134.0 — Khora reads eight million tokens and cannot predict the next one
+
+**Author:** Claude Opus 5
+
+No language model existed anywhere: no next-token distribution, no perplexity, no
+held-out likelihood, no sampling. Khora reads 8M tokens and could not produce a
+sentence or score the one thing it does produce.
+
+58 books held out WHOLE (34 train / 12 dev / 12 test), closed vocabulary of
+35,259 types from the training split alone, out-of-vocabulary rewritten to
+`<unk>` and **scored rather than skipped**, and a runtime check that every
+distribution sums to one over all 35,259 words -- max deviation 8e-14 to 7e-13,
+because a smoothing bug reads as a good perplexity.
+
+| model | test PPL | vs uniform | vs unigram |
+|---|---|---|---|
+| uniform over V | 35259.0 | 1.00x | 0.02x |
+| unigram | 790.8 | 44.6x | 1.00x |
+| **Kneser-Ney n=4** | **336.7** | **104.7x** | **2.35x** |
+| Witten-Bell n=2 | 389.5 | 90.5x | 2.03x |
+| PLEXUS deg160, raw co-occurrence | 677.9 | 52.0x | 1.17x |
+| PLEXUS deg4000, raw co-occurrence | 613.9 | 57.4x | 1.29x |
+| PLEXUS deg4000, PPMI (affinity()) | 714.2 | 49.4x | 1.11x |
+
+### Khora's own machinery is not a language model
+
+**The Plexus is 1.81x worse than a plain trigram** (613.9 against 339.9) and
+1.66x worse than a plain bigram -- with lambda tuned on dev AND twenty-five times
+the shipped edge budget. At the shipped `max_degree=160` it is 677.9.
+
+On next-token accuracy it is worse than that. **Every Plexus readout sits inside
+the unigram's confidence interval on top-1** (8.63-9.12% against the unigram's
+8.87% [8.33, 9.44]). As a next-word predictor the graph is statistically
+indistinguishable from ignoring the previous word entirely.
+
+### Two explanations, and the bench separates them
+
+**Memory is not the answer.** Coverage -- the share of held-out (prev, next) pairs
+where the next word is anywhere in prev's stored neighbour list -- goes from
+36.25% at degree 160 to **70.35%** at degree 4000. Nearly doubling it moved
+perplexity only 678 to 614.
+
+**The readout is.** The graph is symmetric over a plus-or-minus-3 window, so its
+edge weight answers "does w occur near prev", which cannot distinguish `prev w`
+from `w prev`. And edges are ranked by PMI, a measure of SURPRISE, which is the
+exact opposite of what belongs at the top of a next-token distribution where the
+answer is usually "the". Raw co-occurrence beats PPMI at every lambda.
+
+`associates()` is worse still, and for a reason worth stating: it deletes every
+word above 0.6% of tokens as a function word, which leaves **13,919 of 35,259
+nodes with an empty associate list**. It cannot emit "the" under any
+circumstances.
+
+### And the thing Khora ships as speaking cannot be scored at all
+
+`Cogitator::utter()` is a greedy argmax over six Cortex candidates with an
+anti-repetition filter. **It has no distribution**, so it cannot be given a
+perplexity even in principle. The Plexus predictor above is the best probabilistic
+reading of the same substrate, and its number is 613.9.
+
+### What the samples look like
+
+Kneser-Ney n=4, unedited:
+
+```
+and the other two men were seen running away by land
+yet the very best able to defend their own
+if the moon were to be found in the same place
+```
+
+The best Plexus readout, same sampler:
+
+```
+the all the which their when he as
+is not he he it he his the <unk>
+to the and have with him him his from which or in be to at the the
+```
+
+The n-gram side clears the bar and its output is recognisably English. Khora's
+own machinery is an associative memory that was never asked to be a sequence
+model, and it shows.
+
+Not comparable to published perplexities: punctuation, case and numbers are
+stripped by the tokenizer, so these numbers describe this corpus and this
+vocabulary only. No neural baseline -- a small transformer would beat every row.
+The shipped 84k-node Plexus is deliberately unused because it read the held-out
+books; the graphs here are rebuilt in-process from the training split.
+
 ## v0.133.1 — The CBOW advantage survives a second probe, and everything is near chance on it
 
 **Author:** Claude Opus 5
