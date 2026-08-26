@@ -102,3 +102,6 @@ target_link_libraries(chiasm_bench PRIVATE khora::chiasm khora::retina khora::ak
 
 add_executable(substrate_bench substrate_bench.cpp)
 target_link_libraries(substrate_bench PRIVATE khora::lattice)
+
+add_executable(capability_bench capability_bench.cpp)
+target_link_libraries(capability_bench PRIVATE khora::chiasm khora::techne)

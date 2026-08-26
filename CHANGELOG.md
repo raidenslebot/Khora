@@ -3,6 +3,65 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.125.0 — A program retrieved by looking at the problem
+
+**Author:** Claude Opus 5
+
+Khora synthesises certified programs and it binds anything to anything. Those
+two had never met. Together they answer a different question from either: shown
+a task it has never seen, can Khora hand back a program for it WITHOUT searching,
+and does that program actually work?
+
+Not generated, not searched -- unbound. And it is unfakeable to measure, which is
+the reason to build it this way: the retrieved program is EXECUTED on the new
+task's own cases and checked against their outputs. No label to match, no
+similarity threshold to argue about.
+
+### The precondition, measured before anything was built on it
+
+A task is a set of (input, output) pairs, and two instances of the same function
+have entirely different inputs. So the obvious encoding -- bundle the example
+pairs -- might not cluster by family at all, and everything downstream would be
+meaningless. That gets measured first:
+
+| encoding | same family | different family | gap |
+|---|---|---|---|
+| naive (bundle the examples) | 0.400 | 0.270 | +0.131 |
+| structural (where each output element came from) | 0.756 | 0.199 | **+0.557** |
+
+I expected the naive one to be flat and it is not -- inputs drawn from one
+distribution give it a weak signal. It is still four times worse than describing
+the transformation instead of the values.
+
+### And then the only measurement that counts
+
+Eight list-rearranging families, each solved ONCE by search, the recipe bound to
+the task that produced it. Then a fresh sample of the same family is encoded, a
+program is retrieved, and that program is run on the fresh cases:
+
+| method | ran correctly on cases it was not retrieved from |
+|---|---|
+| naive task encoding | 31.9% (51/160) |
+| **structural task encoding** | **84.4% (135/160)** |
+| a program picked at random | 15.0% (24/160) |
+
+The random floor is 15.0% rather than 1/8, because several of these families
+agree with each other on some inputs. Assuming 12.5% would have overstated the
+result, which is why it is measured.
+
+**Synthesis: 30.1 ms per program. Retrieval: 0.0013 ms per query.** Roughly
+23,000x cheaper to remember a capability than to re-derive it, and what comes
+back still carries the proof state it was certified with.
+
+### What it does not show, stated because the limits are narrow
+
+All eight families rearrange a list, which is exactly the class the structural
+encoding was designed for -- it has no way to describe arithmetic or predicate
+programs and would say nothing useful about them. And every program is retrieved
+from a memory that already contains the family being asked for. Retrieving
+something USEFUL for a family never stored is a different and much harder
+question this does not touch.
+
 ## v0.124.0 — A picture, a sound and a word in one memory, and the constant that limits it
 
 **Author:** Claude Opus 5
