@@ -3,6 +3,63 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.161.0 - Given time, the ascent now stops for a real reason
+
+**Author:** Claude Opus 5
+
+The previous entry moved the ascent from ending at tier 42 on a generator
+artefact to running out of wall clock at tier 68. The obvious question is what
+happens with more clock, and it is the question this project exists to ask: does
+the loop keep going?
+
+**It does not, and now it stops for a reason worth knowing.** At 1500 seconds:
+
+```
+-- tier 82: every draw collapsed to something shallower.
+   Depth 82 is not reachable by chaining this atom set.
+```
+
+That line fires only when **48,000 consecutive draws** all collapse to identity,
+to a single atom, or to a constant. It is not the generator giving up -- that was
+the old failure, at a budget of 1,600 -- it is the composition space running out.
+
+| run | depth | stopped because |
+|---|---|---|
+| before the fix | tier 42 | the generator gave up, an artefact |
+| after, 240 s | tier 68 | the wall clock |
+| after, 1500 s | **tier 82** | **depth 82 is unreachable by this atom set** |
+
+| | 240 s | 1500 s |
+|---|---|---|
+| verified, carried / empty | 331 / 276 | 353 / 294 |
+| carried-minus-empty gap | 55 | **59** |
+| tiers under-filled | 0 of 67 | 11 of 81, first at tier 68 |
+
+### What that actually says
+
+Six times the clock buys **fourteen more tiers and twenty-two more verified
+programs**, and then a wall that more time cannot move. The fix converted an
+ARTEFACT ceiling into the TRUE one.
+
+And the true one is a property of the vocabulary, not of the search, the budget,
+or the library. Length-preserving atoms over lists of bounded length generate a
+finite set of behaviours; compose enough of them and every new chain is one you
+have already seen. Filling degrades from tier 68 and fails outright at 82.
+
+**So the ascent is open-ended in the way that was claimed for it and bounded in a
+way that was not.** It compounds -- 353 against 294 on identical specifications,
+a gap of 59 -- and it terminates, at a depth set by how many distinct behaviours
+the atoms can reach between them. Anything that raises that ceiling has to widen
+the vocabulary; nothing else in the loop is what stops it.
+
+Worth reading against the earlier result that richer atoms were REJECTED --
+`cummax` and friends measured on the wrong side of the line and cost a third of
+the ascent. That was measured while absorption was destroying 99.3% of deep
+draws, which is exactly the regime an atom-set change would be judged wrongly in.
+It is worth asking again now, and it is not asked here.
+
+32/32.
+
 ## v0.160.0 - The curriculum was not saturating. An aggregation was in the wrong place
 
 **Author:** Claude Opus 5
