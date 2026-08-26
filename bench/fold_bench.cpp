@@ -176,6 +176,122 @@ Row try_hardened(const Library& lib, const Agg& a, std::size_t ncase,
             if (n.op == Op::FoldF || n.op == Op::MapF) r.folded = true;
     return r;
 }
+// PART FOUR. Everything above folds a list down to ONE value, which is what a
+// pairwise combiner suggests. But FoldF does not require that:
+//
+//     Value acc{A[0]};
+//     Value pair = acc; pair.push_back(A[i]);
+//     acc = lib->call(li, pair, depth + 1);
+//
+// `acc` is whatever the body returned, of any length. So a body taking
+// [a1..ak, next] to [next, a1..ak] makes the fold a REVERSE, and a body that
+// inserts `next` into a sorted prefix makes it an INSERTION SORT. `rev` and
+// `sort` are two of the seven primitives no arm of the self-hosting bench has
+// ever rebuilt, in any cycle.
+//
+// The bodies are derived under a ban, exactly like the pairwise ones -- deriving
+// `roll` while Rev is available, or `insort` while Sort is, would be the whole
+// question begged. What is never handed over is the fold.
+struct ListBody {
+    const char* name;
+    Op          ban;         // the primitive this body must not be given
+    const char* target;      // ...and the one the fold should then rebuild
+    Op          target_op;
+    std::function<Value(const Value&)> body;   // [a1..ak, next] -> next acc
+    std::function<Value(const Value&)> ref;    // what the fold should compute
+};
+
+std::vector<ListBody> list_bodies() {
+    return {
+        {"roll", Op::Rev, "rev", Op::Rev,
+         [](const Value& v) {
+             if (v.empty()) return Value{};
+             Value o{v.back()};
+             for (std::size_t i = 0; i + 1 < v.size(); ++i) o.push_back(v[i]);
+             return o; },
+         [](const Value& v) { return Value(v.rbegin(), v.rend()); }},
+        {"insort", Op::Sort, "sort", Op::Sort,
+         [](const Value& v) { Value o = v; std::sort(o.begin(), o.end()); return o; },
+         [](const Value& v) { Value o = v; std::sort(o.begin(), o.end()); return o; }},
+    };
+}
+
+// Derived under the ban, on inputs shaped the way a fold will present them: a
+// prefix that is already an accumulator, plus one more element.
+bool derive_list_body(Library& lib, const ListBody& lb, std::size_t pool) {
+    Spec s;
+    s.name = lb.name;
+    s.banned.push_back(lb.ban);
+    for (std::size_t i = 0; i < 16; ++i) {
+        const std::size_t k = 2 + (i % 4);
+        Value in;
+        for (std::size_t j = 0; j < k; ++j)
+            in.push_back(static_cast<std::int64_t>(rnd() % 24) - 10);
+        if (lb.ban == Op::Sort) std::sort(in.begin(), in.end() - 1);
+        s.cases.push_back({in, lb.body(in)});
+    }
+    for (std::size_t i = 0; i < 6; ++i) {
+        Value in;
+        for (std::size_t j = 0; j < 5 + i % 3; ++j)
+            in.push_back(static_cast<std::int64_t>(rnd() % 500) - 250);
+        if (lb.ban == Op::Sort) std::sort(in.begin(), in.end() - 1);
+        s.holdout.push_back({in, lb.body(in)});
+    }
+    const BuildResult b = construct(s, pool, &lib);
+    std::printf("  %-7s body: %-13s %s\n", lb.name,
+                b.proof == Proof::Generalised ? "generalised" : "NOT DERIVED",
+                b.recipe.found ? b.recipe.render().c_str() : "--");
+    if (b.proof != Proof::Generalised) return false;
+    return lib.admit_recipe(lb.name, b.recipe, 0);
+}
+// `roll` does not derive, and the useful question is whether the INSTRUCTION SET
+// cannot express it or the SEARCH cannot reach it. Those have opposite remedies.
+//
+// Asked separately, both halves come back immediately:
+//     last  = add(head(x), sum(delta(x)))     first element plus every step
+//     init  = sub(tail(x), delta(x))
+// so the set expresses them and the composite is out of reach only because
+// bottom-up enumeration is exponential in depth -- append(last, init) written out
+// is nine nodes. That is the exact thing a library is for, so this builds the
+// ladder rung by rung and admits each one before asking for the next.
+struct Rung { const char* name; std::function<Value(const Value&)> f; };
+
+// `sorted_prefix` presents the input the way a fold will: the accumulator is
+// already sorted by induction, and one raw element arrives on the end. A rung
+// derived on unsorted prefixes would be answering a harder question than the
+// fold ever asks it.
+bool climb(Library& lib, const Rung& r, std::size_t pool, Op ban,
+           bool sorted_prefix = false) {
+    Spec sp;
+    sp.name = r.name;
+    sp.banned.push_back(ban);
+    for (std::size_t i = 0; i < 16; ++i) {
+        Value in;
+        for (std::size_t j = 0; j < 2 + (i % 4); ++j)
+            in.push_back(static_cast<std::int64_t>(rnd() % 24) - 10);
+        if (sorted_prefix) std::sort(in.begin(), in.end() - 1);
+        sp.cases.push_back({in, r.f(in)});
+    }
+    for (std::size_t i = 0; i < 6; ++i) {
+        Value in;
+        for (std::size_t j = 0; j < 5 + i % 3; ++j)
+            in.push_back(static_cast<std::int64_t>(rnd() % 500) - 250);
+        if (sorted_prefix) std::sort(in.begin(), in.end() - 1);
+        sp.holdout.push_back({in, r.f(in)});
+    }
+    // THE HARDENED GATE, not construct(). A rung that will be COMPOSED has to be
+    // right everywhere the composition can reach it, and Proof::Generalised only
+    // means it survived six held-out cases. Measured: `below` cleared that bar
+    // and was wrong on 149 of 200 fresh inputs OF THE SAME SHAPE, which made the
+    // whole sort ladder produce a fold equal to sort on 60 of 200.
+    const Oracle oracle = [&r](const Value& v) { return r.f(v); };
+    const BuildResult b = synthesise_hardened(sp, pool, oracle, -2, 2, 4, 3, &lib);
+    const bool ok = (b.proof == Proof::Exhaustive);
+    std::printf("    %-8s %-12s %s\n", r.name,
+                ok ? "PROVED" : (b.recipe.found ? "only fitted" : "nothing matched"),
+                b.recipe.found ? b.recipe.render().c_str() : "--");
+    return ok && lib.admit_recipe(r.name, b.recipe, 0);
+}
 }  // namespace
 
 int main() {
@@ -291,5 +407,184 @@ int main() {
     std::printf("  matter what it is asked. That is why the self-hosting bench answers\n");
     std::printf("  with append(fold[pair_add](x), drop(0, len(x))) rather than a fold:\n");
     std::printf("  the proof domain forced the composition, and the search found it.\n\n");
+
+    std::printf("\n\n  PART FOUR -- a fold whose ACCUMULATOR IS A LIST.\n\n");
+    std::printf("  Everything above folds a list down to one value. FoldF does not\n");
+    std::printf("  require that -- the accumulator is whatever the body returned. A body\n");
+    std::printf("  sending [a1..ak, next] to [next, a1..ak] makes the fold a REVERSE.\n");
+    std::printf("  `rev` is one of the seven primitives no arm of the self-hosting bench\n");
+    std::printf("  has ever rebuilt, in any cycle.\n\n");
+    std::printf("  Asked outright, the body does not derive at a pool of 400,000. Asked\n");
+    std::printf("  as a LADDER, with each rung admitted before the next is requested and\n");
+    std::printf("  Rev banned at every step:\n\n");
+
+    Library lib4(32);
+    const std::vector<Rung> ladder = {
+        {"last", [](const Value& v) { return v.empty() ? Value{} : Value{v.back()}; }},
+        {"init", [](const Value& v) {
+             return v.empty() ? Value{} : Value(v.begin(), v.end() - 1); }},
+        {"roll", [](const Value& v) {
+             if (v.empty()) return Value{};
+             Value o{v.back()};
+             for (std::size_t i = 0; i + 1 < v.size(); ++i) o.push_back(v[i]);
+             return o; }},
+    };
+    bool built = true;
+    for (const Rung& r : ladder) built = climb(lib4, r, 400000, Op::Rev) && built;
+
+    if (!built) {
+        std::printf("\n  The ladder did not reach the top, so there is nothing to fold with.\n\n");
+        return 0;
+    }
+
+    // And now the fold, which is the part that is never handed over.
+    Spec sr;
+    sr.name = "rev";
+    sr.banned.push_back(Op::Rev);
+    for (std::size_t c = 0; c < 12; ++c) {
+        Value in;
+        for (std::size_t j = 0; j < 3 + c % 5; ++j)
+            in.push_back(static_cast<std::int64_t>(rnd() % 30) - 12);
+        sr.cases.push_back({in, Value(in.rbegin(), in.rend())});
+    }
+    const Oracle rev_oracle = [](const Value& v) { return Value(v.rbegin(), v.rend()); };
+    const BuildResult br = synthesise_hardened(sr, 400000, rev_oracle, -2, 2, 4, 3, &lib4);
+    std::printf("\n    %-8s %-12s %s\n", "rev",
+                br.proof == Proof::Exhaustive ? "PROVED"
+                : br.proof == Proof::Generalised ? "generalised" : "no",
+                br.recipe.found ? br.recipe.render().c_str() : "nothing matched");
+
+    std::printf("\n  A fold that accumulates a LIST is a different capability from one\n");
+    std::printf("  that accumulates a value, and FoldF supported it all along. What was\n");
+    std::printf("  missing was never the loop -- it was a body to hand it, and a body\n");
+    std::printf("  nine nodes deep is not something bottom-up enumeration reaches. It is\n");
+    std::printf("  something a library reaches, one rung at a time.\n\n");
+    std::printf("  `rev` is PROVED here -- exhaustive over every list of length 0..4\n");
+    std::printf("  over -2..2, the extremal inputs, and counterexample refinement --\n");
+    std::printf("  and no arm of the self-hosting bench has ever rebuilt it.\n");
+
+    // ---------------------------------------------------------------------
+    // PART FIVE. The same ladder aimed at `sort`, which is also on the
+    // never-rebuilt list. An insertion sort is a fold whose body puts one
+    // element into an already-sorted prefix, and the prefix IS sorted by
+    // induction, so the body only has to handle that case.
+    std::printf("\n\n  PART FIVE -- the same ladder aimed at `sort`.\n\n");
+    std::printf("  An insertion sort is a fold whose body inserts one element into a\n");
+    std::printf("  sorted prefix, and the accumulator is sorted by induction. Rungs are\n");
+    std::printf("  derived on that shape, with Sort banned at every step:\n\n");
+
+    Library lib5(32);
+    auto last_of = [](const Value& v) { return v.empty() ? Value{} : Value{v.back()}; };
+    auto init_of = [](const Value& v) {
+        return v.empty() ? Value{} : Value(v.begin(), v.end() - 1); };
+    const std::vector<Rung> srt = {
+        {"last", last_of},
+        {"init", init_of},
+        // strictly greater than the arriving element, out of the sorted prefix
+        {"above", [&](const Value& v) {
+             Value o; if (v.empty()) return o;
+             for (const std::int64_t x : init_of(v)) if (x > v.back()) o.push_back(x);
+             return o; }},
+        // the rest of the prefix, which is a PREFIX because the prefix is sorted
+        {"below", [&](const Value& v) {
+             Value o; if (v.empty()) return o;
+             for (const std::int64_t x : init_of(v)) if (!(x > v.back())) o.push_back(x);
+             return o; }},
+        {"insort", [](const Value& v) {
+             Value o = v; std::sort(o.begin(), o.end()); return o; }},
+    };
+    bool built5 = true;
+    for (const Rung& r : srt) built5 = climb(lib5, r, 400000, Op::Sort, true) && built5;
+
+    if (built5) {
+        // Before blaming the search: is fold[insort] even equal to sort? Run the
+        // fold by hand against the library that was just built. "The search did
+        // not find it" and "there is nothing to find" are different findings and
+        // the table above cannot tell them apart.
+        const std::size_t ins = lib5.size() - 1;
+        std::size_t agree = 0, total = 0;
+        Value witness_in, witness_got, witness_want;
+        for (std::size_t t = 0; t < 200; ++t) {
+            Value in;
+            for (std::size_t j = 0; j < 1 + t % 6; ++j)
+                in.push_back(static_cast<std::int64_t>(rnd() % 20) - 8);
+            Value acc{in[0]};
+            for (std::size_t i = 1; i < in.size(); ++i) {
+                Value pair = acc;
+                pair.push_back(in[i]);
+                acc = lib5.call(ins, pair, 1);
+                if (acc.empty()) break;
+            }
+            Value want = in;
+            std::sort(want.begin(), want.end());
+            ++total;
+            if (acc == want) ++agree;
+            else if (witness_in.empty()) { witness_in = in; witness_got = acc; witness_want = want; }
+        }
+        // And each rung against ITS OWN reference, on the shape the fold hands it,
+        // so a failure can be attributed to a rung instead of to the ladder.
+        {
+            const char* nm[] = {"last", "init", "above", "below", "insort"};
+            for (std::size_t li = 0; li < srt.size() && li < lib5.size(); ++li) {
+                std::size_t ok = 0, n = 0;
+                for (std::size_t t = 0; t < 200; ++t) {
+                    Value in;
+                    for (std::size_t j = 0; j < 2 + t % 5; ++j)
+                        in.push_back(static_cast<std::int64_t>(rnd() % 20) - 8);
+                    std::sort(in.begin(), in.end() - 1);
+                    ++n;
+                    if (lib5.call(li, in, 1) == srt[li].f(in)) ++ok;
+                }
+                std::printf("    %-8s against its own reference on the fold's shape: %zu/%zu\n",
+                            nm[li], ok, n);
+            }
+        }
+        std::printf("\n    fold[insort] evaluated by hand: %zu/%zu inputs equal sort\n",
+                    agree, total);
+        if (!witness_in.empty()) {
+            auto show = [](const char* tag, const Value& v) {
+                std::printf("      %-6s [", tag);
+                for (std::size_t i = 0; i < v.size(); ++i)
+                    std::printf("%s%lld", i ? " " : "", static_cast<long long>(v[i]));
+                std::printf("]\n");
+            };
+            show("in", witness_in); show("got", witness_got); show("want", witness_want);
+        }
+
+        Spec ss;
+        ss.name = "sort";
+        ss.banned.push_back(Op::Sort);
+        for (std::size_t c = 0; c < 12; ++c) {
+            Value in;
+            for (std::size_t j = 0; j < 3 + c % 5; ++j)
+                in.push_back(static_cast<std::int64_t>(rnd() % 30) - 12);
+            Value out = in; std::sort(out.begin(), out.end());
+            ss.cases.push_back({in, out});
+        }
+        const Oracle so = [](const Value& v) {
+            Value o = v; std::sort(o.begin(), o.end()); return o; };
+        const BuildResult bs = synthesise_hardened(ss, 400000, so, -2, 2, 4, 3, &lib5);
+        std::printf("\n    %-8s %-12s %s\n", "sort",
+                    bs.proof == Proof::Exhaustive ? "PROVED"
+                    : bs.proof == Proof::Generalised ? "generalised" : "no",
+                    bs.recipe.found ? bs.recipe.render().c_str() : "nothing matched");
+    } else {
+        std::printf("\n  The sort ladder stops at `below`, and that is the gate working.\n\n");
+        std::printf("  `below` is the part of a sorted prefix NOT greater than the\n");
+        std::printf("  arriving element. It cannot be proved from this operation set, and\n");
+        std::printf("  under the WEAKER criterion it looked fine: construct() returned\n");
+        std::printf("  until(x, append(above(x), last(x))) with Proof::Generalised, which\n");
+        std::printf("  means it survived six held-out cases. Measured against its own\n");
+        std::printf("  reference on 200 fresh inputs OF THE SAME SHAPE it scored 51/200,\n");
+        std::printf("  `insort` built on it scored 50/200, and fold[insort] equalled sort\n");
+        std::printf("  on 60 of 200 -- so there was nothing for the search to find and\n");
+        std::printf("  synthesise_hardened was right to return nothing for `sort`.\n\n");
+        std::printf("  A RUNG THAT WILL BE COMPOSED NEEDS THE HARDENED GATE. Six held-out\n");
+        std::printf("  cases certify a rung against its own specification, and the next\n");
+        std::printf("  rung puts it to a use that specification never described. The two\n");
+        std::printf("  ladders differ in exactly that: rev survives because every rung is\n");
+        std::printf("  right everywhere, not because the search was luckier.\n\n");
+    }
+    std::printf("\n");
     return 0;
 }

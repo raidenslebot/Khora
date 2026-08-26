@@ -3,6 +3,86 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.150.0 - The fold accumulates a LIST, and `rev` falls out of a three-rung ladder
+
+**Author:** Claude Opus 5
+
+Everything written about FoldF in this repo, including by me two entries ago,
+treats it as folding a list down to ONE value -- which is what a pairwise
+combiner suggests. The operation never required that:
+
+```cpp
+Value acc{A[0]};
+Value pair = acc; pair.push_back(A[i]);
+acc = lib->call(li, pair, depth + 1);
+```
+
+`acc` is whatever the body returned, of any length. So a body sending
+`[a1..ak, next]` to `[next, a1..ak]` makes the fold a **reverse**, and one that
+inserts into a sorted prefix makes it an **insertion sort**. `rev` and `sort` are
+two of the seven primitives no arm of the self-hosting bench has rebuilt in any
+cycle.
+
+### `rev`, proved
+
+Asked outright, the body does not derive at a pool of **400,000**. The useful
+question is whether the instruction set cannot express it or the search cannot
+reach it, because those have opposite remedies -- and asked separately, both
+halves come back at once. So: build the ladder, admit each rung before asking for
+the next, with Rev banned at every step.
+
+```
+last     PROVED       add(head(x), sum(delta(x)))      first element plus every step
+init     PROVED       sub(tail(x), delta(x))
+roll     PROVED       append(lib0(x), lib1(x))         unreachable outright at 400,000
+rev      PROVED       fold[lib2](x)
+```
+
+PROVED is `Proof::Exhaustive`: every list of length 0..4 over -2..2, the extremal
+inputs, and counterexample refinement. The fold is never handed over -- only the
+body is, and the body is derived under the ban rather than written.
+
+What was missing was never the loop. It was **a body to hand it**, and a body
+nine nodes deep is not something bottom-up enumeration reaches. It is something a
+library reaches, one rung at a time.
+
+### `sort` does not, and finding out why is the better half
+
+The same ladder aimed at `sort` produces five rungs that all clear
+`Proof::Generalised` -- and the fold built on them is **wrong**:
+
+| rung | against its own reference, 200 fresh inputs of the fold-s shape |
+|---|---|
+| last, init, above | 200/200 |
+| **below** | **51/200** |
+| insort, built on it | 50/200 |
+| fold[insort] vs sort | **60/200** |
+
+So there was nothing for the search to find, and `synthesise_hardened` returning
+nothing for `sort` was correct rather than a shortfall. The failure is ONE rung:
+`below`, the part of a sorted prefix not greater than the arriving element,
+answered by `until(x, append(above(x), last(x)))` -- which fits the cases it was
+shown and is wrong on three quarters of fresh ones.
+
+### A rung that will be composed needs the hardened gate
+
+`Proof::Generalised` means a candidate survived **six held-out cases**. That
+certifies a rung against its own specification, and the next rung puts it to a
+use that specification never described. Deriving every rung through
+`synthesise_hardened` instead:
+
+| | weak gate | hardened gate |
+|---|---|---|
+| rev ladder | 4 rungs admitted, fold correct | **4 PROVED**, fold correct |
+| sort ladder | 5 admitted, **fold wrong on 140/200** | stops at `below`, refused |
+
+The two ladders do not differ because one search was luckier. They differ because
+every rung of the first is right EVERYWHERE and one rung of the second is right
+only where it was looked at. Under the weak gate that distinction is invisible
+and the error arrives four steps later as a fold that sorts three inputs in five.
+
+32/32.
+
 ## v0.149.0 - Testing the previous entry against the entry point callers actually use
 
 **Author:** Claude Opus 5
