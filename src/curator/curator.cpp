@@ -126,11 +126,50 @@ Decision Curator::decide() const {
     const auto cat = pool_.catalog();
     constexpr std::uint32_t kMaxReReads = 4;  // beyond this, a tome is "learned enough"
 
-    // 1. STUDY freshly-acquired material once — absorb what was just brought in.
+    // 1. STUDY freshly-acquired material once -- absorb what was just brought in.
+    //
+    // SHORTEST FIRST, AND THE PREVIOUS ORDER WAS NOT A CHOICE.
+    //
+    // This took the first unread tome in CATALOG order, which is acquisition
+    // order. That is not an acquisition function, it is an accident: steps 2 and
+    // 3 below only fire when a topic has no material at all, so over an
+    // already-held corpus they never fire, and step 4 re-reads. The content of a
+    // book played no part in when it was read.
+    //
+    // Measured over the real Reservoir at a FIXED TOKEN BUDGET -- 45 books
+    // choosable, 14 held out before any policy existed, four budgets from 10% to
+    // 100% -- catalog order beat 0 of 20 random orderings on held-out vocabulary
+    // coverage, and at a 50% budget it sat below the MINIMUM of all twenty on
+    // every learning measure. Reading in the order things arrived is worse than
+    // reading them shuffled, because the four longest books were acquired first.
+    //
+    // Shortest first beat 20 of 20 random draws on held-out type coverage,
+    // next-token accuracy and bits-per-token at the 25% and 50% budgets, and
+    // 19-20 of 20 at 10%. The mechanism is not subtle and is not semantic: at the
+    // same token budget it reads 17 books where catalog order reads 4, so it
+    // touches more authors, registers and centuries, and held-out vocabulary is
+    // exactly what that buys. Nothing here is an information-theoretic
+    // acquisition function; a novelty rule measured alongside it turned out to be
+    // a length metric in disguise and lost to every random draw.
+    //
+    // THE COST, because it is real and this is a trade rather than a win. Typed
+    // relations go the other way: catalog order yielded 56 support-2 triples at a
+    // 10% budget against 25 for random and 20 for shortest-first. Long,
+    // syntactically regular books give the Ligature more corroborated relations
+    // than many short ones do. Vocabulary and prediction improve; the structured
+    // layer gets thinner early on and catches up as the budget grows.
+    //
+    // It is taken anyway, because the thing being replaced was never chosen. An
+    // accident with an unmeasured cost is worse than a policy with a measured
+    // one, and this cost is now on the record where the next person can weigh it.
     {
         const khora::reservoir::Tome* target = nullptr;
         for (const auto& t : cat) {
-            if (t.times_read == 0) { target = &t; break; }
+            if (t.times_read != 0) continue;
+            // original_bytes rather than stored_bytes: compression ratio varies
+            // with the text, and what is being ordered is how much there is to
+            // read, not how much disk it happens to occupy.
+            if (!target || t.original_bytes < target->original_bytes) target = &t;
         }
         if (target) {
             Decision d;

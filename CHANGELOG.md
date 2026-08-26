@@ -3,6 +3,67 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.139.0 — Khora chose what to read in the order it arrived, which is worse than a shuffle
+
+**Author:** Claude Opus 5
+
+Active learning was one of the last field absences: no acquisition function, no
+query strategy, no uncertainty sampling anywhere. But the Curator DOES choose
+what to read next, so it has a de facto acquisition policy, and nobody had ever
+checked it against the only baseline that matters -- reading in a random order.
+
+### It has no acquisition function at all
+
+`Curator::decide()` step 1 is: take the first tome with `times_read == 0` in CATALOG
+order. Steps 2 and 3 only fire when a topic has no material, so over an
+already-held corpus they never fire; step 4 re-reads, which under a token budget
+buys no new coverage. **The content of a book played no part in when it was
+read.** The policy is acquisition order.
+
+### And acquisition order is worse than a shuffle
+
+Fixed TOKEN budget -- not fixed book count, because a policy that wins by reading
+more has measured nothing. 45 choosable books, 14 held out before any policy
+existed, four budgets, 20 random orderings to estimate the random distribution
+rather than one draw pretending to be a baseline.
+
+| policy, 10% budget | books | held-out type coverage | next-token top-1 | bits/token | rel s>=2 |
+|---|---|---|---|---|---|
+| RANDOM mean (sd) | 5.3 | 47.38% (3.12) | 11.67% (0.39) | 10.1372 | 25 |
+| **curator (catalog order)** | 4 | **38.89%** | 11.32% | 10.3341 | **56** |
+| **shortest-first** | 17 | **53.35%** | **12.28%** | 9.8973 | 20 |
+
+Catalog order beat **0 of 20** random draws on coverage, and at a 50% budget sat
+below the MINIMUM of all twenty on every learning measure. Shortest-first beat
+**20 of 20** at the 25% and 50% budgets and 19-20 of 20 at 10%.
+
+The mechanism is not semantic and the `books` column gives it away: at the same
+token budget shortest-first reads 17 books where catalog order reads 4, touching
+more authors, registers and centuries. Held-out vocabulary is exactly what that
+buys. A novelty rule measured alongside turned out to be **identical to
+longest-first** -- a length metric wearing an information-theory hat -- and lost
+to every random draw.
+
+### Changed, and the cost is on the record
+
+One line in `decide()`: the first unread tome becomes the SHORTEST unread tome.
+
+The cost is real and goes the other way. Typed relations: catalog order yields 56
+support-2 triples at a 10% budget against 25 random and 20 shortest-first. Long,
+syntactically regular books give the Ligature more corroborated relations than
+many short ones do. Vocabulary and prediction improve; the structured layer is
+thinner early and catches up as the budget grows.
+
+Taken anyway, because **the thing being replaced was never chosen.** An accident
+with an unmeasured cost is worse than a policy with a measured one.
+
+The bench could not link the real Curator (it pulls in cortex, lattice and
+aqueduct) so it reimplements `decide()` and says so; I verified the rule against
+the real source before changing it. The learner is a bigram counter plus the
+Ligature, not the hypervector substrate, so this measures what an order makes
+AVAILABLE to a cheap learner rather than proving the substrate ranks orders the
+same way.
+
 ## v0.138.0 — 100% correct on everything it accepts, by refusing what it cannot establish
 
 **Author:** Claude Opus 5
