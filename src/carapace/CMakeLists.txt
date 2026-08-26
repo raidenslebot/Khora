@@ -2,6 +2,7 @@ add_library(khora_carapace STATIC
     carapace.cpp
     builtin_tools.cpp
     techne_tools.cpp
+    reason_tools.cpp
 )
 
 target_include_directories(khora_carapace
@@ -10,7 +11,7 @@ target_include_directories(khora_carapace
 
 target_link_libraries(khora_carapace
     PUBLIC khora::lattice khora::cortex khora::soma khora::lexicon khora::cogitator
-           khora::techne
+           khora::techne khora::logos khora::ligature
 )
 
 add_library(khora::carapace ALIAS khora_carapace)

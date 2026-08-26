@@ -290,6 +290,26 @@ std::size_t Ligature::extract(const std::vector<std::string>& t,
     return added;
 }
 
+std::vector<Ligature::Triple> Ligature::all(std::uint32_t min_support) const {
+    std::vector<Triple> out;
+    for (std::size_t r = 0; r < fwd_.size(); ++r) {
+        for (const auto& [subj, objs] : fwd_[r]) {
+            for (const auto& [obj, n] : objs) {
+                if (n < min_support) continue;
+                out.push_back(Triple{static_cast<Relation>(r), subj, obj, n});
+            }
+        }
+    }
+    // Strongest first, then alphabetical, so the order does not depend on how
+    // the hash tables happened to bucket.
+    std::sort(out.begin(), out.end(), [](const Triple& a, const Triple& b) {
+        if (a.support != b.support) return a.support > b.support;
+        if (a.subject != b.subject) return a.subject < b.subject;
+        return a.object < b.object;
+    });
+    return out;
+}
+
 void Ligature::absorb(const Ligature& other) {
     for (std::size_t ri = 0; ri < fwd_.size(); ++ri) {
         const Relation r = static_cast<Relation>(ri);

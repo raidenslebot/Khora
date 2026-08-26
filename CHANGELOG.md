@@ -3,6 +3,89 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.122.0 — Khora can be told a rule, at runtime, and use it
+
+**Author:** Claude Opus 5
+
+An audit of every module against `khora_main.cpp` found eight built, tested and
+never run by the live binary: ribosome, synapse, governor, retina, telos, logos,
+descent and taxis. A capability the system cannot invoke is not a capability the
+system has, and this repository has the failure on record three times already.
+
+`logos` is the one where the gap was widest, because the thing it replaces is
+still in service. `Ligature::deduce` carries exactly two inference patterns and
+both are written into the C++:
+
+```
+subject is-a A, A has Z        =>  subject has Z
+subject causes Y, Y causes Z   =>  subject causes Z
+```
+
+Those two are useful and they are the only two the system would ever have. Khora
+could not be told "a thing is fragile if it is made of glass and is thin", could
+not use a rule it read, and could not derive a rule and then apply it.
+
+### The resolver also had nothing to reason over
+
+Wiring it up needed a second thing that was missing. The Ligature could answer
+"what does X cause" and had no way to answer "what is in here", so handing its
+relations to another reasoner meant already knowing every subject to ask about.
+`Ligature::all(min_support)` returns the whole graph, strongest first.
+
+The floor is not a tuning knob. **14,544 extracted triples become 377 at a floor
+of two**, and what it drops is the single sightings that make a chain a
+coincidence -- the same measurement that made the planner refuse a step below
+two. Seeding all of them would give the resolver fourteen thousand facts, mostly
+noise, and it would prove things out of them very convincingly.
+
+### Four tools, and the hardcoded rules became data
+
+`know`, `rule`, `ask`, `why`. The two C++ patterns are installed at seed time as
+ordinary clauses named `inherit` and `chain`, plus a third the old code could
+never state -- `is-a` transitivity, which `deduce` walks in a hand-written loop.
+They show up in `know`, they name themselves in a derivation, and they can be
+deleted. That is the actual point: not two more inference rules, but that they
+stopped being C++.
+
+From the live binary, against the real graph:
+
+```
+khora> know
+  377 facts at support >= 2, out of 14544 extracted relations
+  3 rules:
+    inherit    : has(?x,?z)    :- is-a(?x,?a), has(?a,?z)
+    chain      : causes(?x,?z) :- causes(?x,?y), causes(?y,?z)
+    transitive : is-a(?x,?z)   :- is-a(?x,?y), is-a(?y,?z)
+
+khora> ask is-a man ?what
+  6 answers for is-a(man, ?what):
+    ?what = animal      ?what = being       ?what = thing
+    ?what = creature    ?what = descendant  ?what = fellow
+
+khora> rule mortal is-a ?x mortal is-a ?x animal
+  mortal : is-a(?x, mortal) :- is-a(?x, animal)
+  4 rules now.
+
+khora> ask is-a man ?what
+  7 answers for is-a(man, ?what):
+    ... ?what = mortal   [by mortal]
+```
+
+A rule given at runtime, used to derive a fact that was never asserted, with the
+rule that produced it named in the answer. All six of the pre-existing answers
+are correct, which is what the last three entries of extraction work bought.
+
+### What is still orphaned
+
+`taxis` counts as wired -- `plexus_forge` builds the live graph with it. Six do
+not: **ribosome, synapse, governor, retina, telos and descent**. Of those,
+`telos` is the one with a real integration waiting, since Volition still scores
+every act with hand-written affinities and telos beat that policy 0.677 to 0.409
+on its own bench. `retina` and `descent` have no input source in the shell, and
+wiring them without one would be demo-ware rather than capability.
+
+29/29 suites pass.
+
 ## v0.121.0 — The example the tagger was built for did not need a tagger
 
 **Author:** Claude Opus 5

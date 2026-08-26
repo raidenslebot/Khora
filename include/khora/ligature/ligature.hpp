@@ -185,6 +185,17 @@ public:
     std::array<std::uint64_t, 4> support_profile(Relation r) const;
 
     // Inspectors.
+    // Every triple, for a consumer that needs the whole graph rather than a
+    // neighbourhood. The query API answers "what does X cause"; nothing could
+    // answer "what is in here", so the relations could not be handed to another
+    // reasoner without already knowing every subject to ask about.
+    //
+    // `min_support` is the same floor every other consumer uses and defaults to
+    // it: 14,544 triples become 377 at two, and the ones it drops are the single
+    // sightings that make a chain a coincidence.
+    struct Triple { Relation rel; std::string subject, object; std::uint32_t support; };
+    std::vector<Triple> all(std::uint32_t min_support = 2) const;
+
     std::uint64_t triple_count() const noexcept { return triples_; }
     std::uint64_t assertions()   const noexcept { return assertions_; }
 
