@@ -3,6 +3,63 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.173.0 - 22 to 46, still climbing, and one task the library took away
+
+**Author:** Claude Opus 5
+
+The previous entry reported the larger pool at stages 0 and 1 while the deeper
+stages were still running. They finished.
+
+| stage | trained on | library | fixed-set score | control |
+|---|---|---|---|---|
+| 0 | 0 | 0 | 29 of 96 | 29 |
+| 1 | 96 | 56 | 42 | 29 |
+| 2 | 192 | 96 | 43 | 29 |
+| 3 | 288 | 96 | **46** | **29** |
+
+**22 to 46 of 96** against the small-pool baseline, +109%, and **it has not
+plateaued** -- 42, 43, 46 is still rising at stage 3, where the small pool was
+flat at 35 by stage 5. The control sits at 29 throughout.
+
+### Where the library pays, and where nothing does
+
+| depth | tasks | stage 0 | stage 3 |
+|---|---|---|---|
+| 2 | 16 | 15 | 15 |
+| 3 | 16 | 10 | 12 |
+| 4 | 16 | 2 | **12** |
+| 5 | 16 | 2 | 5 |
+| 6 | 16 | 0 | 2 |
+| 7 | 16 | 0 | **0** |
+
+Almost the whole gain is **depth 4: two to twelve**. That is the band where a
+task is too deep to enumerate flat and shallow enough that a library entry
+collapses it to something reachable -- exactly the mechanism, showing up where
+the mechanism predicts.
+
+**Depth 7 is 0 of 16 at ten times the pool with a full library.** Compute moved
+depths 4, 5 and 6 and did not touch it at all. So the wall is a budget limit up
+to depth 6 and something else at 7, and the something else is not addressed by
+anything measured today.
+
+### One task the library took away
+
+```
+LOST  d2  pos.inc3
+1 tasks LOST to the library, 18 gained.
+```
+
+`pos.inc3` is solvable at depth 2 with no library and stops being solvable once
+the library is there. An earlier cycle drove losses to zero and recorded it as
+"16 gained / 0 LOST"; at the larger pool one is back.
+
+A library is a haystack as well as a vocabulary -- every entry is another level-0
+candidate, and at 96 entries a two-node answer can be crowded out of the budget
+before it is reached. Net is 18 gained against 1 lost, so it is worth having, and
+the loss is real and is not rounding.
+
+32/32.
+
 ## v0.172.0 - CPU is a tool to be abused, and here is what it buys on the honest bar
 
 **Author:** Claude Opus 5
