@@ -5,7 +5,7 @@ been built, run, and observed.
 
 ## v0.143.0 - The associative memory ties BM25 at an eighth the cost, and its shipped readout is its worst one
 
-**Author:** Khora Opus 5
+**Author:** Claude Opus 5
 
 Information retrieval was the last unmeasured axis. The Plexus answers "what is
 associated with X" and the Lattice answers "what is nearest to this glyph"; both
