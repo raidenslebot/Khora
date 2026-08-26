@@ -3,6 +3,59 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.163.0 - Two sources of the variance removed, the root not found
+
+**Author:** Claude Opus 5
+
+The previous entry established that the ascent gives a different answer every
+run and that the whole log-s ascent numbers therefore have no intervals. Two
+causes are now removed and the one that matters is still there.
+
+### Removed
+
+**The speculation width was a live reading of the machine.** `kSpec` was
+`cap_workers(0.90) / 3` -- the governor asked how loaded and how hot the box is
+right now. That sets the speculation BATCH SIZE, and the batch boundary decides
+which library state each task is solved against. Now a constant, 8, which is what
+that expression evaluated to here and the number the surrounding comment was
+written around. Overridable by argv for a smaller machine.
+
+**The run stopped on a clock.** Where a wall-clock run stops depends on how fast
+the machine was that minute, so totals were never comparable between runs. There
+is now an optional TIER CAP: `ascent_bench <per_tier> <budget_s> <pool> <max_tier>`.
+A run with a cap ends in the same place every time.
+
+### Not removed, and here is what it is not
+
+Two runs at a fixed 25 tiers still give **202/169 and 194/151**. Ruled out, each
+by measurement rather than by reading:
+
+| suspect | test | verdict |
+|---|---|---|
+| speculation batch width | fixed at 8 | still varies |
+| wall-clock stopping point | fixed tier cap | still varies |
+| the three concurrent searches in `solve_one` | made fully sequential | **still varies** |
+| hash-container iteration order | none in `techne.cpp` or `bidir.cpp` | not the cause |
+| mined-constant ordering | sorted with an explicit tie-break | not the cause |
+| a governor inside the search | only `solve_all` starts one, and the ascent does not use it | not the cause |
+
+Where it shows up is precise: two six-tier runs agree exactly until the
+GENERATOR draws a different number of candidates -- `drew 40, kept 24` against
+`drew 30, kept 24` -- which means the atom set already differed, which means an
+earlier solve differed. Verified solutions become atoms, so one differing solve
+rewrites every later tier. `holds_up` returns on its first mismatch and draws from
+the global stream, so the divergence compounds into the task sequence itself.
+
+**The root is one solve differing on identical inputs, and I have not found it.**
+Recorded rather than left as a mystery for whoever looks next, along with the
+six things it is not.
+
+Until then the honest statistic is the **within-run carried-minus-empty gap** --
+both arms see identical specifications in the same run -- and a **median over
+several runs** for anything absolute.
+
+32/32.
+
 ## v0.162.0 - The ascent is not deterministic, and I reported my best sample as the figure
 
 **Author:** Claude Opus 5

@@ -393,6 +393,9 @@ std::size_t live_calls(const Recipe& r) {
     return n;
 }
 
+// Set from argv. See kSpec below and the tier cap in main().
+std::size_t g_spec_width = 8;
+
 TierResult run_tier(const std::vector<Task>& tasks, const std::vector<Spec>& specs,
                     Library* lib, std::size_t pool_cap, bool admit) {
     TierResult r;
@@ -437,8 +440,22 @@ TierResult run_tier(const std::vector<Task>& tasks, const std::vector<Spec>& spe
     // machine. holds_up is NOT called in the parallel phase: it draws from the
     // global stream and would be a data race, and after recipe compaction it is
     // cheap enough that leaving it sequential costs nothing.
-    const std::size_t kSpec =
-        std::max<std::size_t>(1, khora::governor::Governor::cap_workers(0.90) / 3);
+    // A FIXED WIDTH, NOT A LIVE READING OF THE MACHINE.
+    //
+    // This was cap_workers(0.90) / 3, which asks the governor how loaded and how
+    // hot the box is right now. That makes the speculation BATCH SIZE vary
+    // between runs, and the batch boundary decides which library state each task
+    // is solved against -- so the answers vary, so the atom set for later tiers
+    // varies, so the whole curriculum diverges. Five runs of one binary gave 272,
+    // 274, 293, 305 and 331 verified and depths from 41 to 68.
+    //
+    // Eight is what that expression evaluated to here, and it is the number the
+    // comment above was written around: eight speculative tasks times three
+    // searches is the twenty-four cores of this machine. Overridable for a
+    // smaller box, because oversubscribing is a throughput question -- but a
+    // benchmark whose entire job is comparison should not change its answer
+    // because something else was running.
+    const std::size_t kSpec = g_spec_width;
     std::vector<BuildResult> ahead;
     std::size_t ahead_base = 0;
     bool lib_moved = false;
@@ -541,6 +558,12 @@ int main(int argc, char** argv) {
     const std::size_t per_tier = (argc > 1) ? std::stoul(argv[1]) : 24;
     const double      budget_s = (argc > 2) ? std::stod(argv[2]) : 240.0;
     const std::size_t pool_cap = (argc > 3) ? std::stoul(argv[3]) : 20000;
+    // A FIXED TIER COUNT MAKES THE RUN REPRODUCIBLE. With only a clock, where
+    // the run stops depends on how fast the machine was, and the totals are then
+    // not comparable between runs at all -- which is how five runs of one binary
+    // came to disagree by sixty verified programs. Zero keeps the old behaviour.
+    const std::size_t max_tier = (argc > 4) ? std::stoul(argv[4]) : 0;
+    if (argc > 5) g_spec_width = std::max<std::size_t>(1, std::stoul(argv[5]));
 
     std::printf("Does it get better at its job, or only finish its job?\n\n");
     std::printf("  %zu tasks per tier, depth rising with no fixed ceiling, pool %zu,\n",
@@ -581,7 +604,12 @@ int main(int argc, char** argv) {
     const auto started = clk::now();
     std::size_t barren = 0;
     for (std::size_t tier = 1; ; ++tier) {
-        if (std::chrono::duration<double>(clk::now() - started).count() > budget_s) {
+        if (max_tier != 0 && tier > max_tier) {
+            std::printf("  -- tier cap %zu reached.\n", max_tier);
+            break;
+        }
+        if (max_tier == 0 &&
+            std::chrono::duration<double>(clk::now() - started).count() > budget_s) {
             std::printf("  -- budget reached at tier %zu.\n", tier);
             break;
         }
