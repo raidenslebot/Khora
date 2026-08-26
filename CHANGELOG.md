@@ -3,6 +3,102 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.131.0 — Attention and adversarial search, built and raced
+
+**Author:** Claude Opus 5
+
+Two more of the four field-level absences, each built and measured rather than
+argued about.
+
+### Attention, hand-written and trained, against the substrate
+
+The banner says LLM-free and there was no attention mechanism in the tree -- the
+word appeared three times, all prose. So: scaled dot-product attention, Q/K/V/O
+projections, single and multi-head, **trained by gradient descent** with the
+backward pass checked against central differences (worst relative error 3.5e-10).
+Three configurations at every length, so a bad training run cannot be read as a
+limit of the mechanism: random projections (the floor), SGD-trained, and the
+hand-set induction-head construction (the ceiling).
+
+Associative recall, 400 trials per cell, chance 0.78%:
+
+| n | attn random | attn SGD | attn ideal | HDC bundle | most-recent |
+|---|---|---|---|---|---|
+| 8 | 0.2% | 99.8% | 100.0% | **100.0%** | 12.8% |
+| 32 | 1.0% | 100.0% | 100.0% | **100.0%** | 4.2% |
+| 128 | 0.5% | 99.8% | 100.0% | **100.0%** | 1.5% |
+
+A tie, not a win. The recency baseline tracks 1/n exactly, so the task is not
+secretly a recency task. Pushing further finds the break: one 1,256-byte glyph
+holds about **256** key-value pairs at ceiling, is at 82.5% by 512 and 42.5% by
+1024, while the hand-set attention head stays at 100%. **Attention has capacity
+the bundle does not** -- a trade of O(n) memory for unbounded recall, not a
+defect to reject.
+
+The substrate wins on cost and on one capability. 7,168 trained parameters
+against **zero**; a 1,256-byte working set against 131 KB at n=256; a flat 7 us
+query against one that grows linearly. And from a single write, `chiasm` answers
+**both** key-to-value and value-to-key at 100%, because XOR is self-inverse --
+where trained attention runs 99.8% forward and **0.8%, exactly chance, reversed**.
+It can do the reverse direction, with a second parameter set and a second
+training run.
+
+One of the two tasks predicted to favour the substrate came out a **tie**:
+trained attention generalised perfectly to vocabulary no gradient step had
+touched. Reported as a tie rather than tuned into a win.
+
+**Is the rejection defensible?** For bounded-size symbolic associative memory,
+yes, and it is now measured instead of asserted. As a general claim, no. This is
+the easiest version of what attention does -- discrete symbols with exact key
+matches, precisely what XOR binding was designed for -- and there is no
+transformer here at all: one operation, no depth, no residual stream, no learned
+embeddings. Everything attention is famous for that requires depth is outside
+this file.
+
+### Adversarial search: Khora cannot play a game
+
+No MCTS, no minimax, no alpha-beta, no notion of an opponent. Connect-4 on a
+bitboard, alpha-beta negamax and UCT MCTS against uniform-random and a greedy
+one-ply heuristic, on two boards -- 6x5 for head-to-head, and 5x4 **solved
+exactly** (2,516,078 positions; the game is a draw) so that agreement with
+optimal play can be measured instead of win rate.
+
+**Win rate against a weak opponent is useless, and the bench shows it starkly:**
+every agent including the one-ply heuristic scores at least 94.8% against random.
+Agreement with exact play separates the same agents across 39.5% to 100%.
+
+| agent | optimal move, discriminating positions | vs perfect play | nodes/move |
+|---|---|---|---|
+| random | 39.5% | 3.3% | 5 |
+| greedy 1-ply | 68.1% | 7.5% | 10 |
+| alpha-beta d=2 | 83.2% | 13.8% | **28** |
+| alpha-beta d=4 | 85.7% | 16.2% | 125 |
+| uct 1000 | 85.7% | 19.5% | 8,471 |
+| uct 10000 | **93.3%** | **31.2%** | 86,766 |
+| exact (control) | 100% | 50.0% | -- |
+
+**Alpha-beta is enormously cheaper per unit of strength**: 28 nodes and 3 us beat
+the greedy heuristic 99.2% of the time, and d=4 at 8 us matches uct-1000 at 331
+us -- a 40x time advantage at equal accuracy. **But MCTS scales better** and is
+the only method that got close to exact play at feasible cost.
+
+**And alpha-beta is not monotone in depth.** Depth 6 draws 18.7% against perfect
+play where depth 2 draws 27.7% and depth 8 draws 36.0%, reproduced at 100 and at
+300 games. The deeper control rows converge steadily toward exact play, which
+identifies the culprit: the search is correct and the **evaluation** is wrong --
+it scores a three-in-a-window without checking the fourth cell is reachable, and
+deeper search optimises harder against that lie. The weights were not retuned;
+tuning until depth 6 looked good would have deleted the finding.
+
+**The ranking is not transitive.** Depth 6 is the strongest alpha-beta against
+10,000-rollout MCTS and the weakest against both the greedy baseline and exact
+play. No single head-to-head table supports an ordering.
+
+Neither bench closes its gap. Both link a Khora library and never call it:
+nothing here is an organ, nothing is wired, and `plan_to` still searches a space
+that never pushes back. What they establish is that the capability can be built
+and measured in this tree, and what it costs.
+
 ## v0.130.0 — A tie-break was a policy, and it inflated a result I published today
 
 **Author:** Claude Opus 5
