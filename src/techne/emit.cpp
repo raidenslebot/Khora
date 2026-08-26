@@ -2336,7 +2336,8 @@ static bool plan_unit(const Recipe& r, const Library& lib, std::size_t depth,
             stack.pop_back();
             if (i >= r.pool.size() || live[i]) continue;
             live[i] = true;
-            if (r.pool[i].a >= 0) stack.push_back(static_cast<std::size_t>(r.pool[i].a));
+            if (reads_first_operand(r.pool[i].op) && r.pool[i].a >= 0)
+                stack.push_back(static_cast<std::size_t>(r.pool[i].a));
             // ONLY FOLLOW b WHEN THE OPERATION ACTUALLY READS IT. A unary node
             // can carry a stale b, and marking that operand live emitted a local
             // nothing referenced -- a warning in most backends and a COMPILE
@@ -2477,7 +2478,8 @@ static std::string emit_inlined(const Recipe& r, Lang l, const std::string& fn,
             stack.pop_back();
             if (i >= r.pool.size() || live[i]) continue;
             live[i] = true;
-            if (r.pool[i].a >= 0) stack.push_back(static_cast<std::size_t>(r.pool[i].a));
+            if (reads_first_operand(r.pool[i].op) && r.pool[i].a >= 0)
+                stack.push_back(static_cast<std::size_t>(r.pool[i].a));
             // ONLY FOLLOW b WHEN THE OPERATION ACTUALLY READS IT. A unary node
             // can carry a stale b, and marking that operand live emitted a local
             // nothing referenced -- a warning in most backends and a COMPILE

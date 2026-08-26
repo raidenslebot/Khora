@@ -740,6 +740,14 @@ enum class Lang {
 // asking two lists to agree is not a mechanism that makes them agree.
 bool reads_two_operands(Op o);
 
+// AND WHICH READ A FIRST ONE AT ALL. A literal reads neither, and a parameter is
+// resolved to the parameter name rather than computed -- so following `a` out of
+// either marks an operand live that nothing will reference. Same defect as the
+// one above, one field over, and found the same way: a generated recipe carried
+// a stale `a` on a Const, the emitter declared the operand, and Go refused the
+// file because it rejects unused variables outright.
+bool reads_first_operand(Op o);
+
 const char* op_name(Op o);
 bool op_from_name(const std::string& n, Op& out);
 

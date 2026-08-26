@@ -88,6 +88,11 @@ inline std::int64_t const_of(std::uint8_t b) {
 
 } // namespace
 
+bool reads_first_operand(Op o) {
+    // Const is its literal and Arg is a parameter. Everything else reads a.
+    return o != Op::Const && o != Op::Arg;
+}
+
 bool reads_two_operands(Op o) {
     switch (o) {
         case Op::Add: case Op::Sub: case Op::Mul: case Op::Div: case Op::Mod:

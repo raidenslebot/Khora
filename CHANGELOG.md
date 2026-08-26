@@ -3,6 +3,63 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.156.0 - The bench written because Call was dropped had stopped testing Call
+
+**Author:** Claude Opus 5
+
+Three defects are named at the top of `differential_bench` as the reason it exists.
+The first is **Op::Call deleted from emitted source**. Not one of its sixteen
+named recipes contains a Call, and it passed `nullptr` for the library everywhere,
+so emission never inlined anything and MapF and FoldF were refused outright by a
+branch that only fires when the library is empty.
+
+The bench written because a call was dropped had no coverage of calls.
+
+It now builds a five-entry library, generates recipes that reach into it, and
+passes it to `both` the reference and the emitter -- handing one a library and the
+other a nullptr would compare two different programs and call the difference an
+emitter defect.
+
+### A third liveness field, found the same way as the second
+
+The previous entry fixed the liveness walk following `b` for operations that never
+read it. It followed `a` unconditionally too, and `Const` reads neither operand: a
+generated recipe carrying a stale `a` on a literal made the emitter declare a local
+nothing referenced, which Go rejects outright.
+
+```
+func fuzz13(x V) V {
+    t2 := V{99}      // declared and not used
+    t4 := V{0}
+    return t4
+}
+```
+
+So there is now `reads_first_operand()` beside `reads_two_operands()`, and both
+walks consult them. I fixed one field and left the one next to it.
+
+### And a harness bug that reported one limit as fourteen defects
+
+`emit()` returns an empty string for a recipe it cannot render -- a library body
+nested past `kMaxCallDepth`, for one. The driver was written from the recipe list
+regardless, so a refused recipe became a call to a function nobody defined and
+**every backend reported "could not build"**: fourteen broken emitters on the
+screen, one unrendered recipe in fact.
+
+A recipe is now kept only if every target renders it, so all fourteen files and
+`reference.txt` describe the same set, and the count is printed. **3 of 64** are
+refused. A refusal is a limit, not a defect, and it is not counted as a pass.
+
+### After
+
+| | |
+|---|---|
+| backends verified byte for byte | **9 of 9 with a toolchain** |
+| recipes | 61 of 64, now including Call, MapF and FoldF |
+| disagreements | **0** |
+
+32/32.
+
 ## v0.155.0 - Nine of fourteen, and none of them a reimplementation
 
 **Author:** Claude Opus 5

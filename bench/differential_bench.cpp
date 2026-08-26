@@ -65,6 +65,32 @@ Recipe chain(std::initializer_list<Expr> nodes) {
     return r;
 }
 
+// A LIBRARY, so the paths that reach into one are exercised at all.
+//
+// Op::Call being DELETED from emitted source is one of the three defects this
+// file was written for, and not one of the sixteen named recipes above contains
+// a Call -- so the bench that exists because of that defect stopped covering it.
+// MapF and FoldF are in the same position, and emission refuses them outright
+// when the library is empty, so passing nullptr made that refusal invisible too.
+//
+// Emission INLINES calls: a certified recipe naming library index 3 has to
+// become source that depends on nothing outside itself. That splice is the thing
+// under test here, and it cannot be tested without something to splice.
+const Library& fuzz_lib() {
+    static Library lib = [] {
+        Library l(32);
+        l.admit_recipe("l_rev",  chain({Expr{Op::Rev,  -1, -1, 0}}), 0);
+        l.admit_recipe("l_sort", chain({Expr{Op::Sort, -1, -1, 0}}), 0);
+        l.admit_recipe("l_dbl",  chain({Expr{Op::Add,  -1, -1, 0}}), 0);
+        l.admit_recipe("l_tail", chain({Expr{Op::Tail, -1, -1, 0}}), 0);
+        // Two nodes deep, so the splice has to inline something that is not a
+        // single operation.
+        l.admit_recipe("l_sr",   chain({Expr{Op::Sort, -1, -1, 0},
+                                        Expr{Op::Rev,   0, -1, 0}}), 0);
+        return l;
+    }();
+    return lib;
+}
 // SIXTEEN HAND-WRITTEN RECIPES CATCH THE BUGS SOMEBODY ALREADY THOUGHT OF.
 //
 // Each one above exists because a specific defect got through: Op::Call deleted
@@ -78,13 +104,14 @@ Recipe chain(std::initializer_list<Expr> nodes) {
 // here. Recipe::apply is the reference for whatever comes out; the emitted code
 // has to agree with it whatever it is.
 //
-// Call, MapF and FoldF are excluded because their bodies live in a Library and
-// this harness passes nullptr; splicing is covered by the named cases.
+// Call, MapF and FoldF ARE included, with fuzz_lib() supplying the bodies. They
+// were excluded while this harness passed nullptr, which left the splice path
+// with no coverage at all.
 std::vector<Named> fuzz_recipes(std::size_t n, std::uint64_t seed) {
     std::vector<Op> usable;
     for (int i = 0; i < static_cast<int>(Op::kCount); ++i) {
         const Op o = static_cast<Op>(i);
-        if (o == Op::Call || o == Op::MapF || o == Op::FoldF || o == Op::Arg) continue;
+        if (o == Op::Arg) continue;
         usable.push_back(o);
     }
 
@@ -116,7 +143,12 @@ std::vector<Named> fuzz_recipes(std::size_t n, std::uint64_t seed) {
                 // is what keeps the pool acyclic and the recipe well formed.
                 e.a = (i == 0 || rnd() % 3 == 0) ? -1 : static_cast<int>(rnd() % i);
                 e.b = (i == 0 || rnd() % 2 == 0) ? -1 : static_cast<int>(rnd() % i);
-                e.k = static_cast<std::uint8_t>(rnd() % 4);
+                // For Call, MapF and FoldF this selects the library BODY, so it
+                // is drawn over the library rather than over the constant table.
+                const bool names_body = (e.op == Op::Call || e.op == Op::MapF ||
+                                         e.op == Op::FoldF);
+                e.k = static_cast<std::uint8_t>(
+                    rnd() % (names_body ? fuzz_lib().size() : 4));
             }
             r.pool.push_back(e);
         }
@@ -559,17 +591,6 @@ int main(int argc, char** argv) {
                 rs.size(), ins.size(), kMaxListLen);
     std::printf("  bound where the interpreter's per-operation clamp bites.\n\n");
 
-    // THE REFERENCE. Recipe::apply is the thing a certificate is about, so it is
-    // the thing the emitted source has to agree with.
-    {
-        std::ofstream f(out_dir + "/reference.txt");
-        for (const Named& n : rs) {
-            for (std::size_t i = 0; i < ins.size(); ++i) {
-                f << n.name << ' ' << i << ' ' << join(n.r.apply_n(argsfor(n, ins, i), nullptr)) << '\n';
-            }
-        }
-    }
-
     struct Target { Lang l; const char* file; };
     const Target targets[] = {
         {Lang::Python,     "emitted.py"},
@@ -587,6 +608,53 @@ int main(int argc, char** argv) {
         {Lang::Swift,      "main.swift"},
         {Lang::Haskell,    "emitted.hs"},
     };
+
+    // WHAT THE EMITTER REFUSES IS NOT WHAT IT GETS WRONG.
+    //
+    // emit() returns an empty string for a recipe it cannot render -- a library
+    // body nested past kMaxCallDepth, for one. The driver was written from the
+    // recipe list regardless, so a refused recipe became a call to a function
+    // nobody defined and EVERY backend reported "could not build", which reads
+    // as fourteen broken emitters and is one unrendered recipe.
+    //
+    // A recipe is kept only if every target renders it, so all fourteen files
+    // and reference.txt describe the same set. Refusals are counted and printed.
+    std::size_t refused = 0;
+    {
+        std::vector<Named> keep;
+        for (const Named& n : rs) {
+            bool all = true;
+            for (const Target& t : targets) {
+                std::size_t ln = 0;
+                if (emit(n.r, t.l, n.name, &ln, &fuzz_lib()).empty()) { all = false; break; }
+            }
+            if (all) keep.push_back(n); else ++refused;
+        }
+        rs = keep;
+    }
+    if (refused != 0)
+        std::printf("  %zu of %zu recipes are refused by emit() in at least one\n"
+                    "  backend and are excluded from every file, so the comparison is\n"
+                    "  over the same set everywhere. A refusal is a limit, not a defect,\n"
+                    "  and it is not counted as a pass.\n\n",
+                    refused, refused + rs.size());
+
+    // THE REFERENCE. Recipe::apply is the thing a certificate is about, so it is
+    // the thing the emitted source has to agree with.
+    {
+        std::ofstream f(out_dir + "/reference.txt");
+        for (const Named& n : rs) {
+            for (std::size_t i = 0; i < ins.size(); ++i) {
+                                // THE SAME LIBRARY THE EMITTER GETS. Recipe::apply resolves a
+                // Call through it; emission inlines it. Handing one of them a
+                // library and the other a nullptr would compare two different
+                // programs and call the difference an emitter defect.
+                f << n.name << ' ' << i << ' '
+                  << join(n.r.apply_n(argsfor(n, ins, i), &fuzz_lib())) << '\n';
+            }
+        }
+    }
+
 
     for (const Target& t : targets) {
         std::string src = prelude(t.l);
@@ -609,7 +677,7 @@ int main(int argc, char** argv) {
         std::size_t total_lines = 0;
         for (const Named& n : rs) {
             std::size_t lines = 0;
-            src += emit(n.r, t.l, n.name, &lines, nullptr);
+            src += emit(n.r, t.l, n.name, &lines, &fuzz_lib());
             total_lines += lines;
         }
         src += driver(t.l, rs, ins);
