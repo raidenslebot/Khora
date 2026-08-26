@@ -98,6 +98,10 @@ add_executable(retina_test retina_test.cpp)
 target_link_libraries(retina_test PRIVATE khora::retina)
 add_test(NAME RetinaTest COMMAND retina_test)
 
+add_executable(taxis_test taxis_test.cpp)
+target_link_libraries(taxis_test PRIVATE khora::taxis khora::ligature)
+add_test(NAME TaxisTest COMMAND taxis_test)
+
 add_executable(ligature_test ligature_test.cpp)
 target_link_libraries(ligature_test PRIVATE khora::ligature)
 add_test(NAME LigatureTest COMMAND ligature_test)

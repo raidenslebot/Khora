@@ -60,6 +60,7 @@
 #include "khora/lexicon/lexicon.hpp"
 #include "khora/ligature/ligature.hpp"
 #include "khora/reservoir/reservoir.hpp"
+#include "khora/taxis/taxis.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -163,6 +164,33 @@ WordNet load_wordnet(const std::string& path) {
 
 struct Score { std::size_t decidable = 0, correct = 0, chance = 0; };
 
+// The same scorer, but a triple only counts if the OBJECT is a word the
+// distributional tagger calls a noun. This is the whole question Taxis exists
+// to answer: the extractor takes the last content word of the noun phrase as the
+// head, which is right, and has no way to know whether that word is a noun.
+Score score_isa_gated(const Ligature& lig, const WordNet& wn,
+                      const khora::taxis::Taxis& tx, std::uint32_t min_support,
+                      bool gate) {
+    Score sc;
+    std::vector<std::string> subs, objs;
+    for (const auto& [w, cs] : wn.of) {
+        (void)cs;
+        for (const auto& [o, c] : lig.objects(Relation::IsA, w, 64)) {
+            if (c < min_support || !wn.cats.count(o)) continue;
+            if (gate && !tx.is_noun(o)) continue;
+            ++sc.decidable;
+            if (wn.of.at(w).count(o)) ++sc.correct;
+            subs.push_back(w);
+            objs.push_back(o);
+        }
+    }
+    std::mt19937 rng(20260825);
+    std::shuffle(objs.begin(), objs.end(), rng);
+    for (std::size_t i = 0; i < subs.size(); ++i)
+        if (wn.of.at(subs[i]).count(objs[i])) ++sc.chance;
+    return sc;
+}
+
 // A 95% Wilson interval on a proportion. At 32 hits in 1,715 the difference
 // between the extractor and chance is a couple of dozen events, and a bare
 // percentage invites reading that as a result.
@@ -219,7 +247,22 @@ int main(int argc, char** argv) {
         "law", "justice", "labour", "body", "mind", "state", "war", "nature"
     };
 
-    Ligature flat, split;
+    // TWO PASSES, and the first one is why. The noun veto needs a tagger, and a
+    // tagger has to have seen the words before it can vote on them, so Taxis
+    // reads the whole corpus before a single relation is extracted.
+    khora::taxis::Taxis tx;
+    {
+        std::size_t nb = 0;
+        for (const auto& t : cat) {
+            if (nb >= max_books) break;
+            auto text = res.read(t.title);
+            if (!text || text->size() < 40000) continue;
+            ++nb;
+            for (const auto& sent : khora::lexicon::tokenize_sentences(*text)) tx.observe(sent);
+        }
+    }
+
+    Ligature flat, split, vetoed;
     std::size_t books = 0, sentences = 0, tokens = 0;
     for (const auto& t : cat) {
         if (books >= max_books) break;
@@ -236,6 +279,9 @@ int main(int argc, char** argv) {
         for (const auto& s : khora::lexicon::tokenize_sentences(*text)) {
             ++sentences;
             split.extract(s);
+            // NEWEST: the same rules, with the tagger allowed to veto an is-a
+            // whose head it has positive evidence is not a noun.
+            vetoed.extract(s, Ligature::PatAll, &tx);
         }
     }
 
@@ -245,6 +291,7 @@ int main(int argc, char** argv) {
 
     const Report a = audit(flat, probes);
     const Report b = audit(split, probes);
+    const Report c = audit(vetoed, probes);
 
     std::printf("\n  rule set                  | triples | objects | impossible objects\n");
     std::printf("  --------------------------+---------+---------+--------------------\n");
@@ -256,6 +303,10 @@ int main(int argc, char** argv) {
                 static_cast<unsigned long long>(b.triples), b.objects_sampled,
                 b.impossible,
                 b.objects_sampled ? 100.0 * b.impossible / b.objects_sampled : 0.0);
+    std::printf("  + hearst + noun veto      | %7llu | %7zu |  %3zu  (%.1f%%)\n",
+                static_cast<unsigned long long>(c.triples), c.objects_sampled,
+                c.impossible,
+                c.objects_sampled ? 100.0 * c.impossible / c.objects_sampled : 0.0);
 
     // --- SCORED AGAINST WORDNET, NOT AGAINST A LIST I WROTE ------------------
     if (!wn.ok) {
@@ -271,7 +322,8 @@ int main(int argc, char** argv) {
                         s.decidable ? 100.0 * s.chance  / s.decidable : 0.0);
         };
         row("document-at-once (old)",  score_isa(flat,  wn, 1));
-        row("per-sentence + det rule", score_isa(split, wn, 1));
+        row("per-sentence + det rule", score_isa(split,  wn, 1));
+        row("+ hearst + noun veto",    score_isa(vetoed, wn, 1));
 
         std::printf("\n    and against a corroboration floor:\n");
         for (const std::uint32_t f : {1u, 2u, 3u}) {
@@ -329,6 +381,37 @@ int main(int argc, char** argv) {
         if (any) std::printf("\n");
     }
 
+    // --- A PART OF SPEECH, LEARNED FROM WHERE WORDS STAND --------------------
+    //
+    // The extractor lands on the last content word of the noun phrase and cannot
+    // tell whether that word is a noun. Taxis counts what came before each word
+    // over the same books and reads a category off the counts, with no tagged
+    // corpus anywhere. WordNet is the check: every one of its 35,767 member
+    // words is a noun, so the fraction of them Taxis agrees with is recall on a
+    // set it never saw.
+    if (wn.ok) {
+        std::size_t known = 0, as_noun = 0, as_adj = 0, as_verb = 0, unknown = 0;
+        for (const auto& [w, cs] : wn.of) {
+            (void)cs;
+            if (tx.evidence(w).seen == 0) continue;
+            ++known;
+            switch (tx.tag(w)) {
+                case khora::taxis::Tag::Noun:      ++as_noun; break;
+                case khora::taxis::Tag::Adjective: ++as_adj;  break;
+                case khora::taxis::Tag::Verb:      ++as_verb; break;
+                default:                           ++unknown; break;
+            }
+        }
+        std::printf("\n  === TAXIS: a part of speech from distribution alone ===\n");
+        std::printf("    %zu word types seen, %zu given a category\n",
+                    tx.vocabulary(), tx.tagged());
+        std::printf("    of %zu WordNet nouns that appear in these books:\n", known);
+        std::printf("      called noun %zu (%.1f%%), adjective %zu, verb %zu, no category %zu\n",
+                    as_noun, known ? 100.0 * as_noun / known : 0.0, as_adj, as_verb, unknown);
+        std::printf("    every one of those words IS a noun, so anything but the first\n"
+                    "    column is an error and the first column is recall.\n");
+    }
+
     // --- WHICH RULE IS THE POISON --------------------------------------------
     //
     // Every rule ran together and the union was the only thing measurable. Each
@@ -372,6 +455,101 @@ int main(int argc, char** argv) {
         }
         std::printf("\n    Chance is that row's own subjects paired with its own objects,\n"
                     "    reshuffled. A pattern is worth having only if its interval clears it.\n");
+
+        // --- AND WHAT THE TAGGER IS WORTH ------------------------------------
+        std::printf("\n    with the object required to be a noun Taxis recognises:\n");
+        std::printf("    pattern                | gate | decidable | correct |  prec  | 95%% CI\n");
+        std::printf("    -----------------------+------+-----------+---------+--------+----------------\n");
+        for (auto& r : rows) {
+            for (const bool g : {false, true}) {
+                const Score sc = score_isa_gated(r.lig, wn, tx, 1, g);
+                const auto ci = wilson(sc.correct, sc.decidable);
+                std::printf("    %-22s | %4s | %9zu | %7zu | %5.2f%% | [%5.2f%%, %5.2f%%]\n",
+                            r.name, g ? "noun" : "  --", sc.decidable, sc.correct,
+                            sc.decidable ? 100.0 * sc.correct / sc.decidable : 0.0,
+                            ci.first, ci.second);
+            }
+        }
+    }
+
+    // --- WHERE THE NOUN GATE ACTUALLY ACTS, SINCE THE BAR ABOVE CANNOT SEE IT
+    //
+    // The gated rows above barely move, and that is a limitation of my own
+    // harness rather than a result about the gate. A triple is DECIDABLE only
+    // when its object is a WordNet category name -- and every WordNet category
+    // name is a noun. The decidable subset is therefore nouns by construction,
+    // so a rule that removes non-nouns has almost nothing left to remove inside
+    // it. is-a(man, social), the case Taxis was built for, was never in it.
+    //
+    // So the gate is measured against two reference sets it has never seen,
+    // over the WHOLE graph rather than the decidable slice:
+    //
+    //   KNOWN BAD -- the 56 hand-listed objects that cannot be the object of a
+    //   relation, the blocklist this bench used to score with. How many does the
+    //   gate catch? That is recall on errors somebody else labelled.
+    //
+    //   KNOWN GOOD -- objects that are WordNet category names, so certainly
+    //   nouns. How many does the gate wrongly throw away? That is its cost.
+    if (wn.ok) {
+        std::unordered_set<std::string> subjects;
+        for (const auto& [w, cs] : wn.of) { (void)cs; subjects.insert(w); }
+        std::printf("\n  === WHAT THE NOUN GATE REMOVES ===\n");
+        for (int mode = 0; mode < 2; ++mode) {
+            std::size_t all_obj = 0, all_cut = 0, bad_obj = 0, bad_cut = 0,
+                        good_obj = 0, good_cut = 0;
+            for (const auto& sub : subjects) {
+                for (const auto& [o, c] : split.objects(Relation::IsA, sub, 64)) {
+                    (void)c;
+                    const bool cut = (mode == 0) ? !tx.is_noun(o) : tx.rejects_noun(o);
+                    ++all_obj; if (cut) ++all_cut;
+                    if (impossible_objects().count(o)) { ++bad_obj; if (cut) ++bad_cut; }
+                    if (wn.cats.count(o))              { ++good_obj; if (cut) ++good_cut; }
+                }
+            }
+            std::printf("\n    %s\n", mode == 0
+                ? "REQUIRE a noun -- which refuses everything below the evidence floor too:"
+                : "REFUSE only a positive non-noun -- absence of evidence is not evidence:");
+            std::printf("      is-a objects examined            : %zu, gate cuts %zu (%.1f%%)\n",
+                        all_obj, all_cut, all_obj ? 100.0 * all_cut / all_obj : 0.0);
+            std::printf("      of the KNOWN BAD (blocklisted)   : %zu, cut %zu (%.1f%%)  <- recall on errors\n",
+                        bad_obj, bad_cut, bad_obj ? 100.0 * bad_cut / bad_obj : 0.0);
+            std::printf("      of the KNOWN GOOD (WordNet nouns): %zu, cut %zu (%.1f%%)  <- what it costs\n",
+                        good_obj, good_cut, good_obj ? 100.0 * good_cut / good_obj : 0.0);
+        }
+
+        // --- AND WHERE TO PUT THE THRESHOLD ----------------------------------
+        //
+        // Both policies above sit at one setting of one number: how large a
+        // share of a word's noun-phrase evidence has to be the marked kind
+        // before it is called an adjective. That number is a calibration and
+        // pretending otherwise would be the tuned-knob mistake, so the whole
+        // curve is printed and the choice is made in the open.
+        std::printf("\n    the threshold is one number, so here is the whole curve:\n");
+        std::printf("      adj share | cuts overall | KNOWN BAD cut | KNOWN GOOD cut | ratio\n");
+        std::printf("      ----------+--------------+---------------+----------------+------\n");
+        for (const double r : {0.0, 0.05, 0.10, 0.15, 0.25, 0.40, 0.60, 1.01}) {
+            std::size_t ao = 0, ac = 0, bo = 0, bc = 0, go = 0, gc = 0;
+            for (const auto& sub : subjects) {
+                for (const auto& [o, c] : split.objects(Relation::IsA, sub, 64)) {
+                    (void)c;
+                    const khora::taxis::Tag t = tx.tag(o, r);
+                    const bool cut = (t != khora::taxis::Tag::Noun);
+                    ++ao; if (cut) ++ac;
+                    if (impossible_objects().count(o)) { ++bo; if (cut) ++bc; }
+                    if (wn.cats.count(o))              { ++go; if (cut) ++gc; }
+                }
+            }
+            const double bad  = bo ? 100.0 * bc / bo : 0.0;
+            const double good = go ? 100.0 * gc / go : 0.0;
+            std::printf("      %9.2f | %11.1f%% | %12.1f%% | %13.1f%% | %5.2f\n", r,
+                        ao ? 100.0 * ac / ao : 0.0, bad, good,
+                        good > 0.0 ? bad / good : 0.0);
+        }
+        std::printf("      (1.01 disables the adjective rule entirely -- the last row is the\n"
+                    "       determiner-only tagger this started as.)\n");
+
+        std::printf("\n    Neither reference set was available to Taxis, which sees only which\n"
+                    "    word came before which over the same books.\n");
     }
 
     // --- AND DOES THE WEIGHT HELP, ON BOOKS IT WAS NOT DERIVED FROM ----------

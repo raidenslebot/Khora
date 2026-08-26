@@ -1,4 +1,5 @@
 #include "khora/ligature/ligature.hpp"
+#include "khora/taxis/taxis.hpp"
 #include <limits>
 
 #include <algorithm>
@@ -118,7 +119,15 @@ void Ligature::add(Relation r, const std::string& subj, const std::string& obj,
 // best rules here by a margin that IS significant, and because 517 triples at
 // 7.32% is better material for a planner than the same effort spent on copula.
 std::size_t Ligature::extract(const std::vector<std::string>& t,
-                              std::uint32_t pat) {
+                              std::uint32_t pat, const khora::taxis::Taxis* tx) {
+    // One veto, applied at every site that asserts a taxonomy: if the tagger has
+    // positive evidence the head is not a noun, it cannot be the object of an
+    // is-a. Absence of evidence is not used -- refusing everything below the
+    // tagger's floor throws away a third of the good relations to catch the same
+    // errors, which the sweep in extraction_bench shows plainly.
+    const auto nominal = [tx](const std::string& y) {
+        return !tx || !tx->rejects_noun(y);
+    };
     std::size_t added = 0;
     if (t.size() < 3) return 0;
 
@@ -145,7 +154,7 @@ std::size_t Ligature::extract(const std::vector<std::string>& t,
                 ys += 2;
             }
             const std::string Y = head_after(t, ys);
-            if (is_content(X) && !Y.empty()) { add(Relation::IsA, X, Y); ++added; }
+            if (is_content(X) && !Y.empty() && nominal(Y)) { add(Relation::IsA, X, Y); ++added; }
         }
         // CAUSES:  X <causal verb>  [det] ... Y
         else if ((pat & PatCausal) &&
@@ -211,7 +220,7 @@ std::size_t Ligature::extract(const std::vector<std::string>& t,
         if ((pat & PatSuchAs) && w == "such" && i + 2 < t.size() && t[i + 1] == "as") {
             const std::string& Y  = t[i - 1];
             const std::string& Xh = t[i + 2];
-            if (is_content(Xh) && is_content(Y)) { add(Relation::IsA, Xh, Y); ++added; }
+            if (is_content(Xh) && is_content(Y) && nominal(Y)) { add(Relation::IsA, Xh, Y); ++added; }
         }
 
         //   X and other Y / X or other Y   ->  IS-A(X, Y)
@@ -221,7 +230,7 @@ std::size_t Ligature::extract(const std::vector<std::string>& t,
             i + 2 < t.size() && t[i + 1] == "other") {
             const std::string& Xh = t[i - 1];
             const std::string  Y  = head_after(t, i + 2);
-            if (is_content(Xh) && !Y.empty()) { add(Relation::IsA, Xh, Y); ++added; }
+            if (is_content(Xh) && !Y.empty() && nominal(Y)) { add(Relation::IsA, Xh, Y); ++added; }
         }
 
         //   Y including X / Y especially X   ->  IS-A(X, Y)
@@ -229,7 +238,7 @@ std::size_t Ligature::extract(const std::vector<std::string>& t,
             i + 1 < t.size()) {
             const std::string& Y  = t[i - 1];
             const std::string  Xh = head_after(t, i + 1);
-            if (is_content(Y) && !Xh.empty()) { add(Relation::IsA, Xh, Y); ++added; }
+            if (is_content(Y) && !Xh.empty() && nominal(Y)) { add(Relation::IsA, Xh, Y); ++added; }
         }
     }
     return added;

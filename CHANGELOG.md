@@ -3,6 +3,102 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.120.0 — Khora had no idea what a noun was
+
+**Author:** Claude Opus 5
+
+The previous entry measured the relation extractor against an external bar and
+found the copula rule at 1.89% [1.34, 2.65] producing 56% of everything the
+system knows. The reason is one absence, and an audit confirms it: there is no
+syntactic analysis anywhere in this tree. No tagger, no chunker, no parser, no
+notion that a token has a grammatical category. Every rule in the extractor is a
+match over raw surface tokens.
+
+That is not an abstract gap. It is visible in the output:
+
+```
+man is-a social       <- "man is a social being"
+time is-a greatest    <- "the greatest time"
+body is-a held        <- a participle read as a noun
+```
+
+None of those is a parsing accident. The extractor takes the last content word
+of the noun phrase as the head, which is the right rule, and then has no way to
+tell whether the word it landed on is a noun.
+
+### khora::taxis — a part of speech from where words stand
+
+Counts of the word that came before, and a category read off them. No tagged
+corpus, because there is none here and buying one would be a dependency; the
+signal is entirely distributional and comes from the same books everything else
+reads. Three contexts: determiners, degree adverbs, and the infinitive marker
+plus modals.
+
+Against WordNet, whose 35,767 member words are all nouns, on 58 books:
+**61.0% recall, and of the words it commits to a category, 94.2% are nouns**
+(9,590 noun against 374 adjective and 216 verb). It never sees WordNet.
+
+### Both of the obvious rules are wrong, and each is wrong in a different direction
+
+**Argmax over the three counts.** Obvious and useless. Almost every adjective
+follows a determiner far more often than it follows "very" -- "the best man" is
+commoner than "very best" -- so the largest count is the determiner one and the
+adjective is called a noun. Measured against a blocklist of objects that cannot
+be the object of a relation, this removed **8.0% of them against a 7.8% base
+rate over everything**: no discrimination whatever.
+
+**Marked evidence with an absolute floor.** The fix for the above is to read the
+degree evidence first regardless of size, since a bare noun essentially never
+follows "very". Recall on the blocklist jumps to **94.3%** -- and it also calls
+**38% of words WordNet certifies as nouns adjectives**, because over eight
+million tokens almost anything follows "so" twice.
+
+I also had the reason for that cost wrong. I assumed it was words below the
+evidence floor coming back Unknown, so I added a lenient mode that refuses only
+positive non-nouns. It changed nothing: 38.3% against 38.4%. The cost was not
+absence of evidence, it was 692 genuine nouns positively mislabelled.
+
+### So the threshold is a calibration, and it is printed rather than asserted
+
+How large a share of a word's noun-phrase evidence has to be the marked kind:
+
+| adj share | known BAD cut | known GOOD cut | ratio |
+|-----------|---------------|----------------|-------|
+| 0.00 | 94.3% | 38.4% | 2.46 |
+| **0.05** | **51.1%** | **2.9%** | 17.77 |
+| 0.10 | 44.3% | 1.6% | 27.61 |
+| 0.15 | 22.7% | 0.7% | 31.59 |
+| 0.25 | 17.0% | 0.5% | 34.22 |
+| 0.40 | 4.5% | 0.2% | 27.38 |
+| 1.01 | 0.0% | 0.2% | 0.00 |
+
+0.05 removes half the known errors and keeps 97.1% of the certain nouns. Note
+that **maximising the ratio column would have chosen 0.25 and been wrong** --
+the ratio rewards cutting almost nothing, and a filter that catches 17% of the
+errors is not worth much however clean it is per cut. Neither reference set is
+available to Taxis.
+
+### Wired in, and what the bar cannot say
+
+The extractor now takes an optional tagger that vetoes any IS-A whose head it has
+positive evidence is not a noun. Two passes over the corpus, because a tagger has
+to have seen the words before it can vote on them. On 58 books: 12,870 triples
+become 11,940, and IS-A precision on the WordNet bar is **2.16% either way**
+(38 correct of 1,761 against 39 of 1,807).
+
+**That bar structurally cannot see this change, and saying so is the point.** A
+triple is decidable only when its object is a WordNet category name -- and every
+WordNet category name is a noun. The decidable subset is nouns by construction,
+so a rule that removes non-nouns has nothing to remove inside it. `is-a(man,
+social)`, the case the module was built for, was never in it. The evidence the
+veto helps comes from the blocklist, which can see it; the evidence it costs
+little comes from the WordNet bar, which can.
+
+Twenty checks in `taxis_test`, including both wrong rules as regression cases:
+a noun with 60 determiners and 2 degree adverbs must stay a noun (the absolute
+floor lost this) and an adjective with 10 and 4 must not (argmax lost this).
+29/29 suites pass.
+
 ## v0.119.0 — The knowledge layer had no ground truth, and the ground truth was already in the tree
 
 **Author:** Claude Opus 5

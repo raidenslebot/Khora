@@ -20,7 +20,7 @@ add_executable(knowledge_bench knowledge_bench.cpp)
 target_link_libraries(knowledge_bench PRIVATE khora::ligature)
 
 add_executable(extraction_bench extraction_bench.cpp)
-target_link_libraries(extraction_bench PRIVATE khora::ligature khora::lexicon khora::reservoir)
+target_link_libraries(extraction_bench PRIVATE khora::ligature khora::lexicon khora::reservoir khora::taxis)
 
 add_executable(corpus_bench corpus_bench.cpp)
 target_link_libraries(corpus_bench PRIVATE khora::ligature khora::lexicon khora::reservoir)

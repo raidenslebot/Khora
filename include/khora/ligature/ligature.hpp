@@ -34,6 +34,8 @@
 #include <utility>
 #include <vector>
 
+namespace khora::taxis { class Taxis; }
+
 namespace khora::ligature {
 
 enum class Relation : std::uint8_t { IsA = 0, Causes = 1, HasPart = 2, _Count = 3 };
@@ -81,8 +83,20 @@ public:
 
     // Extract typed relations from a token sequence (the same tokens the Lexicon
     // and Plexus see). Returns the number of triples asserted.
+    // `tx`, when supplied, vetoes any IS-A whose object it has positive evidence
+    // is not a noun. The extractor takes the last content word of the noun
+    // phrase as the head, which is the right rule, and had no way to know
+    // whether that word is a noun -- so "man is a social being" asserted
+    // is-a(man, social). Measured against a blocklist of impossible objects the
+    // veto removes 51.1% of them and costs 2.9% of the words WordNet certifies
+    // as nouns.
+    //
+    // It requires two passes over the corpus, because the tagger has to have
+    // seen the words before it can vote on them. Passing nullptr is the old
+    // behaviour and is what a single-pass caller gets.
     std::size_t extract(const std::vector<std::string>& tokens,
-                        std::uint32_t patterns = PatAll);
+                        std::uint32_t patterns = PatAll,
+                        const khora::taxis::Taxis* tx = nullptr);
 
     // Assert/reinforce a single triple.
     void add(Relation r, const std::string& subj, const std::string& obj,
