@@ -144,3 +144,15 @@ target_link_libraries(verify_bench PRIVATE khora::logos khora::lattice)
 
 add_executable(correct_bench correct_bench.cpp)
 target_link_libraries(correct_bench PRIVATE khora::techne)
+
+add_executable(compress_bench compress_bench.cpp)
+target_link_libraries(compress_bench PRIVATE khora::lexicon khora::plexus khora::reservoir)
+
+add_executable(curate_bench curate_bench.cpp)
+target_link_libraries(curate_bench PRIVATE khora::lexicon khora::plexus khora::reservoir khora::ligature)
+
+add_executable(optimise_bench optimise_bench.cpp)
+target_link_libraries(optimise_bench PRIVATE khora::techne khora::lattice)
+
+add_executable(retrieve_bench retrieve_bench.cpp)
+target_link_libraries(retrieve_bench PRIVATE khora::plexus khora::lexicon khora::lattice khora::reservoir)

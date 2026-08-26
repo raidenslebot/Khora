@@ -3,6 +3,75 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.138.0 — 100% correct on everything it accepts, by refusing what it cannot establish
+
+**Author:** Claude Opus 5
+
+The previous entry established that a bounded proof does not survive its bound:
+274 programs proved on all 781 inputs of the domain, and on 36 trap tasks whose
+behaviour changes only outside it, **not one was right**. Exhaustive proof lost to
+random probing there, 0/36 against 6/36, because the prober draws
+`{1000000000}` and a proof over -2..2 never looks there.
+
+The diagnosis was not that proof is the wrong idea. It is that **the verification
+domain did not match the deployment domain**.
+
+### The fix, and it is old technology
+
+Keep the exhaustive pass and add a hunt over the EXTREMES of the range the
+program is actually for -- zero, one, the signs, values past the domain, the value
+cap, and lengths past every example it was shown. Refine on anything found and
+re-prove the small domain each time, so both guarantees hold together rather than
+in sequence. Boundary-value analysis, which is older than any of this and still
+the highest-yield thing in testing.
+
+| arm | accepted | right in the wild | 95% CI | seconds |
+|---|---|---|---|---|
+| certified (Generalised) | 271/276 | 228 — 84.1% | [79.3, 88.0] | 1.3 |
+| + 300 random probes | 272/276 | 242 — 89.0% | [84.7, 92.2] | 2.3 |
+| + EXHAUSTIVE proof | 274/276 | 236 — 86.1% | [81.5, 89.7] | 7.1 |
+| **+ proof AND extremes** | **260/276** | **260 — 100.0%** | **[98.5, 100.0]** | 11.3 |
+
+| arm, TRAPS only | accepted | right in the wild |
+|---|---|---|
+| certified | 36/36 | 0 — 0.0% |
+| + 300 random probes | 36/36 | 6 — 16.7% |
+| + EXHAUSTIVE proof | 36/36 | **0 — 0.0%** |
+| **+ proof AND extremes** | **24/36** | **24 — 100.0%** |
+
+### What actually changed
+
+It accepts FEWER and is right on everything it accepts. On the traps it refuses
+12 of 36 outright and is correct on all 24 it takes. Across the whole set it
+turned 38 wrong acceptances into 14 refusals and 24 correct answers.
+
+**That is what a correct verifier does: refuse what it cannot establish rather
+than accept and be wrong.** A system that says yes to 274 things and is wrong
+about 38 of them is worse than one that says yes to 260 and is wrong about none,
+and the second is the only one that can be built on.
+
+It costs 8.7x the time of bare certification and 5% of the acceptance rate.
+
+### And the number moved once for the wrong reason
+
+The first run of the four-arm version showed the exhaustive arm jumping from
+236 correct to 260. That was not an improvement, it was contamination: the hybrid
+arm appends counterexamples to the spec while refining, the exhaustive arm ran
+after it on the same object, and silently inherited them. Each arm now takes its
+own copy. **Cross-arm contamination reads exactly like an improvement**, which is
+why the arms have to be isolated even when they look independent.
+
+### What this is not
+
+Not a proof, and it must not be called one. It is a bounded proof plus a strictly
+better sample, and the honest claim is "proved on the small domain and unbroken at
+the edges of the large one". 100.0% is measured on 213 wilderness inputs -- itself
+a sample, so an upper bound on wrongness rather than a guarantee of rightness.
+
+A real guarantee still needs a decision procedure over the program TEXT rather
+than its inputs. That needs SMT over lists, which is more than the DPLL solver
+built two versions ago provides, and it remains the open item.
+
 ## v0.137.0 — A proof over the wrong domain is worse than a sample over the right one
 
 **Author:** Claude Opus 5
