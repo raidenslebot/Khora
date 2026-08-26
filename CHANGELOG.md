@@ -3,6 +3,50 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.174.0 - Sixteen times the hardware buys eight tasks; the library buys seventeen
+
+**Author:** Claude Opus 5
+
+Ten times the pool was worth +7 on the fixed bar, which said the wall is a budget
+limit. That invites the obvious next question and it had not been asked: **what
+is the SHAPE of the curve?** Stage 0 isolates it -- pure search, no library, no
+training, the same 96 problems every time.
+
+| pool | solved | gain over previous |
+|---|---|---|
+| 20,000 | 22 of 96 | -- |
+| 40,000 | 25 | +3 |
+| 80,000 | 26 | +1 |
+| 160,000 | 29 | +3 |
+| 320,000 | **30** | +1 |
+
+**Sixteen times the search budget buys eight tasks of ninety-six.** About two per
+doubling, and flat enough that the last doubling bought one.
+
+### Which bounds what hardware can ever do here
+
+Extending that line to 96 needs roughly thirty-three more doublings -- a pool
+around 10^15 behaviours. The machine has 100GB and each behaviour is a vector of
+values; it is not a question of being patient, it is arithmetic. **Compute alone
+does not close this gap and never will.**
+
+And at a FIXED pool of 200,000, three training stages take 29 to 46. So:
+
+| | tasks gained |
+|---|---|
+| multiplying the pool by 16, no library | **+8** |
+| three training stages at one pool | **+17** |
+
+**The library is worth more than an order of magnitude of hardware.** That is the
+argument for this whole line of work stated as a number, on problems the system
+does not get to choose, with a control that never moves.
+
+It also says where the remaining effort belongs. Depth 7 was 0 of 16 at ten times
+the pool with a full library; nothing in this curve suggests more of the same
+reaches it.
+
+No code changed in this entry -- 32/32 as of the previous one.
+
 ## v0.173.0 - 22 to 46, still climbing, and one task the library took away
 
 **Author:** Claude Opus 5
