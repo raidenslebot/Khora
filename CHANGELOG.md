@@ -3,6 +3,78 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.137.0 — A proof over the wrong domain is worse than a sample over the right one
+
+**Author:** Claude Opus 5
+
+Speed is not the binding constraint on the coding organ and has not been for a
+while: 366.6 certified lines/s on 24 threads against a 333.3 target, scaling
+13.5x. Quality is. The throughput bench already records that of the programs it
+solves under adversarial probing, **35.5% survive** -- nearly two thirds of what
+the system calls a solution is wrong somewhere the probes did not look.
+
+The synthesiser has four proof states and they are not interchangeable: Tested
+passes what it was shown, Generalised passes what it was not, Verified survived
+an adversary, and Exhaustive was checked on EVERY input in a stated finite
+domain. Only the last is a proof. So: does a proof over a bounded domain -- short
+lists, small values -- predict correctness anywhere else?
+
+Every arm is graded on a **wilderness** of 213 held-out inputs, lists to length 8
+over -20000..20000, outside the proof domain in both directions, never used to
+accept or refine anything.
+
+| arm | accepted | right in the wild | 95% CI | seconds |
+|---|---|---|---|---|
+| certified (Generalised) | 271/276 | 228 — 84.1% | [79.3, 88.0] | 1.2 |
+| + 300 random probes | 272/276 | 242 — 89.0% | [84.7, 92.2] | 2.1 |
+| + EXHAUSTIVE proof | 274/276 | 236 — 86.1% | [81.5, 89.7] | 6.4 |
+
+### The first version of this bench was useless
+
+It scored 97-100% on every arm, which contradicts the 35.5% and does not explain
+it. The task family was the problem: one- and two-op compositions of clean
+primitives are easy and mostly have an exact primitive match, so the bench never
+entered the regime where the defect lives.
+
+The fix is 36 **trap** tasks whose behaviour changes only OUTSIDE the proof
+domain -- `drop4`, `fifth`, `len_gt4` invisible below length 5;
+`clamp3`, `big_only`, `sign_at_10` invisible below |value| 3. A program can be
+genuinely proved on all 781 inputs and still be wrong on these, which is the
+entire question.
+
+| arm, TRAPS only | accepted | right in the wild | 95% CI |
+|---|---|---|---|
+| certified | 36/36 | **0 — 0.0%** | [0.0, 9.6] |
+| + 300 random probes | 36/36 | **6 — 16.7%** | [7.9, 31.9] |
+| + EXHAUSTIVE proof | 36/36 | **0 — 0.0%** | [0.0, 9.6] |
+
+### The answer, and it is the uncomfortable one
+
+**A bounded proof does not survive outside its bound.** 274 programs were proved
+on all 781 inputs of the domain; 86.1% are right in the wilderness, and on the
+traps specifically **not one of 36 is**. Every arm accepted all 36 -- the proof
+accepted them with full confidence, having genuinely checked every input it said
+it checked.
+
+**And exhaustive proof is WORSE than random probing on exactly the cases that
+matter** -- 0/36 against 6/36 -- because the prober draws edge cases like
+`{1000000000}` that lie outside the proof domain entirely, and the proof, by
+construction, never looks there. It also costs 3x the time to be wrong.
+
+Calling a program "proved" without naming the domain oversells it by 13.9 points
+overall, and by everything on the cases where the domain was the wrong one.
+
+The route to a real guarantee is not a bigger enumeration -- the domain is
+exponential and the traps move with it. It is a decision procedure over the
+program TEXT rather than its inputs, which is what the DPLL solver and bounded
+model checker built two versions ago are for, and what nothing currently
+connects to.
+
+Graded on 213 inputs, so "right in the wild" is itself a sample and an upper
+bound on wrongness rather than a proof of rightness. Compositions of ten list
+primitives: nothing here speaks to control flow, state or side effects, which is
+most programs.
+
 ## v0.136.0 — No swarm beats one agent, and the swarm found the flaw in yesterday's fix
 
 **Author:** Claude Opus 5

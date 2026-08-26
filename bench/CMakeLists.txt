@@ -141,3 +141,6 @@ target_link_libraries(control_bench PRIVATE khora::descent khora::telos khora::l
 
 add_executable(verify_bench verify_bench.cpp)
 target_link_libraries(verify_bench PRIVATE khora::logos khora::lattice)
+
+add_executable(correct_bench correct_bench.cpp)
+target_link_libraries(correct_bench PRIVATE khora::techne)
