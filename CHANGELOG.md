@@ -3,6 +3,87 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.143.0 - The associative memory ties BM25 at an eighth the cost, and its shipped readout is its worst one
+
+**Author:** Khora Opus 5
+
+Information retrieval was the last unmeasured axis. The Plexus answers "what is
+associated with X" and the Lattice answers "what is nearest to this glyph"; both
+are load-bearing and neither had ever been scored with a retrieval metric against
+a baseline that does not come from Khora.
+
+Cranfield-style over 57 books and 8.0M tokens: 400 queries, judgements from
+WordNet co-category (nothing in Khora contributed to that file), a judged-only
+collection so precision and recall are exact, and an oracle-ranking self-check
+that returns exactly 1.000.
+
+| engine | P@1 | nDCG@10 | recall@100 | latency | index |
+|---|---|---|---|---|---|
+| random | 0.2% | 0.005 | 1.64% | 1.5 us | 0.02 MB |
+| frequency | 2.0% | 0.009 | 2.93% | 0.1 us | 0 MB |
+| bm25-rm (lexical) | 4.0% | 0.040 | **8.47%** | 85.0 us | 87.1 MB |
+| **plexus cooc** | 5.5% | **0.042** | 4.99% | **7.9 us** | 28.5 MB |
+| plexus ppmi | 6.8% | 0.037 | 1.56% | 14.7 us | 28.5 MB |
+| plexus associates() | 6.2% | 0.036 | **1.56%** | 4.9 us | 28.5 MB |
+| lattice glyph | **11.0%** | **0.050** | 4.24% | 604.7 us | 7.5 MB |
+
+### The honest positive
+
+The Plexus **ties** BM25 with relevance-model expansion -- nDCG 0.042 against
+0.040, a difference of +0.002 against an SE of 0.005 -- on a third of the index
+and an eighth of the query latency, with no forward index at all. It beats
+frequency ranking decisively. It does not beat BM25, and after all the PMI
+machinery the answer to "is the associative graph better than counting words in
+sentences" is: no, it is the same, cheaper.
+
+### The headline is an artefact, and the bench measures the artefact
+
+`lattice glyph` -- character trigrams, no corpus, no learning -- tops nDCG@10
+and P@1. It wins because the ground truth is partly a spelling test: a query
+judged relatives are **3.03x more trigram-similar** to it than a random
+collection word, because WordNet fills `person` with -er agent nouns and clusters
+-ion abstractions by suffix. **55% of the lattice correct hits are near-homographs**
+of the query -- permission to commission, submission.
+
+Strike the spelling relatives out and the table reorders completely:
+
+```
+plexus cooc 149 | bm25-rm 144 | plexus cooc/1k 122 | ppmi 110 | assoc() 109 | lattice 65
+```
+
+On the non-morphological part of the judgements the Plexus is jointly first. Any
+report quoting the raw nDCG column without the spelling audit is quoting a
+spelling benchmark.
+
+### And the shipped readout is the worst one
+
+`associates()` applies three filters at once -- drop pairs seen fewer than three
+times, drop any neighbour above 0.6% of tokens as a function word, drop
+non-positive PMI. Together they cut the mean candidate list from **42.4 words to
+8.5**, and the cost shows up as **recall@100 of 1.56%, below random ranking at
+1.64%**. It does win P@1 (6.8% against 5.5%): the sharpening is real at rank one
+and destructive below it.
+
+This is the second independent measurement against it. dialect_bench found the
+same function-word filter leaves **13,919 of 35,259 nodes with an empty list** --
+it cannot emit "the" under any circumstances.
+
+Neither is a bug. A caller asking "what one thing is most surprisingly linked to
+this" wants the sharp list; a caller asking "what is related to this at all"
+wants coverage and was silently getting the first. The thresholds are now a
+`Plexus::Readout` the caller passes, with `sharp()` as the default so nothing
+moves underneath any existing call, and `broad()` for the three-times-recall
+setting the measurement prefers.
+
+Raising the memory bound is not the answer either: max_degree 160 to 1000 buys
+recall (4.99% to 6.51%) and loses precision (nDCG 0.042 to 0.036) for 1.8x the
+index and 3.7x the latency. The pruner is keeping the right edges.
+
+Co-category is semantic relatedness, not topical relevance -- "sparrow"/"nest"
+scores as a miss. The collection is judged-only, so every engine is handed a
+filter it did not earn and all absolute numbers would fall in open retrieval.
+Only the differences are readable, which is why the random row is printed.
+
 ## v0.142.0 - The verifier that refuses is now a library function, not a bench arm
 
 **Author:** Claude Opus 5

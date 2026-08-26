@@ -63,11 +63,45 @@ public:
     // This is the hub-proof similarity — a word's loudness cannot inflate it.
     double affinity(std::string_view a, std::string_view b) const;
 
-    // The k strongest associates of a word, by affinity (descending). These
-    // are SHARP: frequency hubs are suppressed by the mathematics, not by any
+    // HOW HARD TO FILTER, because one setting cannot serve both callers.
+    //
+    // associates() applies three filters at once: drop a pair seen fewer than
+    // three times, drop any neighbour above 0.6% of all tokens as a function
+    // word, and drop non-positive PMI. Together they are severe. Measured on 57
+    // books they cut the mean candidate list from 42.4 words to 8.5, and two
+    // independent benches found what that costs:
+    //
+    //   retrieve_bench: as a retrieval engine this readout scores recall@100 of
+    //   1.56%, BELOW random ranking at 1.64%, where the unfiltered co-occurrence
+    //   readout over the same graph scores 4.99% and ties a BM25 baseline on
+    //   nDCG. It does win P@1 (6.8% against 5.5%) -- the sharpening is real at
+    //   rank one and destructive below it.
+    //
+    //   dialect_bench: the function-word filter leaves 13,919 of 35,259 nodes
+    //   with a completely EMPTY associate list. This readout cannot emit "the"
+    //   under any circumstances.
+    //
+    // Neither is a bug. A caller asking "what is the one thing most surprisingly
+    // linked to this" wants the sharp list; a caller asking "what is related to
+    // this at all" wants coverage, and was silently getting the first. The
+    // thresholds are now the caller's choice, and the default is EXACTLY the
+    // previous behaviour so nothing moves underneath anyone.
+    struct Readout {
+        std::uint32_t min_cooc      = 3;      // kMinCoocQuery
+        double        stop_fraction = 0.006;  // kStopFraction; 1.0 disables it
+        bool          positive_pmi  = true;
+
+        // What every existing caller gets: precision at rank one.
+        static Readout sharp() { return Readout{}; }
+        // What the retrieval measurement prefers: three times the recall.
+        static Readout broad() { return Readout{1, 1.0, false}; }
+    };
+
+    // The k strongest associates of a word, by affinity (descending). These    // are SHARP: frequency hubs are suppressed by the mathematics, not by any
     // hand-tuned stop-list. The heart of the cure.
     std::vector<std::pair<std::string, double>>
-    associates(std::string_view word, std::size_t k = 8) const;
+    associates(std::string_view word, std::size_t k = 8,
+               const Readout& how = Readout{}) const;
 
     // REINFORCE — the autopoietic write-back. Strengthen the a<->b connection by
     // `add` (raising the joint count, hence PMI), as if Khora had observed it.

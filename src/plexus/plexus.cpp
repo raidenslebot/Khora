@@ -179,7 +179,8 @@ double Plexus::affinity(std::string_view a, std::string_view b) const {
 }
 
 std::vector<std::pair<std::string, double>>
-Plexus::associates(std::string_view word, std::size_t k) const {
+Plexus::associates(std::string_view word, std::size_t k,
+                   const Readout& how) const {
     std::vector<std::pair<std::string, double>> out;
     const std::int64_t ia = lookup_(word);
     if (ia < 0 || k == 0) return out;
@@ -195,14 +196,15 @@ Plexus::associates(std::string_view word, std::size_t k) const {
     // The function-word filter needs enough corpus for frequency stats to mean
     // anything; below that (e.g. unit tests) it is disabled so tiny vocabularies
     // stay intact.
-    const double stop_occ = (total_tokens_ >= 10000)
-        ? static_cast<double>(total_tokens_) * kStopFraction
+    const double stop_occ = (total_tokens_ >= 10000 && how.stop_fraction < 1.0)
+        ? static_cast<double>(total_tokens_) * how.stop_fraction
         : static_cast<double>(total_tokens_) + 1.0;   // unreachable => no filtering
     for (const auto& [nb, c] : adj_[a]) {
-        if (c < kMinCoocQuery) continue;
+        if (c < how.min_cooc) continue;
         if (static_cast<double>(occ_[nb]) > stop_occ) continue;  // function word — no semantic kinship
         const double p = ppmi_(a, nb, c);
-        if (p > 0.0) scored.push_back({ p * std::log2(1.0 + static_cast<double>(c)), p, nb });
+        if (p > 0.0 || !how.positive_pmi)
+            scored.push_back({ p * std::log2(1.0 + static_cast<double>(c)), p, nb });
     }
     if (scored.empty()) return out;
 
