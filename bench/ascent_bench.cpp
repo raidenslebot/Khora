@@ -269,12 +269,18 @@ const std::vector<char>& shrinking() {
 // Percentage of depth>=4 tasks generated as a BRANCH rather than a pipeline.
 // Zero reproduces the chains-only curriculum, which is what the ceiling at tier
 // 82 was a property of. Set from argv so both arms come from one binary.
-std::size_t g_branch_pct = 66;
+std::size_t g_branch_pct = 0;
 // Whether a length-reducing atom may only be the LAST operation of a chain.
 // Off reproduces the original uniform draw, so the rule can be A/B tested
 // rather than inherited -- it was first measured while an out-of-bounds read
 // was corrupting this very classifier.
 bool g_agg_last = true;
+// How many CONSECUTIVE tiers may verify nothing before the ascent gives up.
+// Two was the standing value, and a chains-only run ends at tier 60 on it --
+// while still filling every tier 24 of 24 from about 26 draws. The generator
+// is not the thing that stopped; the solver is. Seven earlier tiers were
+// barren on their own and recovered, so two in a row may simply be impatient.
+std::size_t g_barren_limit = 5;
 // One straight pipeline of atoms, which is the only shape this curriculum knew
 // how to ask for.
 struct Chain { Fn f; std::string name; };
@@ -677,6 +683,7 @@ int main(int argc, char** argv) {
     if (argc > 5) g_spec_width = std::max<std::size_t>(1, std::stoul(argv[5]));
     if (argc > 6) g_branch_pct = std::min<std::size_t>(100, std::stoul(argv[6]));
     if (argc > 7) g_agg_last = (std::stoul(argv[7]) != 0);
+    if (argc > 8) g_barren_limit = std::max<std::size_t>(1, std::stoul(argv[8]));
 
     std::printf("Does it get better at its job, or only finish its job?\n\n");
     std::printf("  %zu tasks per tier, depth rising with no fixed ceiling, pool %zu,\n",
@@ -802,7 +809,7 @@ int main(int argc, char** argv) {
         // is the same defect as a benchmark reporting a number it did not
         // measure, and it is corrected here rather than quietly aligned.
         if (with.verified == 0 && without.verified == 0) {
-            if (++barren >= 2) {
+            if (++barren >= g_barren_limit) {
                 std::printf("  -- two consecutive tiers verified nothing; the ascent ends "
                             "at tier %zu.\n", tier);
                 break;

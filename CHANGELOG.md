@@ -3,6 +3,60 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.167.0 - Branching and patience turn out to be the same fix, and patience is one line
+
+**Author:** Claude Opus 5
+
+I have called a ceiling on this loop structural three times now. Each time it was
+an artefact, and each artefact was different:
+
+| ceiling | what it actually was |
+|---|---|
+| tier 42 | the generator-s draw budget, fixed in an earlier cycle |
+| tier 82 | an out-of-bounds read I introduced |
+| tier 60 | **the stopping rule giving up** |
+
+The last entry left "chains gain nothing past tier 60 and I have not
+characterised why" as an open item. The answer took one run with the table kept
+rather than the total: **tiers 59 and 60 verified nothing, the rule is "two
+consecutive barren tiers", and the ascent stopped.** It never reached tier 100 at
+all.
+
+And it was still filling every tier **24 of 24 from about 26 draws** right up to
+the end. The generator was never in difficulty. Seven earlier tiers had been
+barren on their own and recovered.
+
+### So the loop was quitting, not saturating
+
+| chains only, cap 100 | ends at | carried | empty |
+|---|---|---|---|
+| barren tolerance 2 | tier 60 | 214 | 176 |
+| **barren tolerance 5** | tier 100 | **278** | **238** |
+
+**A one-line constant is worth +30%**, and it is worth more than the branching
+machinery of the last two entries.
+
+### Which makes branching redundant, and it was measuring patience all along
+
+| cap 100 | tolerance 2 | tolerance 5 |
+|---|---|---|
+| chains only | 214 / 176 | **278 / 238** |
+| ramped 66 branching | 275 / 231 | 277 / 233 |
+
+Patience alone: +30%. Branching alone: +28%. **Both together: nothing.**
+
+Branching-s entire measured benefit was that a branch tier is less likely to
+verify nothing, so two barren tiers in a row never happened and the run did not
+quit. It was not reaching new parts of program space. It was **keeping the
+stopping rule quiet**, and I wrote an entry titled "the wall was made of chains"
+about it.
+
+Default is now tolerance 5 and branching OFF -- 278 beats 275, and the knob stays
+for anyone who wants to test it past a cap of 100, where it might yet do
+something that patience cannot. The 2x2 is in the source.
+
+32/32.
+
 ## v0.166.0 - A branching rate that rises with depth, and a prediction that half failed
 
 **Author:** Claude Opus 5
