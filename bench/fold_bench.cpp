@@ -454,6 +454,33 @@ int main() {
                 : br.proof == Proof::Generalised ? "generalised" : "no",
                 br.recipe.found ? br.recipe.render().c_str() : "nothing matched");
 
+    // GRADE IT THE WAY THE SELF-HOSTING BENCH GRADES: on inputs no part of the
+    // acceptance was allowed to see -- longer than 20, or magnitude >= 1000 on a
+    // list of length >= 5. `rev` is PROVED above and comes back 142/252 there, so
+    // the proof and the grade disagree and the shape that separates them is the
+    // whole question.
+    if (br.proof == Proof::Exhaustive) {
+        std::size_t ok = 0, n = 0;
+        Value bad_in, bad_got, bad_want;
+        for (std::size_t t = 0; t < 252; ++t) {
+            Value in;
+            const bool longish = (t % 2) == 0;
+            const std::size_t k = longish ? 21 + t % 30 : 5 + t % 8;
+            for (std::size_t j = 0; j < k; ++j) {
+                const std::int64_t mag = longish ? 30 : 1000 + static_cast<std::int64_t>(rnd() % 9000);
+                in.push_back(static_cast<std::int64_t>(rnd() % (2 * mag)) - mag);
+            }
+            Value want(in.rbegin(), in.rend());
+            Value got = br.recipe.apply(in, &lib4);
+            ++n;
+            if (got == want) ++ok;
+            else if (bad_in.empty()) { bad_in = in; bad_got = got; bad_want = want; }
+        }
+        std::printf("\n    rev graded on 252 held-out inputs: %zu/%zu\n", ok, n);
+        if (!bad_in.empty())
+            std::printf("      first mismatch at length %zu: got %zu elements, wanted %zu\n",
+                        bad_in.size(), bad_got.size(), bad_want.size());
+    }
     std::printf("\n  A fold that accumulates a LIST is a different capability from one\n");
     std::printf("  that accumulates a value, and FoldF supported it all along. What was\n");
     std::printf("  missing was never the loop -- it was a body to hand it, and a body\n");

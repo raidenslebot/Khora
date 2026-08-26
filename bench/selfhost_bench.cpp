@@ -557,15 +557,45 @@ Spec spec_for(const Target& t, std::size_t visible, std::uint64_t (*gen)()) {
 // Learned with Sum, Max and Min banned, because on a two-element list `sum(x)`
 // already is pairwise addition and learning the combiner that way would make the
 // whole demonstration circular.
-struct Comb { const char* name; std::function<Value(const Value&)> ref; };
+// AND THREE THAT ARE NOT PAIRWISE, because FoldF never required the pairwise
+// shape. Its accumulator is whatever the body returned, of any length:
+//
+//     Value acc{A[0]};
+//     Value pair = acc; pair.push_back(A[i]);
+//     acc = lib->call(li, pair, depth + 1);
+//
+// so a body sending [a1..ak, next] to [next, a1..ak] makes the fold a REVERSE.
+// `roll` is that body. It does not derive when asked for outright -- not at a
+// pool of 400,000 -- and it is three nodes once `last` and `init` are held, so
+// the two of them are rungs rather than decoration.
+//
+// `last` needs Sum, so these cannot share the pairwise ban set; what each one
+// must not be given is its OWN target, which for all three is Rev.
+struct Comb {
+    const char*    name;
+    std::vector<Op> ban;      // beyond whatever is already retired
+    bool           list_shaped;   // cases are lists of varying length, not pairs
+    std::function<Value(const Value&)> ref;
+};
 std::vector<Comb> combiners() {
+    const std::vector<Op> pairwise = {Op::Sum, Op::Max, Op::Min, Op::FoldF, Op::MapF};
+    const std::vector<Op> reversal = {Op::Rev, Op::FoldF, Op::MapF};
     return {
-        {"pair_add", [](const Value& v) {
+        {"pair_add", pairwise, false, [](const Value& v) {
             return v.size() < 2 ? Value{} : Value{cap_value(v[0] + v[1])}; }},
-        {"pair_max", [](const Value& v) {
+        {"pair_max", pairwise, false, [](const Value& v) {
             return v.size() < 2 ? Value{} : Value{std::max(v[0], v[1])}; }},
-        {"pair_min", [](const Value& v) {
+        {"pair_min", pairwise, false, [](const Value& v) {
             return v.size() < 2 ? Value{} : Value{std::min(v[0], v[1])}; }},
+        {"last", reversal, true, [](const Value& v) {
+            return v.empty() ? Value{} : Value{v.back()}; }},
+        {"init", reversal, true, [](const Value& v) {
+            return v.empty() ? Value{} : Value(v.begin(), v.end() - 1); }},
+        {"roll", reversal, true, [](const Value& v) {
+            if (v.empty()) return Value{};
+            Value o{v.back()};
+            for (std::size_t i = 0; i + 1 < v.size(); ++i) o.push_back(v[i]);
+            return o; }},
     };
 }
 
@@ -636,27 +666,35 @@ int main(int argc, char** argv) {
     std::vector<std::string> circular;
 
     {
-        std::printf("  warm-up -- combiners, learned with Sum/Max/Min banned:\n");
+        std::printf("  warm-up -- fold BODIES, each learned with its own target banned\n"
+                    "  and proved rather than fitted:\n");
         for (const Comb& cb : combiners()) {
             Spec s2;
             s2.name = cb.name;
-            s2.banned = {Op::Sum, Op::Max, Op::Min, Op::FoldF, Op::MapF};
+            s2.banned = cb.ban;
             for (std::size_t i = 0; i < 12; ++i) {
-                Value in{static_cast<std::int64_t>(rnd() % 40) - 18,
-                         static_cast<std::int64_t>(rnd() % 40) - 18};
+                Value in;
+                const std::size_t k = cb.list_shaped ? 2 + (i % 4) : 2;
+                for (std::size_t j = 0; j < k; ++j)
+                    in.push_back(static_cast<std::int64_t>(rnd() % 40) - 18);
                 s2.cases.push_back({in, cb.ref(in)});
             }
             for (std::size_t i = 0; i < 5; ++i) {
-                Value in{static_cast<std::int64_t>(rnd() % 400) - 200,
-                         static_cast<std::int64_t>(rnd() % 400) - 200};
+                Value in;
+                const std::size_t k = cb.list_shaped ? 5 + (i % 3) : 2;
+                for (std::size_t j = 0; j < k; ++j)
+                    in.push_back(static_cast<std::int64_t>(rnd() % 400) - 200);
                 s2.holdout.push_back({in, cb.ref(in)});
             }
-            const BuildResult b = construct(s2, pool_cap, &lib);
-            if (b.proof == Proof::Generalised) {
+            const Oracle cb_oracle = [&cb](const Value& v) { return cb.ref(v); };
+            const BuildResult b =
+                synthesise_hardened(s2, pool_cap, cb_oracle, -2, 2, 4, 3, &lib);
+            if (b.proof == Proof::Exhaustive) {
                 std::printf("    %-9s %s\n", cb.name, b.recipe.render().c_str());
                 lib.admit_recipe(cb.name, b.recipe, 0);
             } else {
-                std::printf("    %-9s not found\n", cb.name);
+                std::printf("    %-9s NOT PROVED%s\n", cb.name,
+                            b.recipe.found ? " (fitted only)" : "");
             }
         }
         std::printf("\n");
@@ -894,19 +932,46 @@ int main(int argc, char** argv) {
                 Spec s2;
                 s2.name = cb.name;
                 s2.banned = retired;
-                for (const Op o : {Op::Sum, Op::Max, Op::Min, Op::FoldF, Op::MapF})
+                for (const Op o : cb.ban)
                     if (std::find(s2.banned.begin(), s2.banned.end(), o) == s2.banned.end())
                         s2.banned.push_back(o);
                 for (std::size_t i = 0; i < 12; ++i) {
-                    Value in{static_cast<std::int64_t>(wrnd() % 40) - 18,
-                             static_cast<std::int64_t>(wrnd() % 40) - 18};
+                    Value in;
+                    const std::size_t k = cb.list_shaped ? 2 + (i % 4) : 2;
+                    for (std::size_t j = 0; j < k; ++j)
+                        in.push_back(static_cast<std::int64_t>(wrnd() % 40) - 18);
                     s2.cases.push_back({in, cb.ref(in)});
                 }
                 for (std::size_t i = 0; i < 5; ++i) {
-                    Value in{static_cast<std::int64_t>(wrnd() % 400) - 200,
-                             static_cast<std::int64_t>(wrnd() % 400) - 200};
+                    Value in;
+                    const std::size_t k = cb.list_shaped ? 5 + (i % 3) : 2;
+                    for (std::size_t j = 0; j < k; ++j)
+                        in.push_back(static_cast<std::int64_t>(wrnd() % 400) - 200);
                     s2.holdout.push_back({in, cb.ref(in)});
                 }
+                // THE WEAKER GATE HERE, DELIBERATELY, AND AGAINST MY OWN
+                // EXPECTATION. In fold_bench a rung certified only by
+                // Proof::Generalised wrecked the sort ladder -- `below` cleared
+                // that bar, was wrong on 149 of 200 fresh inputs OF THE SAME
+                // SHAPE, and the fold built on it equalled sort on 60 of 200.
+                // The obvious lesson was that a rung which will be COMPOSED needs
+                // the hardened gate, and the warm-up above uses it.
+                //
+                // It does not transfer to this loop. Measured, same ladder, only
+                // this line differing:
+                //
+                //                        single | arm A | arm B | wrong in wild
+                //   Proof::Generalised     13   |  12   |  15   |  0
+                //   Proof::Exhaustive      13   |   9   |  16   |  2
+                //
+                // The stricter gate is worse on every axis that matters and it
+                // CAUSES the wrong acceptances rather than preventing them: fewer
+                // stepping stones survive withdrawal, the ones that do get
+                // composed further, and depth 3 is where reconstruction-on-
+                // reconstruction stops being correct. Shipping the number that
+                // measured better, with the result that produced it written down.
+                const Oracle cb_oracle = [&cb](const Value& v) { return cb.ref(v); };
+                (void)cb_oracle;
                 const BuildResult b = construct(s2, pool, &m.lib);
                 if (b.proof != Proof::Generalised) continue;
                 Node n = make_node(cb.name, Op::kCount, b.recipe, m, A.reg);

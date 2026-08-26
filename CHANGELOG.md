@@ -3,6 +3,77 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.151.0 - Wiring the ladder into the benchmark that counts, and a lesson that did not transfer
+
+**Author:** Claude Opus 5
+
+The previous entry proved `rev = fold[roll](x)` in `fold_bench`. That is a
+standalone bench, so the result was BUILT and not WIRED, and the benchmark this
+project says to measure capability by is the self-hosting one. The three rungs
+are now part of its fold-body warm-up, derived under a Rev ban like the pairwise
+combiners are derived under theirs.
+
+| | before | after |
+|---|---|---|
+| rebuilt from the rest, single round | 12/22 | **13/22** |
+| | | `rev = fold[lib5](x)`, 999/1000 probes |
+
+**Stated precisely:** `rev` is rebuilt in the SINGLE-ROUND table. The
+"never rebuilt by any ARM" list is unchanged at seven, because the iterated arms
+do not reach it. And the probe column reads 999/1000, not 1000/1000 -- one input
+in a thousand where the fold and the real `rev` disagree.
+
+### The lesson from the last entry does not transfer to this loop
+
+That entry concluded that a rung which will be COMPOSED needs the hardened gate,
+because a rung certified only by `Proof::Generalised` wrecked the sort ladder. It
+is a good conclusion in a controlled ladder and it is **wrong here**. Same
+ladder, same everything, one line differing:
+
+| rung gate in the iterated arms | single | arm A | arm B | wrong in the wild |
+|---|---|---|---|---|
+| `Proof::Generalised` | 13 | **12** | 15 | **0** |
+| `Proof::Exhaustive` | 13 | 9 | 16 | **2** |
+
+The stricter gate is worse on every axis that matters, and it **causes** the
+wrong acceptances rather than preventing them. Fewer stepping stones survive
+withdrawal, the ones that do get composed further, and depth three is where
+reconstruction-on-reconstruction stops being correct. Shipping the configuration
+that measured better, with the result that produced it written into the source.
+
+### Which is this bench measuring error accumulation for the first time
+
+Every previous cycle recorded the depth curve as "a real result about the gate
+and a WEAK one about depth -- the loop stops before it can stack deeply enough
+for decay to be measurable". Under the strict variant it stacks deeper, and:
+
+| depth | clean | worst agreement |
+|---|---|---|
+| 1 | 22 of 22 | 252/252 |
+| 2 | 3 of 3 | 252/252 |
+| **3** | **1 of 3** | **131/252** |
+
+Correct through two levels of self-reconstruction and wrong at the third.
+
+And the control that makes it attributable: the SAME `rev = fold[roll](x)`,
+built in `fold_bench` out of TRUE primitives rather than reconstructions, grades
+**252/252** on inputs of the same shape. So the failure is in the STACKING, not
+in the fold, not in the ladder, and not in the operation.
+
+### One hypothesis that was wrong, and the extremes it left behind
+
+The obvious reading of a fold wrong on long inputs is that `Proof::Exhaustive`
+runs over lists of length 0..4 while a fold hands its body an accumulator as long
+as the input, and no entry in `default_extremes()` reached past length eight.
+Four long entries added, up to length 24, one of them at large magnitude.
+
+**It changed nothing measured** -- the same rows, the same 142/252 and 131/252,
+the same runtime. The gap it closes is real and was not the one that mattered
+here. Kept, and recorded as having bought nothing rather than quietly left in.
+
+**No regressions.** `correct_bench` identical to its baseline; ascent 179 carried
+against 147 empty ending at tier 42 on its stopping rule; 32/32.
+
 ## v0.150.0 - The fold accumulates a LIST, and `rev` falls out of a three-rung ladder
 
 **Author:** Claude Opus 5

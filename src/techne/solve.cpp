@@ -415,6 +415,28 @@ const std::vector<Value>& default_extremes() {
         {kValueCap - 1, kValueCap - 1}, {-(kValueCap - 1), -(kValueCap - 1)},
         {kValueCap / 2, kValueCap / 2, kValueCap / 2},
         {7, 7, 7, 7, 7},
+        // LONGER THAN THE PROOF DOMAIN BY AN ORDER OF MAGNITUDE. The bounded
+        // proof runs over lists of length 0..4, and nothing above reached past
+        // eight, so a program whose behaviour depends on LENGTH was certified by
+        // looking only at short lists.
+        //
+        // That is not hypothetical either, and it is the second time this list
+        // has been too small. A fold hands its body an ACCUMULATOR, which grows
+        // to the length of the whole input, so proving the body on length 0..4
+        // says nothing about the fold. The self-hosting bench rebuilt
+        // rev = fold[roll](x) from a roll PROVED on the small domain and it was
+        // wrong on 110 of 252 grading inputs, every one of them longer than 20.
+        {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+         17, 18, 19, 20, 21, 22, 23, 24},
+        {24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9,
+         8, 7, 6, 5, 4, 3, 2, 1},
+        {5, -3, 12, 0, 7, -8, 3, 11, -2, 9, 4, -6, 1, 15, -4, 2,
+         13, -1, 6, 10, -7, 8, 0, 14},
+        // ...and one long list of large values, so length and magnitude are not
+        // only ever tested apart.
+        {4000, -3000, 2500, 1000, -4500, 3200, -1200, 800, 2100, -900,
+         1700, -2600, 3900, 600, -1500, 2800, -700, 1300, -3300, 450,
+         2200, -1800, 950, 3600},
     };
     return v;
 }
