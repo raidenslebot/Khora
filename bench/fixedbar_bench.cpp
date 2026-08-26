@@ -318,7 +318,13 @@ std::size_t score(const Drawn& d, const Library* lib, std::size_t pool_cap,
 } // namespace
 
 int main(int argc, char** argv) {
-    const std::size_t per_depth = (argc > 1) ? std::stoul(argv[1]) : 8;
+    // SIXTEEN, NOT EIGHT. At eight per depth the set is 48 tasks and the whole
+    // curve is 11, 11, 11, 11, 11, 11, 10 against a control of 11 -- a bench
+    // that cannot detect the effect it exists to measure, which is worse than
+    // no bench. The recorded numbers in the header were taken at 16 and the
+    // default was not. At 16 the same run reads 22, 25, 29, 32, 33, 35, 35
+    // against a control flat at 22.
+    const std::size_t per_depth = (argc > 1) ? std::stoul(argv[1]) : 16;
     const std::size_t stages    = (argc > 2) ? std::stoul(argv[2]) : 6;
     const std::size_t pool_cap  = (argc > 3) ? std::stoul(argv[3]) : 20000;
     const std::size_t budget    = (argc > 4) ? std::stoul(argv[4]) : 96;

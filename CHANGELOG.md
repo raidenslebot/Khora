@@ -3,6 +3,60 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.171.0 - The honest instrument, re-read: 22 to 35 on a bar the system cannot move
+
+**Author:** Claude Opus 5
+
+Everything measured today has been on `ascent_bench`, and a comment already in
+that file says why that can never settle the question:
+
+> AN ASCENT WHOSE CURRICULUM IS GENERATED FROM ITS OWN SOLUTIONS CANNOT
+> DEMONSTRATE UNBOUNDED SELF-IMPROVEMENT. It can only ever show the system
+> staying ahead of a bar it is also raising.
+
+An earlier cycle drew the right conclusion and built `fixedbar_bench`: an
+evaluation set drawn ONCE from a fixed seed over the BASE atoms only, never
+regenerated, never filtered against anything the system learns, nothing from it
+ever admitted to a library. Training happens on a disjoint stream; the fixed set
+is re-attempted with the accumulated library, admitting nothing.
+
+Re-read after today:
+
+| stage | trained on | library | fixed-set score | empty-library control |
+|---|---|---|---|---|
+| 0 | 0 | 0 | 22 of 96 | 22 |
+| 1 | 96 | 38 | 25 | 22 |
+| 2 | 192 | 70 | 29 | 22 |
+| 3 | 288 | 96 | 32 | 22 |
+| 4 | 384 | 96 | 33 | 22 |
+| 5 | 480 | 96 | 35 | 22 |
+| 6 | 576 | 96 | **35** | **22** |
+
+| | recorded | now |
+|---|---|---|
+| starting score | 18 of 96 | **22** |
+| by stage 6 | 25 | **35** |
+| gain over the control | +7 | **+13** |
+
+**Twenty-two to thirty-five on problems that never changed**, with the control
+flat at 22 at every stage. The pipeline is deterministic and the control proves
+it, so the difference is attributable to the library and nothing else. That is
+the one capability number in this project measured against something it does not
+get to move, and it is better than it has ever been.
+
+### The default configuration could not see it
+
+The bench defaults to eight tasks per depth. At 48 tasks the entire curve reads
+**11, 11, 11, 11, 11, 11, 10 against a control of 11** -- nothing, then noise
+below the control. I nearly filed that as a regression.
+
+The numbers in its own header were taken at sixteen per depth and the default was
+never moved to match. A benchmark whose shipped configuration cannot detect the
+effect it exists to measure is worse than no benchmark, because it answers.
+Default is now 16.
+
+32/32.
+
 ## v0.170.0 - The evicted entries were worthless, which rules out the last easy explanation
 
 **Author:** Claude Opus 5
