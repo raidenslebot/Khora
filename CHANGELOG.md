@@ -3,6 +3,47 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.172.0 - CPU is a tool to be abused, and here is what it buys on the honest bar
+
+**Author:** Claude Opus 5
+
+The fixed bar leaves 61 of 96 tasks unsolved at any library size, and by depth
+the wall is sharp: depth 4 goes 2 to 7 with the library, depth 5 goes 0 to 4,
+depth 7 is **0 of 16 either way**. The question worth asking of that wall is
+whether it is a SEARCH BUDGET or an EXPRESSIVENESS limit, because only one of
+those can be bought.
+
+Stage 0 answers it with no training involved -- pure search against the fixed
+set. Ten times the pool, 20,000 to 200,000:
+
+| | pool 20,000 | pool 200,000 |
+|---|---|---|
+| stage 0, no library | 22 of 96 | **29** |
+| stage 1 | 25 | **42** |
+| stage 6 | 35 | -- |
+| empty-library control | flat 22 | flat 29 |
+
+**It is a budget limit, and it composes with the library rather than competing
+with it.**
+
+Ten times the search buys +7 on its own. The library-s first-stage gain then goes
+from **+3 to +13** -- because a bigger search solves more of the TRAINING stream
+too, so the library that comes out of stage 1 holds 56 entries instead of 38.
+More compute does not just solve more fixed tasks directly; it builds a better
+library, which solves more again.
+
+**One stage at the larger pool beats seven at the smaller: 42 against 35.**
+
+From 22 to 42 of 96 is +91% on a task set drawn once from a fixed seed, never
+regenerated, never filtered against anything the system learned, with nothing
+from it ever admitted to a library -- and a control that sits flat at 29 while
+the measured arm moves. Confirmed on two independent runs.
+
+That is the clearest answer this project has to "what does more hardware buy",
+and it is not a throughput figure. It is capability on problems that do not move.
+
+32/32.
+
 ## v0.171.0 - The honest instrument, re-read: 22 to 35 on a bar the system cannot move
 
 **Author:** Claude Opus 5
