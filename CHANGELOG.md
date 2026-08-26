@@ -3,6 +3,37 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.153.0 - Five of five, actually run
+
+**Author:** Claude Opus 5
+
+The previous entry replaced a frozen "ALL FOURTEEN BACKENDS EXECUTED" printf with
+a live check and reported what it honestly measured: 3 verified, 1 unbuildable,
+10 unrun. Two of those were the harness, not the host.
+
+| | |
+|---|---|
+| `Task-Run` never imported the MSVC environment | so a binary launched by `khora.ps1 run` got no INCLUDE, LIB or SDK, while `build` did |
+| `NoDefaultCurrentDirectoryInExePath=1` on this host | so cmd refuses a binary in the working directory by bare name: it compiles, then the run step says "is not recognized", which the harness filed under "could not build" |
+
+Both fixed -- one line in `khora.ps1`, and `.\\name.exe` for locally built executables:
+
+```
+Python  3.12.10        matches on every pair
+JavaScript  v24.19.0   matches on every pair
+Go      go1.2x         matches on every pair
+Rust    rustc 1.98.0   matches on every pair
+C++     MSVC 19.44     matches on every pair
+```
+
+**5 of 5 backends with a toolchain here reproduce `Recipe::apply` byte for byte.**
+0 disagree, 0 fail to build, 9 have no toolchain and are not counted.
+
+The number is lower than the fourteen that used to be printed and it is now a
+measurement, taken on every run, of an emitter that could regress tomorrow.
+
+32/32.
+
 ## v0.152.0 - The fourteen-language guarantee was a printf
 
 **Author:** Claude Opus 5

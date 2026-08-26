@@ -204,6 +204,11 @@ function Task-Format {
 
 function Task-Run {
     if (-not $Rest) { throw 'Usage: khora.ps1 run <exe-name> [args...]' }
+    # The same environment 'build' gets. A binary launched from here inherits
+    # this shell, and differential_bench shells out to rustc and cl to check the
+    # emitted source against Recipe::apply -- without the SDK on INCLUDE/LIB
+    # those fail to LINK and the bench can only report "could not build here".
+    Import-MsvcEnv
     $exe = Join-Path $BuildPath "bin\$($Rest[0])"
     if (-not $exe.EndsWith('.exe')) { $exe += '.exe' }
     if (-not (Test-Path $exe)) { throw "No such binary: $exe. Run 'khora.ps1 build' first." }

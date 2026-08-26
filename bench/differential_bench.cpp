@@ -159,6 +159,12 @@ bool have_toolchain(const std::string& answer, const std::string& expect, bool e
 }
 
 // One entry per backend. A missing toolchain is reported, never inferred away.
+//
+// Locally built executables are invoked as `.\name.exe`. This host sets
+// NoDefaultCurrentDirectoryInExePath=1, so cmd refuses to run a binary sitting
+// in the working directory by bare name -- it builds, and then the run step
+// says "is not recognized as an internal or external command", which the
+// harness would otherwise file under "could not build".
 std::vector<Runner> runners() {
     return {
         {Lang::Python,     "python -V",          "Python",  "python emitted.py"},
@@ -168,17 +174,17 @@ std::vector<Runner> runners() {
                            "--target es2020 --lib es2020 2>nul && node ts_out.js"},
         {Lang::Go,         "go version",         "go1",     "go run emitted.go"},
         {Lang::Rust,       "rustc --version",    "rustc",
-                           "rustc -O -o emitted_rs.exe emitted.rs 2>nul && emitted_rs.exe"},
+                           "rustc -O -o emitted_rs.exe emitted.rs 2>nul && .\\emitted_rs.exe"},
         {Lang::Cpp,        "cl",                 "Microsoft",
                            "cl /nologo /EHsc /std:c++20 /O2 /Fe:emitted_cpp.exe emitted.cpp "
-                           ">nul 2>nul && emitted_cpp.exe"},
+                           ">nul 2>nul && .\\emitted_cpp.exe"},
         {Lang::CSharp,     "dotnet script --version", ".",  "dotnet script emitted.cs"},
         {Lang::Php,        "php -r " + std::string(1, 34) + "echo 42;" + std::string(1, 34),
                            "42",      "php emitted.php", true},
         {Lang::Java,       "javac -version",     "javac",   "javac Main.java 2>nul && java Main"},
         {Lang::Kotlin,     "kotlinc -version",   "kotlinc",
                            "kotlinc emitted.kt -include-runtime -d kt.jar 2>nul && java -jar kt.jar"},
-        {Lang::Swift,      "swiftc --version",   "Swift",   "swiftc -O main.swift -o sw.exe 2>nul && sw.exe"},
+        {Lang::Swift,      "swiftc --version",   "Swift",   "swiftc -O main.swift -o sw.exe 2>nul && .\\sw.exe"},
         {Lang::Haskell,    "runghc --version",   "runghc",  "runghc emitted.hs"},
         {Lang::Lua,        "lua -v",             "Lua",     "lua emitted.lua"},
         {Lang::Ruby,       "ruby -v",            "ruby",    "ruby emitted.rb"},
