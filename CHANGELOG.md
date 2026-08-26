@@ -7,28 +7,38 @@ been built, run, and observed.
 
 **Author:** Claude Opus 5
 
-compound_bench measured the loop; this puts it in the running binary. 
+compound_bench measured the loop; this puts it in the running binary. `synth`
 now tries to remember before it searches, runs whatever it remembers on the
 caller's own examples, and searches only if that fails.
 
+```
+khora> synth python 1,2,3=3,2,1 4,5,6=6,5,4 7,8=8,7
+  proof   : GENERALISED (also correct on held-out cases it never saw)
 
+   ... a separate process, different numbers, different language ...
+
+khora> synth javascript 11,22,33=33,22,11 5,6,7=7,6,5 8,9=9,8
+  proof   : REMEMBERED -- this program was derived earlier and has just been
+            re-run on every case you gave, all of which it passes.
+  from    : mem0   (similarity 0.5174, margin 0.5174)
+```
 
 ### It failed the first restart, and the reason is worth keeping
 
 A glyph is not a program -- the chiasm stores WHICH program -- so something has
 to hold the programs. I keyed them off the techne Library, which is BUDGETED and
-prunes.  was bound in the memory and evicted from the archive before it
-was written, so the next process retrieved a label it could not resolve, searched
-silently, and looked exactly like a memory that simply was not working.
+prunes. `synth5` was bound in the memory and evicted from the archive before
+it was written, so the next process retrieved a label it could not resolve,
+searched silently, and looked exactly like a memory that simply was not working.
 
 The program store is now its own, and never pruned. That is a real cost -- it
 grows without bound where the Library deliberately does not -- and it is the
 right trade because the Library's budget exists to keep the SEARCH SPACE small,
 and nothing in this store is ever a search candidate.
 
-/ and  exist for this. The Lattice could
-be queried and not ENUMERATED, the same gap the Ligature had two versions ago: a
-caller wanting to persist the whole thing had to already know every key.
+`Chiasm::save`/`load` and `Lattice::labels()` exist for this. The Lattice
+could be queried and not ENUMERATED, the same gap the Ligature had two versions
+ago: a caller wanting to persist the whole thing had to already know every key.
 
 ## v0.126.0 — It gets faster at programming the more it programs
 
