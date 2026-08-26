@@ -47,13 +47,25 @@ const std::unordered_set<std::string>& degrees() {
     return s;
 }
 
-// The infinitive marker and the modals. A word after these is a verb, with the
-// one systematic exception of "to" as a preposition ("to the house") -- which is
-// why the determiner check runs first and wins the token.
+// The infinitive marker, the modals, AND THE AUXILIARIES, which were missing and
+// are what the degree-adverb cue cannot reach.
+//
+// Degree adverbs find GRADABLE adjectives and nothing else. Measured on the live
+// corpus, "social" has 232 determiners in front of it and 2 degree adverbs --
+// "very social" is not something these books say -- so the flagship example this
+// module was built for, is-a(man, social), survived its own fix. Superlatives
+// are the same ("greatest": 1,099 against 4) and so are participles ("held": 37
+// against 1).
+//
+// Participles have their own marked context and it was going unused: they follow
+// an auxiliary. "was held", "has been", "is done". A bare noun after an
+// auxiliary happens ("was king", "had money") but far less often than after a
+// determiner, so the same ratio argument applies.
 const std::unordered_set<std::string>& modals() {
     static const std::unordered_set<std::string> s = {
         "to", "can", "cannot", "will", "would", "shall", "should",
-        "may", "might", "must", "could", "let", "must"
+        "may", "might", "must", "could", "let",
+        "is", "are", "was", "were", "been", "being", "has", "have", "had"
     };
     return s;
 }
@@ -87,7 +99,7 @@ Taxis::Evidence Taxis::evidence(const std::string& w) const {
     return it == ev_.end() ? Evidence{} : it->second;
 }
 
-Tag Taxis::tag(const std::string& w, double adj_ratio) const {
+Tag Taxis::tag(const std::string& w, double adj_ratio, double verb_ratio) const {
     const Evidence e = evidence(w);
 
     // ADJECTIVE EVIDENCE IS MARKED, AND IT ALSO HAS TO BE A REAL SHARE. Both
@@ -110,9 +122,13 @@ Tag Taxis::tag(const std::string& w, double adj_ratio) const {
     // phrase, which adjectives and nouns both are. A degree adverb in front is
     // something a bare noun mostly does not do. The ratio is how much of the
     // first kind of evidence the second kind has to displace.
-    const double np = static_cast<double>(e.det) + static_cast<double>(e.degree);
-    if (e.degree >= kFloor && np > 0.0 &&
-        static_cast<double>(e.degree) / np >= adj_ratio) return Tag::Adjective;
+    const double d  = static_cast<double>(e.det);
+    const double ad = static_cast<double>(e.degree);
+    const double vb = static_cast<double>(e.modal);
+    if (e.degree >= kFloor && d + ad > 0.0 && ad / (d + ad) >= adj_ratio)
+        return Tag::Adjective;
+    if (e.modal  >= kFloor && d + vb > 0.0 && vb / (d + vb) >= verb_ratio)
+        return Tag::Verb;
     if (e.det    >= kFloor) return Tag::Noun;
     if (e.modal  >= kFloor) return Tag::Verb;
     return Tag::Unknown;

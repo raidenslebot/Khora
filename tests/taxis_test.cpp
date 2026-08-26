@@ -117,14 +117,38 @@ int main() {
         check(!t.rejects_noun("nevermentioned"),
               "an unseen word is not rejected -- absence of evidence is not evidence");
 
+        // THE FLAGSHIP EXAMPLE TURNED OUT NOT TO NEED THIS MODULE.
+        //
+        // "man is a social being" asserted is-a(man, social), and I assumed for
+        // some time that it needed a part of speech. It did not. The phrase
+        // ended at "social" because "being" is on the extractor's stopword list
+        // for its participle use, and that list was being asked where a noun
+        // phrase stops -- a question it was never written to answer. Fixing the
+        // terminator fixed the example outright, with or without a tagger, and
+        // this check now pins that rather than the bug.
+        khora::ligature::Ligature plain;
+        plain.extract(toks("man is a social being"));
+        check(plain.count(khora::ligature::Relation::IsA, "man", "social") == 0,
+              "'man is a social being' no longer stops the phrase at 'social'");
+        check(plain.count(khora::ligature::Relation::IsA, "man", "being") == 1,
+              "  it reaches the head, and needed no tagger to do it");
+
+        // What the tagger IS for: a run whose last word is not its head. A
+        // postmodifying adjective leaves the noun behind it, and only a category
+        // can tell which of the two to take.
+        Taxis u;
+        for (int i = 0; i < 6; ++i) u.observe(toks("very wise counsel"));
+        for (int i = 0; i < 6; ++i) u.observe(toks("the man laboured"));
         khora::ligature::Ligature open, gated;
-        const auto sentence = toks("man is a social being");
+        const auto sentence = toks("the king is a man wise and generous");
         open.extract(sentence);
-        gated.extract(sentence, khora::ligature::Ligature::PatAll, &t);
-        check(open.count(khora::ligature::Relation::IsA, "man", "social") == 1,
-              "ungated, 'man is a social being' asserts is-a(man, social)");
-        check(gated.count(khora::ligature::Relation::IsA, "man", "social") == 0,
-              "and the tagger vetoes it");
+        gated.extract(sentence, khora::ligature::Ligature::PatAll, &u);
+        check(open.count(khora::ligature::Relation::IsA, "king", "wise") == 1,
+              "ungated, the last word of the run wins and it is an adjective");
+        check(gated.count(khora::ligature::Relation::IsA, "king", "man") == 1,
+              "with the tagger, the last NOUN of the run wins instead");
+        check(gated.count(khora::ligature::Relation::IsA, "king", "wise") == 0,
+              "  and the adjective is not asserted");
     }
 
     // --- IT SURVIVES A RESTART -----------------------------------------------

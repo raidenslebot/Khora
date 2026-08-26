@@ -548,6 +548,29 @@ int main(int argc, char** argv) {
         std::printf("      (1.01 disables the adjective rule entirely -- the last row is the\n"
                     "       determiner-only tagger this started as.)\n");
 
+        std::printf("\n    and the same for the verb ratio, with the adjective one held at its chosen value:\n");
+        std::printf("      verb share| cuts overall | KNOWN BAD cut | KNOWN GOOD cut | ratio\n");
+        std::printf("      ----------+--------------+---------------+----------------+------\n");
+        for (const double r : {0.10, 0.25, 0.35, 0.50, 0.65, 0.80, 1.01}) {
+            std::size_t ao = 0, ac = 0, bo = 0, bc = 0, go = 0, gc = 0;
+            for (const auto& sub : subjects) {
+                for (const auto& [o, c] : split.objects(Relation::IsA, sub, 64)) {
+                    (void)c;
+                    const khora::taxis::Tag t = tx.tag(o, khora::taxis::Taxis::kAdjRatio, r);
+                    const bool cut = (t != khora::taxis::Tag::Noun);
+                    ++ao; if (cut) ++ac;
+                    if (impossible_objects().count(o)) { ++bo; if (cut) ++bc; }
+                    if (wn.cats.count(o))              { ++go; if (cut) ++gc; }
+                }
+            }
+            const double bad  = bo ? 100.0 * bc / bo : 0.0;
+            const double good = go ? 100.0 * gc / go : 0.0;
+            std::printf("      %9.2f | %11.1f%% | %12.1f%% | %13.1f%% | %5.2f\n", r,
+                        ao ? 100.0 * ac / ao : 0.0, bad, good,
+                        good > 0.0 ? bad / good : 0.0);
+        }
+        std::printf("      (1.01 disables the verb rule; the adjective rule stays on.)\n");
+
         std::printf("\n    Neither reference set was available to Taxis, which sees only which\n"
                     "    word came before which over the same books.\n");
     }

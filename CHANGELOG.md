@@ -3,6 +3,110 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.121.0 — The example the tagger was built for did not need a tagger
+
+**Author:** Claude Opus 5
+
+Three things, and the middle one undoes part of the previous entry.
+
+### The live graph was still being built the losing way
+
+`extraction_bench` has measured per-sentence extraction against document-at-once
+for a while and the per-sentence path wins. `plexus_forge`, which is what
+actually writes `data/ligature_archive/main.lig` that the runtime loads, was
+still calling `tokenize()` on the whole document. Built and not wired, again.
+
+The extractor scans up to five words past a verb for the head of its object, so
+a document-at-once stream walks straight into the next sentence. That is where
+`is-a(man, weber)` came from -- a proper noun that was never in the same clause.
+The forge now reads sentences, builds a tagger in a first pass, and extracts with
+it in a second.
+
+### Auxiliaries, and a joint calibration
+
+Degree adverbs find gradable adjectives and nothing else. On the live corpus
+`social` has 232 determiners in front of it and **2** degree adverbs, `greatest`
+1,099 and 4, `held` 37 and 1 -- so none of them was caught. Participles have
+their own marked context that was going unused: they follow an auxiliary. With
+`is/are/was/were/been/has/have/had` added and the same ratio argument applied to
+verbs, `held` reads 277 auxiliary contexts against 37 determiners and is a verb.
+
+Sweeping both ratios rather than one moved the chosen point: the previous entry
+picked an adjective share of 0.05, and at the new verb ratio 0.10 gives the same
+error recall at lower cost. Joint point 0.10 / 0.65:
+
+| | known BAD cut | known GOOD cut |
+|---|---|---|
+| degree adverbs only, 0.05 | 51.1% | 2.9% |
+| **plus auxiliaries, 0.10 / 0.65** | **68.2%** | **2.1%** |
+
+Better on both axes. The tagger reads 60.1% recall on WordNet nouns with 92.2% of
+the words it commits to being nouns.
+
+### And the flagship example never needed any of it
+
+`is-a(man, social)`, from "man is a social being", is the error this module was
+named after and the one I used to justify building it. It survived the tagger,
+and tracing why is the actual finding: `head_after` ended the noun phrase at the
+first non-content word, and **"being" is on the extractor's stopword list** for
+its participle use. So the phrase ended at "social".
+
+The stopword list does two different jobs -- deciding whether a token is a
+concept worth relating, and deciding where a noun phrase stops. It is right for
+the first and wrong for the second, because it contains ordinary nouns put there
+for their other uses. A phrase ends at a preposition, a conjunction or a
+relative, which is a different and much smaller set. Separating the two fixed the
+example outright, with or without a tagger.
+
+**Then I over-corrected and the live graph said so.** Having split termination
+from candidacy I dropped the candidacy check entirely, and the next forge
+produced `is-a(force, same)`, `is-a(matter, one)`, `causes(light, very)`,
+`causes(heat, him)`. Termination and candidacy are two questions and I had
+replaced one wrong answer with the other. The scan now walks to the phrase
+boundary and records only content words as candidates, with "being" as the
+explicit exception the whole thing turned on.
+
+### What the live graph holds now
+
+```
+man     BEFORE  animal(7) weber(4) creature(4) social(3)
+        AFTER   animal(9) being(5) thing(5) creature(4)
+body    BEFORE  row(16) matter(2) mass(1) signified(1)
+        AFTER   row(4)  matter(2) mass(1) plurality(1)
+woman   BEFORE  personage(4) adler(1) law(1) another(1)
+        AFTER   personage(1) proposition(1) law(1) irene(1)
+light   BEFORE  mixture(2) between(1) sun(1) belt(1)
+        AFTER   mixture(2) effect(1) bond(1) properties(1)
+```
+
+All four of `man`'s strongest is-a relations are now correct. The cross-sentence
+proper nouns are gone, the adjective is gone, and a preposition that was being
+asserted as a category is gone.
+
+Across the whole bench: objects that cannot be objects fall from **6.8% to 3.0%**,
+and correct decidable is-a triples go from 38 of 1,799 to **47 of 2,108**. That
+second number is not significant on that bar -- 2.11% [1.54, 2.89] against 2.23%
+[1.68, 2.96] -- and the first is 11 of 238 against 7 of 231, which is also small.
+The measurement that carries weight is still the gate against the two reference
+sets, and the visible content of the graph.
+
+### What is still wrong, precisely
+
+`justice is-a interest(5)` and `justice is-a thief(3)` are unchanged, and should
+be. They come from "justice is the interest of the stronger" and "justice is a
+thief" -- parsed perfectly, predications rather than taxonomies. No amount of
+syntax fixes that; it is what the copula measurement said in the first place.
+
+`time is-a greatest(1)` is unchanged too. Superlatives take no degree adverb and
+sit after determiners like any noun, so nothing in the cue set reaches them. The
+same holds for relational adjectives: `social` is still tagged a noun and would
+still pass the veto if a phrase ended on it.
+
+29/29 suites pass. `taxis_test` now pins the phrase-terminator fix instead of the
+bug it used to assert, and demonstrates the tagger on the case it is genuinely
+for: "the king is a man wise and generous", where the last word of the run is not
+its head.
+
 ## v0.120.0 — Khora had no idea what a noun was
 
 **Author:** Claude Opus 5

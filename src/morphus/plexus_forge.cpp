@@ -16,6 +16,7 @@
 #include "khora/ligature/ligature.hpp"
 #include "khora/plexus/plexus.hpp"
 #include "khora/reservoir/reservoir.hpp"
+#include "khora/taxis/taxis.hpp"
 
 #include <filesystem>
 #include <future>
@@ -45,18 +46,50 @@ int main() {
     }
 
     const unsigned T = std::max(1u, std::thread::hardware_concurrency());
+    taxis::Taxis tx;
     std::cout << "forging plexus over " << texts.size() << " tomes on " << T
               << " threads (full text, additive merge)...\n";
 
+    // PASS ONE — the part of speech, before anything is extracted.
+    //
+    // The extractor can veto an is-a whose head it has positive evidence is not
+    // a noun, and a tagger has to have seen the words before it can vote on
+    // them. So the whole corpus is read for grammar first. Counts are additive
+    // exactly as the Plexus counts are, so it goes wide the same way.
+    auto tagger = [&texts, T](unsigned k) -> taxis::Taxis {
+        taxis::Taxis t;
+        for (std::size_t i = k; i < texts.size(); i += T)
+            for (const auto& sent : lexicon::tokenize_sentences(texts[i])) t.observe(sent);
+        return t;
+    };
+    {
+        std::vector<std::future<taxis::Taxis>> tf;
+        tf.reserve(T);
+        for (unsigned k = 0; k < T; ++k)
+            tf.push_back(std::async(std::launch::async, tagger, k));
+        for (auto& f : tf) { taxis::Taxis t = f.get(); tx.absorb(t); }
+    }
+    std::cout << "tagged: " << tx.vocabulary() << " word types, " << tx.tagged()
+              << " given a part of speech.\n";
+
     // Parallel CPU — each worker weaves a thread-local Plexus (association) AND
     // Ligature (typed relations) over a stride of the corpus.
+    //
+    // THE TWO STREAMS ARE DIFFERENT ON PURPOSE. The Plexus counts co-occurrence
+    // and wants the document as one stream, because words either side of a full
+    // stop really are near each other. The Ligature matches syntactic frames and
+    // must not cross a sentence boundary: it scans up to five words past a verb
+    // for the head of its object, and reading into the next sentence is where
+    // is-a(woman, adler) came from -- a proper noun that was never in the same
+    // clause. extraction_bench measured the two side by side and this forge was
+    // still building the live graph the losing way.
     struct Woven { plexus::Plexus plex; ligature::Ligature lig; };
-    auto worker = [&texts, T](unsigned k) -> Woven {
+    auto worker = [&texts, T, &tx](unsigned k) -> Woven {
         Woven w;
         for (std::size_t i = k; i < texts.size(); i += T) {
-            const auto toks = lexicon::tokenize(texts[i]);
-            w.plex.observe(toks, 3);
-            w.lig.extract(toks);
+            w.plex.observe(lexicon::tokenize(texts[i]), 3);
+            for (const auto& sent : lexicon::tokenize_sentences(texts[i]))
+                w.lig.extract(sent, ligature::Ligature::PatAll, &tx);
         }
         return w;
     };
@@ -82,9 +115,13 @@ int main() {
     std::cout << "ligature: " << lig.triple_count() << " distinct typed relations, "
               << lig.assertions() << " assertions.\n";
 
+    // The tagger is saved too. It cost a whole pass over the corpus to build and
+    // every consumer of the graph has the same question about a word that the
+    // extractor did.
+    tx.save(fs::path("data") / "taxis_archive");
     plex.save(fs::path("data") / "plexus_archive" / "main");
     lig.save(fs::path("data") / "ligature_archive" / "main");
-    std::cout << "saved -> data/plexus_archive/main.plexus + data/ligature_archive/main.lig\n\n";
+    std::cout << "saved -> plexus_archive + ligature_archive + taxis_archive\n\n";
 
     // Proof of STRUCTURE (not just association): what Khora now knows AS A KIND
     // OF and AS A CAUSE.

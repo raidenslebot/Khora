@@ -54,6 +54,7 @@ target_link_libraries(plexus_forge PRIVATE
     khora::lexicon
     khora::plexus
     khora::ligature
+    khora::taxis
 )
 
 # bulwark_probe — proves the containment cage in isolation (red-team requirement:

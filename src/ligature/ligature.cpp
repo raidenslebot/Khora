@@ -60,17 +60,63 @@ inline bool is_det(const std::string& w) {
     return w == "a" || w == "an" || w == "the";
 }
 
+// WHERE A NOUN PHRASE STOPS. Not at any stopword, which is what this used to ask
+// and is the actual cause of the error this whole investigation is named after.
+//
+// The stopword list does two different jobs: deciding whether a token is a
+// concept worth relating, and deciding where a noun phrase ends. It is right for
+// the first and wrong for the second, because it contains ordinary nouns that
+// were put there for their other uses. "being" is on it for the participle, so
+// "man is a social being" ended the phrase at "social" and asserted
+// is-a(man, social). I spent a while assuming that needed a part-of-speech
+// tagger; it needed a list entry to stop being consulted for a question it was
+// never written to answer.
+//
+// A noun phrase ends at a preposition, a conjunction, or a relative -- things
+// that start a new constituent. That is a different and much smaller set.
+const std::unordered_set<std::string>& phrase_enders() {
+    static const std::unordered_set<std::string> s = {
+        "of","in","on","at","by","for","with","from","into","onto","upon","over",
+        "under","through","between","among","against","without","within","about",
+        "after","before","during","across","behind","beyond","toward","towards",
+        "and","or","but","nor","that","which","who","whom","whose","when","where",
+        "while","because","since","unless","though","although","however","than",
+        "then","thus","therefore","hence","yet","still","not","was","were","is",
+        "are","been","has","have","had","will","would","could","should","shall",
+        "may","might","must","can","cannot","does","did","there","here","also"
+    };
+    return s;
+}
+
 // The OBJECT of a relation is the head noun of the noun phrase that follows the
-// trigger. In English the head is (usually) the LAST content word of the phrase:
-// "a social animal" -> animal, "the great inundation" -> inundation. So skip
-// determiners, then take the last word of the run of content words. This drops
-// the adjective noise of a naive "first word after 'a'" rule.
-inline std::string head_after(const std::vector<std::string>& t, std::size_t j) {
+// trigger. In English the head is (usually) the LAST noun of the phrase: "a
+// social animal" -> animal, "the great inundation" -> inundation.
+//
+// With a tagger the last NOUN is taken rather than the last word, which is the
+// job Taxis was built for and the only one it is asked to do here. Without one
+// the last word of the run is used, exactly as before.
+inline std::string head_after(const std::vector<std::string>& t, std::size_t j,
+                              const khora::taxis::Taxis* tx = nullptr) {
     while (j < t.size() && is_det(t[j])) ++j;
-    std::string last;
+    std::string last, last_noun;
     std::size_t span = 0;
-    while (j < t.size() && span < 5 && is_content(t[j])) { last = t[j]; ++j; ++span; }
-    return last;
+    // TERMINATING and BEING A CANDIDATE are two different questions, and running
+    // them off one list is what broke this. The phrase ends at a preposition or a
+    // conjunction; whether a word inside it can be the head is the stopword
+    // question, and it still is. Asking only the first let "same", "very", "him"
+    // and "one" become objects -- is-a(force, same), causes(light, very) -- so
+    // the scan walks to the phrase boundary and only records candidates.
+    //
+    // "being" is the exception the whole thing turned on: a genuine noun sitting
+    // on the stopword list for its participle use.
+    while (j < t.size() && span < 5 && !phrase_enders().count(t[j])) {
+        if (is_content(t[j]) || t[j] == "being") {
+            last = t[j];
+            if (tx && tx->is_noun(t[j])) last_noun = t[j];
+        }
+        ++j; ++span;
+    }
+    return (tx && !last_noun.empty()) ? last_noun : last;
 }
 
 } // namespace
@@ -153,7 +199,7 @@ std::size_t Ligature::extract(const std::vector<std::string>& t,
                 t[ys + 1] == "of") {
                 ys += 2;
             }
-            const std::string Y = head_after(t, ys);
+            const std::string Y = head_after(t, ys, tx);
             if (is_content(X) && !Y.empty() && nominal(Y)) { add(Relation::IsA, X, Y); ++added; }
         }
         // CAUSES:  X <causal verb>  [det] ... Y
@@ -164,7 +210,7 @@ std::size_t Ligature::extract(const std::vector<std::string>& t,
                  w == "makes"   || w == "make"   || w == "brings"  || w == "bring"   ||
                  w == "drives"  || w == "drive"  || w == "forces"  || w == "enables" ||
                  w == "enable"  || w == "excites" || w == "excite")) {
-            const std::string Y = head_after(t, i + 1);
+            const std::string Y = head_after(t, i + 1, tx);
             if (is_content(X) && !Y.empty()) { add(Relation::Causes, X, Y); ++added; }
         }
         // CAUSES:  X leads/led/lead/results/give  to/in  ... Y   ("leads to", "results in")
@@ -174,7 +220,7 @@ std::size_t Ligature::extract(const std::vector<std::string>& t,
                  i + 2 < t.size() && (t[i + 1] == "to" || t[i + 1] == "in" || t[i + 1] == "rise")) {
             std::size_t ys = i + 2;
             if (ys < t.size() && (t[ys] == "to" || t[ys] == "in")) ++ys;   // "rise to"
-            const std::string Y = head_after(t, ys);
+            const std::string Y = head_after(t, ys, tx);
             if (is_content(X) && !Y.empty()) { add(Relation::Causes, X, Y); ++added; }
         }
         // HAS-PART:  X has/have  DET ... Y      |  X contains/includes/... ... Y
@@ -190,7 +236,7 @@ std::size_t Ligature::extract(const std::vector<std::string>& t,
         // oxygen" is a real part-whole claim.
         else if ((pat & PatPossess) && (w == "has" || w == "have" || w == "had")) {
             if (i + 1 < t.size() && is_det(t[i + 1])) {
-                const std::string Y = head_after(t, i + 2);
+                const std::string Y = head_after(t, i + 2, tx);
                 if (is_content(X) && !Y.empty()) { add(Relation::HasPart, X, Y); ++added; }
             }
         }
@@ -198,7 +244,7 @@ std::size_t Ligature::extract(const std::vector<std::string>& t,
                  (w == "contains" || w == "contain" ||
                  w == "comprises" || w == "comprise" || w == "includes" ||
                  w == "possesses" || w == "possess" || w == "carries" || w == "carry")) {
-            const std::string Y = head_after(t, i + 1);
+            const std::string Y = head_after(t, i + 1, tx);
             if (is_content(X) && !Y.empty()) { add(Relation::HasPart, X, Y); ++added; }
         }
         // HAS-PART (material/composition):  X consists/composed/made/formed  of  ... Y
@@ -206,7 +252,7 @@ std::size_t Ligature::extract(const std::vector<std::string>& t,
                  (w == "consists" || w == "consist" || w == "composed" || w == "made" ||
                   w == "formed" || w == "built" || w == "comprised") &&
                  i + 2 < t.size() && t[i + 1] == "of") {
-            const std::string Y = head_after(t, i + 2);
+            const std::string Y = head_after(t, i + 2, tx);
             if (is_content(X) && !Y.empty()) { add(Relation::HasPart, X, Y); ++added; }
         }
 
@@ -229,7 +275,7 @@ std::size_t Ligature::extract(const std::vector<std::string>& t,
         if ((pat & PatOther) && (w == "and" || w == "or") &&
             i + 2 < t.size() && t[i + 1] == "other") {
             const std::string& Xh = t[i - 1];
-            const std::string  Y  = head_after(t, i + 2);
+            const std::string  Y  = head_after(t, i + 2, tx);
             if (is_content(Xh) && !Y.empty() && nominal(Y)) { add(Relation::IsA, Xh, Y); ++added; }
         }
 
@@ -237,7 +283,7 @@ std::size_t Ligature::extract(const std::vector<std::string>& t,
         if ((pat & PatIncluding) && (w == "including" || w == "especially") &&
             i + 1 < t.size()) {
             const std::string& Y  = t[i - 1];
-            const std::string  Xh = head_after(t, i + 1);
+            const std::string  Xh = head_after(t, i + 1, tx);
             if (is_content(Y) && !Xh.empty() && nominal(Y)) { add(Relation::IsA, Xh, Y); ++added; }
         }
     }

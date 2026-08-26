@@ -108,10 +108,18 @@ public:
     // Note that maximising the ratio column would have chosen 0.25 and been
     // wrong: the ratio rewards cutting almost nothing, and a filter that removes
     // 17% of the errors is not worth much however clean it is per cut.
-    static constexpr double kAdjRatio = 0.05;
+    static constexpr double kAdjRatio = 0.10;
 
-    Tag tag(const std::string& w) const { return tag(w, kAdjRatio); }
-    Tag tag(const std::string& w, double adj_ratio) const;
+    // The same argument for verbs, and the cue that reaches what degree adverbs
+    // cannot. "social" has 232 determiners in front of it and 2 degree adverbs on
+    // the live corpus, so the adjective rule never fires for it; "held" has 37
+    // and 1. Participles follow an auxiliary instead -- "was held", "is done" --
+    // and a bare noun after an auxiliary is much rarer than after a determiner.
+    static constexpr double kVerbRatio = 0.65;
+
+    Tag tag(const std::string& w) const { return tag(w, kAdjRatio, kVerbRatio); }
+    Tag tag(const std::string& w, double adj_ratio,
+            double verb_ratio = kVerbRatio) const;
     bool is_noun(const std::string& w) const { return tag(w) == Tag::Noun; }
 
     // POSITIVE evidence that a word is not a noun, which is a different claim
