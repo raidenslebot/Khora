@@ -72,14 +72,60 @@ double Valuer::confidence_bound(std::size_t context, std::size_t action,
                                   static_cast<double>(e.count));
 }
 
+namespace {
+
+// TIES WERE GOING TO THE LOWEST INDEX, AND THAT IS A POLICY.
+//
+// Both selectors used a strict >, so among equal candidates the first one
+// registered always won. That is invisible until you look for it and then it is
+// everywhere: in a gridworld bench the bandit's learned policy came out
+// IDENTICAL TO AN "ALWAYS GO UP" CONTROL to three decimal places, because 96% of
+// its states ended with the top two arms numerically tied and "up" was action
+// zero. In Volition the same rule means "whichever act was registered first",
+// silently, whenever two acts have paid equally -- which with a binary yield is
+// most of the time.
+//
+// The fix is reservoir sampling over the tied set: the k-th candidate that ties
+// the leader replaces it with probability 1/k, which is uniform over all ties.
+//
+// The randomness is DERIVED, not drawn. A mutable RNG in a const method would be
+// a data race waiting to happen and would make two identical queries disagree;
+// hashing (context, action, k, how much evidence this context has) gives a
+// choice that is uniform across ties, stable for a given state of knowledge, and
+// free of any dependence on registration order.
+std::uint64_t mix(std::uint64_t x) {
+    x ^= x >> 33; x *= 0xff51afd7ed558ccdULL;
+    x ^= x >> 33; x *= 0xc4ceb9fe1a85ec53ULL;
+    x ^= x >> 33;
+    return x;
+}
+
+// True with probability 1/k, deterministically for a given (ctx, a, k, n).
+bool take_tie(std::size_t ctx, std::size_t a, std::size_t k, std::size_t n) {
+    if (k <= 1) return true;
+    const std::uint64_t h = mix(0x9E3779B97F4A7C15ULL ^ (std::uint64_t)ctx * 0x100000001B3ULL
+                                ^ (std::uint64_t)a * 0x9E3779B1ULL
+                                ^ (std::uint64_t)n * 0x85EBCA77ULL
+                                ^ (std::uint64_t)k);
+    return (h % (std::uint64_t)k) == 0;
+}
+
+} // namespace
+
 std::size_t Valuer::choose(std::size_t context, double c,
                            const std::vector<std::size_t>& allowed) const {
     const std::size_t n = actions_ == 0 ? 1 : actions_;
     std::size_t best_a = allowed.empty() ? 0 : allowed.front();
     double best_v = -std::numeric_limits<double>::infinity();
+    std::size_t ties = 0;
+    const std::size_t seen = total(context);
     auto consider = [&](std::size_t a) {
         const double v = confidence_bound(context, a, c);
-        if (v > best_v) { best_v = v; best_a = a; }
+        if (v > best_v) { best_v = v; best_a = a; ties = 1; return; }
+        // Equal bounds are the common case, not the rare one: with an untried
+        // arm scoring infinity, EVERY untried arm ties, and after learning any
+        // two arms with the same mean and the same count do too.
+        if (v == best_v) { ++ties; if (take_tie(context, a, ties, seen)) best_a = a; }
     };
     if (allowed.empty()) { for (std::size_t a = 0; a < n; ++a) consider(a); }
     else                 { for (std::size_t a : allowed) consider(a); }
@@ -91,12 +137,15 @@ std::size_t Valuer::best(std::size_t context,
     const std::size_t n = actions_ == 0 ? 1 : actions_;
     std::size_t best_a = allowed.empty() ? 0 : allowed.front();
     double best_v = -std::numeric_limits<double>::infinity();
+    std::size_t ties = 0;
+    const std::size_t seen = total(context);
     auto consider = [&](std::size_t a) {
         const Estimate e = estimate(context, a);
         // Unvisited actions have no evidence, so they are not candidates for a
         // question that asks what the learner has CONCLUDED.
         if (e.count == 0) return;
-        if (e.mean > best_v) { best_v = e.mean; best_a = a; }
+        if (e.mean > best_v) { best_v = e.mean; best_a = a; ties = 1; return; }
+        if (e.mean == best_v) { ++ties; if (take_tie(context, a, ties, seen)) best_a = a; }
     };
     if (allowed.empty()) { for (std::size_t a = 0; a < n; ++a) consider(a); }
     else                 { for (std::size_t a : allowed) consider(a); }

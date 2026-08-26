@@ -3,6 +3,99 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.130.0 — A tie-break was a policy, and it inflated a result I published today
+
+**Author:** Claude Opus 5
+
+Sequential decision making was one of the four total absences in the field audit.
+Building the bench for it turned up a live defect in code wired into the running
+system eight hours ago, and correcting it withdraws a claim from v0.123.0.
+
+### The defect
+
+`Valuer::choose` and `Valuer::best` both selected with a strict `>`, so among equal
+candidates the FIRST REGISTERED always won. That is not a tie-break, it is a
+policy, and it is invisible until something makes it visible:
+
+- In a gridworld the bandit's learned policy came out **identical to an "always
+  go up" control to three decimal places**, because 96% of its states ended with
+  the top two arms numerically tied and "up" was action zero.
+- In Volition it meant a silent standing preference for whichever act was
+  registered first -- and with a binary yield, ties are the common case.
+
+Fixed by reservoir sampling over the tied set. The randomness is DERIVED, not
+drawn: a mutable RNG inside a const method would be a data race and would make
+two identical queries disagree, so the choice is hashed from (context, action,
+tie index, evidence so far). Uniform over ties, stable for a given state of
+knowledge, and free of any dependence on registration order.
+
+### What that does to v0.123.0
+
+I reported the learned act-selection policy converging to a steady **90%**
+against a deterministic 80%, and called it "half the wasted acts removed". After
+the fix, on the identical 100-act protocol:
+
+| | blocks of 20 | total |
+|---|---|---|
+| before the fix | 75, 75, 90, 90, 90 | 84/100 |
+| **after the fix** | 70, 85, 90, 70, 100 | **83/100** |
+| fixed affinity (deterministic) | 80 x5 | 80/100 |
+
+The total barely moves. The **clean convergence does not survive** -- it was the
+deterministic tie-break making the policy stable, not the learner settling. And
+83/100 [74.5, 88.8] against 80/100 [71.1, 86.7] is an overlap, so the difference
+is **not demonstrated**. Both policies are reproducible byte-for-byte across runs,
+so more repetitions of this protocol will not separate them; a real answer needs
+more acts or a task where the acts differ more.
+
+What still stands from that entry: the act-value table is real and says what the
+hand-written affinities were getting wrong -- `dream` yields 0.00 where `ruminate`
+yields 1.00, and `study` was never chosen by the fixed policy at all.
+
+### And the bench that found it
+
+32-state cliff-walk MDP, tabular Q-learning and SARSA against value iteration on
+the known model, with `telos::Valuer` entered as the system would actually use it.
+Dense reward, gamma 0.95, 2000 episodes x 20 seeds, greedy policies scored by
+exact policy evaluation rather than rollout:
+
+| method | V^pi(start) | gap closed | policy match | reaches goal |
+|---|---|---|---|---|
+| Q-learning | -0.097 | **100.0%** | 96.4% [94.4, 97.7] | 20/20 |
+| SARSA | -2.038 | 97.5% | 79.8% [76.1, 83.1] | 20/20 |
+| telos bandit | -20.000 | 74.7% | 44.0% [39.7, 48.4] | **0/20** |
+| always up (control) | -20.000 | 74.7% | 4.0% | 0/20 |
+| random | -39.610 | 49.7% | 38.0% [33.9, 42.3] | 0/20 |
+
+V*(start) = -0.097, so Q-learning is exactly optimal. **The bandit's return is
+identical to the always-up control to three decimals** -- its 74.7% "gap closed"
+is entirely the constant policy's number and the learning contributes nothing
+measurable to return. It reaches the goal 0 times in 20.
+
+On the delayed-reward variant, where reward arrives only at a terminal square,
+only 0.51% of the bandit's 3.3M transitions carried any reward at all, and its
+greedy policy is correct on exactly two of 25 squares: the one next to the goal,
+and the start where the optimal action happens to coincide.
+
+At gamma = 0 the MDP IS a bandit and `telos::Valuer` is exactly optimal, 100%
+policy match. It falls the instant gamma leaves zero and is flat across the
+entire range after that. There is no slot in a (context, action) -> mean table
+for the value of a successor state; that is the whole of it.
+
+### Two harness bugs the agent caught before believing anything
+
+Its first run scored Q-learning 0/20 on the delayed variant -- which would have
+been a spectacular result and was its own lowest-index argmax turning
+epsilon-greedy into a biased march north. And its first bandit run showed 100%
+trap avoidance, which is worthless: every trap is south and the bandit's policy
+is "always up", so it dodges the cliff for free. The always-up control is now in
+every table so no metric can be read without the freebie beside it.
+
+The bench's own numbers moved when I fixed the tie-break after it reported: the
+bandit's policy match went from 8.0% to 44.0%, so its headline that the bandit
+matches optimal LESS often than guessing was itself an artefact of the defect it
+had found. The structural conclusion is unchanged.
+
 ## v0.129.0 — Seeing is not doing, and an audit of the whole field
 
 **Author:** Claude Opus 5
