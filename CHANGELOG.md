@@ -3,6 +3,75 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.152.0 - The fourteen-language guarantee was a printf
+
+**Author:** Claude Opus 5
+
+Techne emits every certified recipe as source in fourteen languages, and
+`differential_bench` exists to check that the emitted code computes what the
+certificate is about. Its header is emphatic, and right:
+
+> this bench does not check the emitter against itself [...] Agreement is the
+> only evidence that means anything; everything else is the emitter agreeing
+> with the emitter.
+
+It then ended with:
+
+```cpp
+std::printf("  ALL FOURTEEN BACKENDS EXECUTED AND BYTE-IDENTICAL on this machine:\n\n");
+```
+
+**An unconditional literal.** No `system`, no `popen`, nothing that invokes a
+toolchain anywhere in the file. The claim was earned once, by hand -- the history
+walks it from nine to twelve to fourteen -- and then frozen, so the line printed
+identically whether the emitter was correct, broken, or deleted. A guarantee that
+cannot be re-run is not a guarantee.
+
+### What happens when it actually runs
+
+The bench now probes for a genuine toolchain, runs what is present, and diffs
+stdout against `Recipe::apply`:
+
+| backend | toolchain | result |
+|---|---|---|
+| Python | 3.12.10 | matches on every pair |
+| JavaScript | node v24.19.0 | matches on every pair |
+| Go | go1.2x | matches on every pair |
+| Rust | rustc 1.98.0 | could not build or run here |
+| the other ten | -- | skipped, no toolchain here |
+
+**3 of 14 verified on this host, 0 disagreements, 1 unbuildable, 10 unrun.**
+Against a printed claim of fourteen.
+
+Nothing here says the other eleven are wrong. It says this machine cannot
+currently support the claim, which is a different sentence and the only one the
+evidence licenses.
+
+### Two harness defects found by pointing it at itself
+
+**A shell saying `'javac' is not recognized` contains the word javac.** Probing
+for a toolchain by looking for its own name in the output passed on a machine
+without it, and four backends reported DIFFERS on that basis -- which reads as an
+emitter defect and is a harness defect. Probes now reject the absence markers
+first, and `php` must answer `php -r "echo 42;"` with exactly `42`, because the
+`php` on this PATH is a Python script that prints "comment in php: parsing input
+data".
+
+**A compiler that failed and a program that disagreed are opposite findings.**
+Rust reported DIFFERS while `rustc` had compiled it cleanly and `link.exe` then
+failed to find `kernel32.lib` -- which says nothing whatever about the emitted
+Rust. The runner now separates them, and there are four outcomes of which exactly
+one is a pass: **matches**, **DIFFERS from line N**, **could not build or run**,
+**no toolchain**.
+
+The host gap is real and is not the emitter: `vcvars64.bat` on this machine
+leaves INCLUDE and LIB without ucrt, um and shared, because the SDK is on disk
+but not registered with a VS Installer that no longer exists. `khora.ps1`
+already compensates in `Import-WindowsSdk`, which is why the project builds and a
+bare `cl` does not; the bench does not yet inherit it.
+
+32/32.
+
 ## v0.151.0 - Wiring the ladder into the benchmark that counts, and a lesson that did not transfer
 
 **Author:** Claude Opus 5

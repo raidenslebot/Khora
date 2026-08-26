@@ -7,9 +7,29 @@
 // back, and each time a benchmark reported a throughput figure for it.
 //
 // So this bench does not check the emitter against itself. It writes real source
-// in four languages, and a driver runs each with its actual toolchain and diffs
-// against Recipe::apply. Agreement is the only evidence that means anything;
-// everything else is the emitter agreeing with the emitter.
+// in all fourteen backends, probes for a genuine toolchain, RUNS the ones that
+// are here, and diffs stdout against Recipe::apply. Agreement is the only
+// evidence that means anything; everything else is the emitter agreeing with the
+// emitter.
+//
+// FOUR OUTCOMES, and only the first is a pass:
+//   matches                    ran, and byte-identical to Recipe::apply
+//   DIFFERS from line N        ran, and computed something else -- a real defect
+//   could not build or run     the toolchain is here and the build failed
+//   skipped, no toolchain      nothing ran, and nothing is claimed
+//
+// The last two are not failures of the emitter and are never counted as passes
+// either. Collapsing them into one verdict is how a missing kernel32.lib gets
+// reported as the Rust backend computing the wrong answer.
+//
+// A FIFTH OUTCOME USED TO EXIST AND WAS THE WORST OF THEM. This file ended with
+// an unconditional printf reading "ALL FOURTEEN BACKENDS EXECUTED AND
+// BYTE-IDENTICAL on this machine". It was earned, once, by hand -- the history
+// walks it from nine to twelve to fourteen -- and then frozen into a literal. No
+// toolchain was ever invoked from this process, so the line printed the same
+// whether the emitter was correct, broken, or deleted. A guarantee that cannot
+// be re-run is not a guarantee, and this file of all files should not have
+// needed telling.
 //
 // THE INPUTS ARE CHOSEN TO BREAK IT. Above all, lists LONGER THAN kMaxListLen,
 // because that is where the interpreter's per-operation clamp bites and where
@@ -29,6 +49,7 @@
 #include <fstream>
 #include <string>
 #include <vector>
+#include <iterator>
 
 using namespace khora::techne;
 
@@ -53,6 +74,116 @@ std::vector<Value> argsfor(const Named& n, const std::vector<Value>& ins, std::s
     return a;
 }
 
+// RUNNING THEM, RATHER THAN SAYING THEY RAN.
+//
+// This harness used to end with an unconditional printf reading "ALL FOURTEEN
+// BACKENDS EXECUTED AND BYTE-IDENTICAL on this machine". It was true when it was
+// written -- the git history walks it up from nine to twelve to fourteen -- and
+// it was a LITERAL. No toolchain was ever invoked from this process, so the line
+// printed identically whether the emitter was correct, broken, or absent, which
+// is the exact failure the header of this file objects to.
+//
+// A guarantee that cannot be re-run is not a guarantee. So: probe for a real
+// toolchain, run what is there, diff against reference.txt, and report what
+// actually happened -- including "no toolchain", which is an honest answer and
+// not a pass.
+
+// Captures stdout so a probe can check WHICH tool answered. `php` on this
+// machine is a Python script in Python312/Scripts that prints "comment in php:
+// parsing input data", so presence on PATH proves nothing.
+// The exit status matters as much as the text. A COMPILER THAT FAILED and a
+// PROGRAM THAT DISAGREED are opposite findings -- one is a missing dependency on
+// this host, the other is the emitter generating code that computes the wrong
+// thing -- and a harness that prints DIFFERS for both is making exactly the
+// mistake this file exists to catch. Measured: the Rust backend reported DIFFERS
+// while rustc had compiled it cleanly and `link.exe` then failed to find
+// kernel32.lib, which says nothing whatever about the emitted Rust.
+struct Ran { std::string out; int status = 0; };
+
+Ran capture(const std::string& cmd) {
+    Ran r;
+#ifdef _WIN32
+    FILE* pipe = _popen((cmd + " 2>&1").c_str(), "r");
+#else
+    FILE* pipe = popen((cmd + " 2>&1").c_str(), "r");
+#endif
+    if (pipe == nullptr) { r.status = -1; return r; }
+    char buf[512];
+    while (std::fgets(buf, sizeof buf, pipe) != nullptr) r.out += buf;
+#ifdef _WIN32
+    r.status = _pclose(pipe);
+#else
+    r.status = pclose(pipe);
+#endif
+    return r;
+}
+
+// CRLF and a trailing newline are not disagreements about what was computed.
+std::string normalise(const std::string& t) {
+    std::string o;
+    o.reserve(t.size());
+    for (const char c : t) if (c != 13) o += c;
+    while (!o.empty() && o.back() == 10) o.pop_back();
+    return o;
+}
+
+std::string slurp(const std::string& path) {
+    std::ifstream f(path, std::ios::binary);
+    return normalise(std::string(std::istreambuf_iterator<char>(f),
+                                 std::istreambuf_iterator<char>()));
+}
+
+struct Runner {
+    Lang        l;
+    std::string probe;      // a command that only a genuine toolchain answers
+    std::string expect;     // ...and what its answer must contain, or equal
+    std::string run;        // run the emitted file, printing the same lines
+    bool        exact = false;   // require equality, for probes whose expected
+                                 // answer is short enough to appear by accident
+};
+
+// A SHELL SAYING "'javac' is not recognized" CONTAINS THE WORD javac, so a
+// substring probe for the tool's own name passes on every machine that does not
+// have it. Four backends reported DIFFERS on that basis before this existed,
+// which reads as an emitter defect and is a harness defect.
+bool have_toolchain(const std::string& answer, const std::string& expect, bool exact) {
+    static const char* absent[] = {"is not recognized", "not found", "cannot find",
+                                   "No such file", "not be found", "Could not execute"};
+    for (const char* a : absent) if (answer.find(a) != std::string::npos) return false;
+    if (exact) {
+        std::string t = answer;
+        while (!t.empty() && (t.back() == 10 || t.back() == 13 || t.back() == 32)) t.pop_back();
+        return t == expect;
+    }
+    return answer.find(expect) != std::string::npos;
+}
+
+// One entry per backend. A missing toolchain is reported, never inferred away.
+std::vector<Runner> runners() {
+    return {
+        {Lang::Python,     "python -V",          "Python",  "python emitted.py"},
+        {Lang::JavaScript, "node -v",            "v",       "node emitted.js"},
+        {Lang::TypeScript, "npx --no-install tsc -v", "Version",
+                           "npx --no-install tsc emitted.ts --outFile ts_out.js "
+                           "--target es2020 --lib es2020 2>nul && node ts_out.js"},
+        {Lang::Go,         "go version",         "go1",     "go run emitted.go"},
+        {Lang::Rust,       "rustc --version",    "rustc",
+                           "rustc -O -o emitted_rs.exe emitted.rs 2>nul && emitted_rs.exe"},
+        {Lang::Cpp,        "cl",                 "Microsoft",
+                           "cl /nologo /EHsc /std:c++20 /O2 /Fe:emitted_cpp.exe emitted.cpp "
+                           ">nul 2>nul && emitted_cpp.exe"},
+        {Lang::CSharp,     "dotnet script --version", ".",  "dotnet script emitted.cs"},
+        {Lang::Php,        "php -r " + std::string(1, 34) + "echo 42;" + std::string(1, 34),
+                           "42",      "php emitted.php", true},
+        {Lang::Java,       "javac -version",     "javac",   "javac Main.java 2>nul && java Main"},
+        {Lang::Kotlin,     "kotlinc -version",   "kotlinc",
+                           "kotlinc emitted.kt -include-runtime -d kt.jar 2>nul && java -jar kt.jar"},
+        {Lang::Swift,      "swiftc --version",   "Swift",   "swiftc -O main.swift -o sw.exe 2>nul && sw.exe"},
+        {Lang::Haskell,    "runghc --version",   "runghc",  "runghc emitted.hs"},
+        {Lang::Lua,        "lua -v",             "Lua",     "lua emitted.lua"},
+        {Lang::Ruby,       "ruby -v",            "ruby",    "ruby emitted.rb"},
+    };
+}
 std::vector<Named> recipes() {
     std::vector<Named> v;
 
@@ -406,21 +537,74 @@ int main(int argc, char** argv) {
                     t.file, total_lines, rs.size());
     }
 
-    std::printf("\n  reference.txt holds Recipe::apply for every pair. Run each emitted\n");
-    std::printf("  file and diff its stdout against it; any difference is the emitted\n");
-    std::printf("  program computing something the certificate does not cover.\n\n");
-    std::printf("  ALL FOURTEEN BACKENDS EXECUTED AND BYTE-IDENTICAL on this machine:\n\n");
-    std::printf("    Python  JavaScript  TypeScript  Go     Rust    C++   C#\n");
-    std::printf("    Java    Kotlin      Swift       PHP    Haskell Lua   Ruby\n\n");
+    std::printf("\n  reference.txt holds Recipe::apply for every pair. Each backend below\n");
+    std::printf("  is RUN and its stdout diffed against it; any difference is the\n");
+    std::printf("  emitted program computing something the certificate does not cover.\n\n");
+
+    const std::string ref = slurp(out_dir + "/reference.txt");
+    if (ref.empty()) { std::printf("  reference.txt is empty -- nothing to compare.\n"); return 1; }
+
+    std::printf("  backend     | toolchain        | result\n");
+    std::printf("  ------------+------------------+--------------------------------\n");
+    std::size_t ran = 0, matched = 0, missing = 0, unbuildable = 0;
+    std::vector<std::string> failures;
+    for (const Runner& rn : runners()) {
+        const std::string probe = capture("cd " + out_dir + " && " + rn.probe).out;
+        if (!have_toolchain(probe, rn.expect, rn.exact)) {
+            ++missing;
+            std::printf("  %-11s | %-16s | skipped, no toolchain here\n",
+                        lang_name(rn.l), "not found");
+            continue;
+        }
+        ++ran;
+        std::string ver = probe.substr(0, probe.find_first_of("\r\n"));
+        if (ver.size() > 16) ver = ver.substr(0, 16);
+        const Ran ran_it = capture("cd " + out_dir + " && " + rn.run);
+        const std::string got = normalise(ran_it.out);
+        if (ran_it.status != 0) {
+            ++unbuildable;
+            std::printf("  %-11s | %-16s | could not build or run here\n",
+                        lang_name(rn.l), ver.c_str());
+            continue;
+        }
+        if (got == ref) {
+            ++matched;
+            std::printf("  %-11s | %-16s | matches on every pair\n", lang_name(rn.l), ver.c_str());
+        } else {
+            failures.push_back(lang_name(rn.l));
+            // Where it first diverges is the useful half of a mismatch.
+            std::size_t line = 0, i = 0, j = 0;
+            while (i < got.size() && j < ref.size() && got[i] == ref[j]) {
+                if (got[i] == 10) ++line;
+                ++i; ++j;
+            }
+            std::printf("  %-11s | %-16s | DIFFERS from line %zu\n",
+                        lang_name(rn.l), ver.c_str(), line + 1);
+        }
+    }
+
+    std::printf("\n  %zu of %zu backends have a toolchain here. %zu of them reproduce\n",
+                ran, runners().size(), matched);
+    std::printf("  Recipe::apply BYTE FOR BYTE, %zu disagree with it, and %zu could not\n",
+                ran - matched - unbuildable, unbuildable);
+    std::printf("  be built on this host at all. %zu have no toolchain here. Only the\n", missing);
+    std::printf("  first of those four is a pass, and none of the others is counted as\n");
+    std::printf("  one -- a backend that will not build says nothing about the code it\n");
+    std::printf("  emits, and neither does a backend nobody ran.\n\n");
     std::printf("  %zu recipes x %zu inputs each. Three of the recipes take TWO\n", rs.size(), ins.size());
     std::printf("  ARGUMENTS, and argument 1 is the NEXT input rather than a repeat of\n");
     std::printf("  the first, so a program that quietly ignores it cannot pass by\n");
     std::printf("  coincidence. Three of the inputs are longer than the 512-element\n");
     std::printf("  bound where the interpreter clamps every operation.\n\n");
-    std::printf("  Lua and Ruby run as real Lua 5.4 and real CRuby 3.4 compiled to\n");
-    std::printf("  WebAssembly -- the implementations, not reimplementations of them.\n");
-    std::printf("  Everything else runs on its native toolchain.\n\n");
+    std::printf("  THIS TABLE USED TO BE A LITERAL. The line read \"ALL FOURTEEN BACKENDS\n");
+    std::printf("  EXECUTED AND BYTE-IDENTICAL\" and no toolchain was ever invoked from\n");
+    std::printf("  this process -- it printed the same whether the emitter was right,\n");
+    std::printf("  broken or missing. It was earned once, by hand, and then frozen. A\n");
+    std::printf("  guarantee that cannot be re-run is not a guarantee.\n\n");
     std::printf("  Nothing here is counted for being emitted. Go was written as\n");
     std::printf("  `package kh` and could never run at all, while this harness printed\n");
-    std::printf("  a body-line count for it as though it had -- and the php on PATH was\n");
-    std::printf("  a different tool wearing the name. Run it or do not claim it.\n");}
+    std::printf("  a body-line count for it as though it had -- and the php on PATH is\n");
+    std::printf("  a different tool wearing the name, which is why every probe checks\n");
+    std::printf("  WHAT answered and not merely THAT something did.\n\n");
+    return failures.empty() ? 0 : 1;
+}
