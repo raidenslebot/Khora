@@ -3,6 +3,66 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.140.0 - Khora beats gzip, and its own machinery contributes nothing to that
+
+**Author:** Claude Opus 5
+
+Compression is the cleanest single number for how much a system has understood,
+because the optimal code length for a message is exactly the negative log
+probability the model assigns it. Khora had never been measured as a compressor.
+
+A real binary range coder driven by each model next-symbol distribution. Encoder
+and decoder are ONE function with a direction flag so they cannot drift; every
+model round-trips **byte-identical** over 328,274 symbols and 1,568,173 bytes;
+and a negative control flips one byte mid-stream to confirm the decode then
+differs, because otherwise IDENTICAL is vacuous. OOV is a real escape - an
+unknown word is followed by its literal spelling through a byte model - so the
+round trip is lossless rather than a lossy channel with a bold name.
+
+| | bits/token |
+|---|---|
+| raw | 41.956 |
+| gzip -9 | 15.580 |
+| xz -9e / 7z LZMA2 | 13.079 / 13.083 |
+| bzip2 -9 | 12.339 |
+| bzip2 PRIMED on 4 MB of train | 12.225 |
+| **order-0 unigram** | **11.809** |
+| order-2 Kneser-Ney | 10.611 |
+| **order-3 Kneser-Ney (best)** | **10.469** |
+| PLEXUS over unigram | 11.565 |
+| PLEXUS + order-3 KN | **10.469 - identical** |
+
+### The headline, and the number that undercuts it
+
+Khora beats every corpus-free compressor: **1.49x smaller than gzip**, 1.18x than
+bzip2, and it survives the priming control that hands the tools the same 4 MB of
+training text.
+
+**But the unigram already does that.** Word frequencies with no order, no context
+and no graph sit at 11.809, under every external bar including the primed ones.
+Most of the margin is having been given four million tokens, not modelling them.
+Word order buys a further 1.339 bits/token on top.
+
+### And the Plexus contributes exactly zero
+
+The part that is actually Khora own machinery is worth 0.243 bits/token over the
+unigram and **0.000 over the trigram** - the dev sweep chose lambda = 0.00 for
+mixing it on top of Kneser-Ney, so that row is bit-for-bit the KN row. Raw
+co-occurrence beat PPMI at every lambda, the expected direction: PMI ranks
+SURPRISE, and the top of a next-token distribution is not surprising.
+
+That is the third independent measurement to reach the same verdict - perplexity,
+next-token accuracy, and now bits with a verified round trip.
+
+### Two costs the table does not charge for
+
+100 MB of count tables and 46 MB of graph rows are **not in the bitstream**. As a
+self-contained archive this loses to gzip by two orders of magnitude; the
+conditional cost is the right question for how much is understood and the wrong
+one for whether this is a good archiver. And **11.9% of the best model bits** go
+on spelling out the 10,131 tokens outside the closed vocabulary, a tax gzip does
+not pay because it has no vocabulary to fall outside of.
+
 ## v0.139.0 — Khora chose what to read in the order it arrived, which is worse than a shuffle
 
 **Author:** Claude Opus 5
