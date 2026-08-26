@@ -31,6 +31,9 @@ target_link_libraries(hypernym_bench PRIVATE khora::plexus)
 add_executable(category_bench category_bench.cpp)
 target_link_libraries(category_bench PRIVATE khora::plexus khora::lattice)
 
+add_executable(spelling_bench spelling_bench.cpp)
+target_link_libraries(spelling_bench PRIVATE khora::descent khora::taxis khora::lexicon khora::reservoir)
+
 add_executable(category_eval category_eval.cpp)
 target_link_libraries(category_eval PRIVATE khora::plexus khora::lattice)
 
@@ -90,3 +93,12 @@ target_link_libraries(ascent_bench PRIVATE khora::techne khora::governor)
 
 add_executable(fixedbar_bench fixedbar_bench.cpp)
 target_link_libraries(fixedbar_bench PRIVATE khora::techne)
+
+add_executable(analogy_bench analogy_bench.cpp)
+target_link_libraries(analogy_bench PRIVATE khora::lattice)
+
+add_executable(chiasm_bench chiasm_bench.cpp)
+target_link_libraries(chiasm_bench PRIVATE khora::chiasm khora::retina khora::akoe khora::lexicon)
+
+add_executable(substrate_bench substrate_bench.cpp)
+target_link_libraries(substrate_bench PRIVATE khora::lattice)

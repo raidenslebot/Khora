@@ -98,6 +98,14 @@ add_executable(retina_test retina_test.cpp)
 target_link_libraries(retina_test PRIVATE khora::retina)
 add_test(NAME RetinaTest COMMAND retina_test)
 
+add_executable(akoe_test akoe_test.cpp)
+target_link_libraries(akoe_test PRIVATE khora::akoe)
+add_test(NAME AkoeTest COMMAND akoe_test)
+
+add_executable(chiasm_test chiasm_test.cpp)
+target_link_libraries(chiasm_test PRIVATE khora::chiasm)
+add_test(NAME ChiasmTest COMMAND chiasm_test)
+
 add_executable(volition_test volition_test.cpp)
 target_link_libraries(volition_test PRIVATE khora::volition khora::telos)
 add_test(NAME VolitionTest COMMAND volition_test)

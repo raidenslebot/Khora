@@ -3,6 +3,132 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.124.0 — A picture, a sound and a word in one memory, and the constant that limits it
+
+**Author:** Claude Opus 5
+
+Everything before this was maintenance: measure a defect, fix it, prove it. This
+is the thing the substrate was chosen for, which had never been built or tested.
+
+Khora encodes an image to a 10,000-bit Glyph, a sound to a 10,000-bit Glyph and a
+word to a 10,000-bit Glyph. Three unrelated front ends, one type coming out. That
+was an argument for eleven versions and nothing had ever put the three in the
+same container.
+
+What the mainstream pays for the same thing: CLIP puts images and text in a
+shared space with four hundred million paired examples and a training run, the
+space is specific to the pair it was trained on, and a third modality means
+training again. Here the space is not learned at all -- it is the same 10,000
+bits by construction, and a third modality is a third encoder writing into a
+container that already accepts it.
+
+### khora::akoe — the last absent sense
+
+No reference to a sample, a waveform, a frequency or a channel existed anywhere
+in the tree. A sound is a value at a place in two dimensions once you look at the
+spectrogram instead of the waveform, so the same encoding that made vision work
+makes hearing work: bind a band to a level, bundle over the band, permute by the
+frame, bundle over frames. A naive DFT per band rather than an FFT, because at
+these frame sizes an FFT is a page of index arithmetic needing its own test for a
+speedup nothing is waiting on.
+
+440 Hz peaks in the band centred at 433 Hz. A rising sweep and a falling one
+encode at **0.008 similarity** -- bundling is commutative, so without the
+per-frame permutation those two would be identical and nothing would notice.
+
+### khora::chiasm — one record, retrieved from any side
+
+`record = bundle over fields of bind(role, value)`. bind is XOR so it is exactly
+invertible; bundle keeps the record similar to each of its parts. Unbinding a
+role returns the right value plus the crosstalk of the others, and a cleanup
+memory per role snaps it to something nameable.
+
+On 50 concepts stored **once each**, with no training pass: see>word, hear>word,
+word>see and see>hear all 50/50 where chance is 1.
+
+On real front ends -- retina images, akoe sounds, lexicon words -- at N=200,
+chance 0.5%:
+
+| cue | result |
+|-----|--------|
+| a picture, with fresh noise it never saw | **100%** |
+| a word | **100%** |
+| a picture, shifted two pixels | 33.5% |
+| a recording, jittered | 27% |
+
+### And the diagnostic that explains all four rows
+
+Retrieval is decided by the NEAREST wrong candidate, not the average one. I
+reported the mean first and it hid the answer completely:
+
+| modality | to a fresh instance of itself | to its nearest rival | gap |
+|---|---|---|---|
+| sight (noise) | 0.878 | 0.750 | **+0.128** |
+| sight (shifted) | 0.621 | 0.750 | **-0.216** |
+| sound (jittered) | 0.521 | 0.737 | **-0.216** |
+| word | 1.000 | 0.142 | **+0.858** |
+
+A negative gap means a DIFFERENT thing resembles it more than a fresh instance of
+itself does. The memory is not the problem in either failing row: the retina
+binds intensity to absolute position, and this ear cannot separate chords that
+share tones. Both are front-end limits, now quantified rather than suspected.
+
+One fix fell out of it. Silence was being bound to a glyph and bundled in, so
+every sound shared a term with every other wherever both were quiet -- which is
+most bands most of the time. Dropping empty bands took the similarity between two
+unrelated sounds from **0.484 to 0.328**.
+
+### The fundamental constant, measured twice independently
+
+How much fits in one glyph decides everything above it, and nobody here had ever
+measured it. Two benches, written separately, agree:
+
+- `substrate_bench`: bundling M items into one glyph, recognition against 500
+  distractors is 100% to M=128, **96.2% at 256, 68.0% at 512, 31.0% at 1024**.
+  Measured similarity tracks sqrt(2/piM) to four decimals. Crossover is between
+  512 and 1024, roughly D/20 to D/10.
+- `chiasm_test`, fields per record: 100% at 8, 32 and 128, **87.5% at 512, 42.5%
+  at 1024.**
+- `analogy_bench`: margin is about **3000/S bits** for S superposed role-filler
+  pairs. A thousandfold increase in candidates costs about two slots of load.
+
+### Three claims I stated, and how each was wrong
+
+**"Analogy is arithmetic."** As stated, false, and the failure is arithmetic
+rather than empirical. With king, queen, man as independent random glyphs,
+`bind(bind(king,queen), man)` retrieves the intended answer 1 time in 1000 --
+exactly chance -- because nothing in the construction ever said man->woman. XOR
+over opaque symbols carries no analogy. The real claim is narrower and does hold:
+when both items are COMPOSED over shared roles, the role and the source filler
+cancel exactly, and one example gives **1000/1000 against 10,000 candidates**.
+
+**"Degradation is linear."** False about the shape. Similarity degrades linearly
+by definition -- Hamming distance IS the flip count, so that column is arithmetic
+and not a finding. Retrieval is flat then falls off a cliff: 100% at 40%
+corruption, 100% at 47%, 0% at 50%, with the cliff position moving with load.
+
+**"Federated merge is free."** Splits. Merging two Lattices is a map union and
+lossless but trivial. Merging two BUNDLED memories works and is measurably lossy
+-- 96.5% against 99.99% for one centralised pass, a signal ratio of 0.706 against
+a predicted 0.707. Worse, majority carries no multiplicity, so a site with 8
+observations gets the same vote as one with 256: items seen once outranked items
+seen thirty-two times. And the merge is commutative but **not associative** --
+three sites give 0.48 / 0.63 / 0.60 depending on grouping order. A real
+federation must fan every site into one bundle, which is the central pass the
+claim was meant to avoid.
+
+### A negative result on spelling
+
+`taxis` leaves 35% of words with no category because they fall below its evidence
+floor, and spelling is a cue it cannot see. A perceptron over hashed character
+trigrams, trained on the words taxis is sure of: **74.1% against a 73.4%
+majority-class baseline.** That is nothing. The bench keeps two rows that look
+good and are meaningless -- on a set of known nouns, a model that always says
+noun scores 100% -- as a standing warning, with a confusion matrix beside them
+that is the only honest reading.
+
+32/32 suites pass.
+
 ## v0.123.0 — Khora notices when an act never pays
 
 **Author:** Claude Opus 5
