@@ -446,7 +446,69 @@ struct Row {
     std::string name;
     std::size_t dim = 0;
     ProbeResult r[4];
+    double      auc = 0.0;      // the second probe, below
+    std::size_t auc_pairs = 0;
 };
+
+// A SECOND DOWNSTREAM TASK, BECAUSE ONE PROBE IS NOT A RESULT.
+//
+// Nearest-centroid classification is one task with one shape, and a
+// representation can suit it for reasons that do not generalise -- a centroid is
+// a mean, so anything that makes classes compact under averaging wins whether or
+// not the geometry is otherwise any good. CBOW beating the hand-designed glyph by
+// ten points on that probe is a signal about the substrate, and before it could
+// justify changing the substrate it has to survive a differently shaped question.
+//
+// So: pairwise co-hyponymy. Given two held-out words, do they belong to the same
+// WordNet category? Scored by cosine similarity and summarised as AUC -- the
+// probability that a same-class pair scores above a different-class pair. This
+// uses no centroids, no labelled training set and no threshold, so it shares
+// almost nothing with the first probe except the words and the categories.
+//
+// Chance is exactly 0.5 and needs no baseline row to establish it, which is the
+// other reason to prefer AUC here.
+double pair_auc(const std::vector<float>& R, std::size_t dim, const Task& t,
+                std::size_t& n_pairs, std::uint64_t seed) {
+    Rng rng(seed);
+    std::vector<double> pos, neg;
+    const std::size_t want = 20000;
+    // Sample pairs rather than enumerate: |test|^2 / 2 is fine here but the
+    // class sizes are very uneven, and sampling keeps the positive and negative
+    // sets the same size so the AUC is not dominated by one big category.
+    std::size_t guard = 0;
+    while ((pos.size() < want || neg.size() < want) && guard++ < want * 40) {
+        const std::size_t a = t.test[rng.next() % t.test.size()];
+        const std::size_t b = t.test[rng.next() % t.test.size()];
+        if (a == b) continue;
+        double d = 0.0;
+        for (std::size_t k = 0; k < dim; ++k)
+            d += static_cast<double>(R[a * dim + k]) * static_cast<double>(R[b * dim + k]);
+        if (t.y[a] == t.y[b]) { if (pos.size() < want) pos.push_back(d); }
+        else                  { if (neg.size() < want) neg.push_back(d); }
+    }
+    n_pairs = pos.size() + neg.size();
+    if (pos.empty() || neg.empty()) return 0.0;
+    // AUC by rank: sort everything, sum the ranks of the positives. Equivalent to
+    // the pairwise definition and O(n log n) rather than O(n^2).
+    std::vector<std::pair<double, int>> all;
+    all.reserve(pos.size() + neg.size());
+    for (double v : pos) all.emplace_back(v, 1);
+    for (double v : neg) all.emplace_back(v, 0);
+    std::sort(all.begin(), all.end(),
+              [](const auto& x, const auto& y) { return x.first < y.first; });
+    double rank_sum = 0.0;
+    for (std::size_t i = 0; i < all.size(); ) {
+        std::size_t j = i;
+        while (j < all.size() && all[j].first == all[i].first) ++j;
+        // Ties share the average rank, or a representation with many identical
+        // similarities scores spuriously well.
+        const double avg = (static_cast<double>(i) + static_cast<double>(j) - 1.0) / 2.0 + 1.0;
+        for (std::size_t k = i; k < j; ++k) if (all[k].second) rank_sum += avg;
+        i = j;
+    }
+    const double np = static_cast<double>(pos.size()), nn = static_cast<double>(neg.size());
+    return (rank_sum - np * (np + 1.0) / 2.0) / (np * nn);
+}
 
 const std::size_t kLabelSettings[4] = {5, 20, 100, std::numeric_limits<std::size_t>::max()};
 
@@ -455,6 +517,7 @@ Row evaluate(const std::string& name, std::size_t dim, std::vector<float> rep, c
     Row row; row.name = name; row.dim = dim;
     for (std::size_t i = 0; i < 4; ++i)
         row.r[i] = run_probe(rep, dim, t, kLabelSettings[i], kDraws, 0xBEEF0001ULL + i);
+    row.auc = pair_auc(rep, dim, t, row.auc_pairs, 0xA0C0ULL);
     return row;
 }
 
@@ -1124,6 +1187,25 @@ int main(int argc, char** argv) {
         for (const Row& r : rows)
             if (r.r[3].acc > maj_acc) { std::printf(" [%s]", r.name.c_str()); any = true; }
         std::printf("%s\n", any ? "" : " NONE");
+    }
+
+    // --- THE SECOND TASK -----------------------------------------------------
+    {
+        std::printf("\n  === A SECOND, DIFFERENTLY SHAPED TASK: PAIRWISE CO-HYPONYMY ===\n");
+        std::printf("    Do two held-out words share a WordNet category? Scored by cosine\n"
+                    "    similarity and summarised as AUC, so there are no centroids, no\n"
+                    "    labelled training set and no threshold. Chance is exactly 0.500.\n"
+                    "    One probe is not a result; this shares only the words and the\n"
+                    "    categories with the table above.\n\n");
+        std::printf("    %-47s|    AUC | vs incumbent | pairs\n", "representation");
+        std::printf("    %s+--------+--------------+-------\n", bar.c_str());
+        const double inc_auc = rows[0].auc;
+        for (const Row& r : rows)
+            std::printf("    %-47s| %.4f |      %+.4f  | %zu\n", r.name.c_str(), r.auc,
+                        r.auc - inc_auc, r.auc_pairs);
+        std::printf("\n    An arm that wins the first table and loses this one suited the probe\n"
+                    "    rather than the problem, which is the thing a single probe cannot\n"
+                    "    tell you.\n");
     }
 
     std::printf("\n  === DOES THE PRETEXT LOSS PREDICT DOWNSTREAM ACCURACY? ===\n");

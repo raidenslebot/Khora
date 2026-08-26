@@ -3,6 +3,49 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.133.1 — The CBOW advantage survives a second probe, and everything is near chance on it
+
+**Author:** Claude Opus 5
+
+A 64-dimension embedding beating the 10,000-bit substrate glyph by ten points is
+the kind of result that would justify changing the substrate, so it should not
+rest on one probe. Nearest-centroid classification has a shape, and a
+representation can suit that shape for reasons that do not generalise: a centroid
+is a mean, so anything that makes classes compact under averaging wins whether or
+not the geometry is otherwise good.
+
+Second task, same words and categories and nothing else in common: given two
+held-out words, do they share a WordNet category? Scored by cosine similarity,
+summarised as AUC. No centroids, no labelled training set, no threshold, and
+chance is exactly 0.500 by construction.
+
+| representation | AUC | vs incumbent |
+|---|---|---|
+| hand-designed glyph (incumbent) | 0.5117 | — |
+| random glyph, same dim | 0.5030 | -0.0087 |
+| random vectors, D=64 | 0.4999 | -0.0118 |
+| untrained MLP hidden | 0.5244 | +0.0127 |
+| A: masked context | 0.5424 | +0.0307 |
+| **B: masked token (CBOW+neg)** | **0.5628** | **+0.0511** |
+| C: contrastive NT-Xent | 0.5164 | +0.0048 |
+| D: context bundling (Glyph algebra) | 0.5182 | +0.0065 |
+
+**The ordering survives.** CBOW is best on both tasks, so its advantage is not an
+artefact of the centroid probe. Both random controls land at chance, so the
+measurement is sound.
+
+**And everything is near chance, which the first table hid.** The incumbent scores
+0.5117 against a chance of 0.5000 -- its pairwise geometry carries almost no
+category information at all. Even the winner is at 0.5628. So the honest reading
+is not that CBOW solves word semantics; it is that CBOW is consistently the best
+of a weak field on this corpus, and that a 33.7% nearest-centroid accuracy can
+coexist with an almost uninformative pairwise geometry.
+
+**One arm changes sign between the probes.** Contrastive NT-Xent was the worst
+representation in the table by eleven points under classification and is mildly
+POSITIVE here. Its ranking is probe-dependent, which is precisely the failure the
+second probe was added to catch, and it caught one.
+
 ## v0.133.0 — A 64-dimension embedding beats the 10,000-bit glyph by ten points
 
 **Author:** Claude Opus 5
