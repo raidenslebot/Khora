@@ -156,3 +156,6 @@ target_link_libraries(optimise_bench PRIVATE khora::techne khora::lattice)
 
 add_executable(retrieve_bench retrieve_bench.cpp)
 target_link_libraries(retrieve_bench PRIVATE khora::plexus khora::lexicon khora::lattice khora::reservoir)
+
+add_executable(fold_bench fold_bench.cpp)
+target_link_libraries(fold_bench PRIVATE khora::techne)

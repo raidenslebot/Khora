@@ -404,6 +404,16 @@ const std::vector<Value>& default_extremes() {
         // values past anything a small proof domain contains, and the cap
         {3}, {-3}, {10}, {-10}, {2, 3}, {-3, -2}, {0, 10, 0},
         {kValueCap}, {-kValueCap}, {kValueCap - 1, 1}, {20000, -20000},
+        // TWO LARGE VALUES OF THE SAME SIGN, so that a program whose arithmetic
+        // is only correct while addition does not saturate is exercised. Added
+        // because one was accepted: the self-hosting bench derived
+        // pair_min = pair_add(x) - pair_max(x), which is min(a,b) exactly until
+        // a+b clamps, folded it into `min`, and the result was wrong on 117 of
+        // 252 large-magnitude grading inputs while passing a proof over lists of
+        // length 0..4 over -2..2 and every edge above. Nothing in that domain
+        // can saturate, and no edge here paired two large same-sign values.
+        {kValueCap - 1, kValueCap - 1}, {-(kValueCap - 1), -(kValueCap - 1)},
+        {kValueCap / 2, kValueCap / 2, kValueCap / 2},
         {7, 7, 7, 7, 7},
     };
     return v;

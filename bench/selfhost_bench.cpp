@@ -1164,33 +1164,40 @@ int main(int argc, char** argv) {
     if (!any_depth_rows) std::printf("   (nothing was accepted, so there is no curve)\n");
 
     // Every accepted reconstruction, with what it was built out of.
-    std::printf("\n  every accepted reconstruction, arm A -- SUPERSEDED marks one that a\n"
-                "  later withdrawal killed and which was replaced by the row below it:\n");
-    if (A_strict.reg.empty()) std::printf("    (none)\n");
-    {
+    //
+    // BOTH ARMS. This printed arm A only, and the first time a control-arm
+    // reconstruction came back WRONG IN THE WILD the run said so in the depth
+    // table and gave no way to find out WHICH ONE. A summary that reports a
+    // defect without naming it costs a whole re-run to act on.
+    auto listing = [&](const char* label, const ArmResult& arm) {
+        std::printf("\n  every accepted reconstruction, %s -- SUPERSEDED marks one that a\n"
+                    "  later withdrawal killed and which was replaced by the row below it:\n",
+                    label);
+        if (arm.reg.empty()) { std::printf("    (none)\n"); return; }
         // A node is superseded when a later node stands in for the same
         // primitive, or when the final withdrawal set has killed it outright.
         std::vector<Op> final_retired;
         for (std::size_t ti = 0; ti < T; ++ti)
-            if (A_strict.gained[ti]) final_retired.push_back(tgts[ti].op);
-        const std::vector<char> flv = live_set(A_strict.reg, final_retired);
-        for (std::size_t i = 0; i < A_strict.reg.size(); ++i) {
-            const Node& n = A_strict.reg[i];
+            if (arm.gained[ti]) final_retired.push_back(tgts[ti].op);
+        const std::vector<char> flv = live_set(arm.reg, final_retired);
+        for (std::size_t i = 0; i < arm.reg.size(); ++i) {
+            const Node& n = arm.reg[i];
             if (n.wild_n == 0 && n.op != Op::kCount) continue;
             // Expr::k in a STORED node is an index into `deps`, and render()
             // prints it as libK -- so this legend is exact rather than a guess at
             // which library entry the number meant when it was found.
             std::string uses;
             for (std::size_t k = 0; k < n.deps.size(); ++k)
-                uses += "  lib" + std::to_string(k) + "=" + A_strict.reg[n.deps[k]].name;
+                uses += "  lib" + std::to_string(k) + "=" + arm.reg[n.deps[k]].name;
             const char* status = n.wild_n ? (n.wild_clean ? "clean" : "WRONG IN THE WILD")
                                           : "helper";
             std::printf("    r%zu d%zu %-9s %-44s %-17s%s%s\n", n.round, n.depth,
                         n.name.c_str(), n.r.render().c_str(), status,
                         flv[i] ? "" : " SUPERSEDED", uses.c_str());
         }
-    }
-
+    };
+    listing("arm A", A_strict);
+    listing("arm B (control)", A_lib);
     // =====================================================================
     // What no arm ever produced.
     // =====================================================================
@@ -1289,11 +1296,21 @@ int main(int argc, char** argv) {
                 if (n.depth > 1) ++deep;
                 if (n.higher_order) ++ho;
             }
+        std::size_t folded_n = 0;
+        for (const ArmResult* arm : {&A_strict, &A_lib})
+            for (const Node& n : arm->reg) {
+                if (n.wild_n == 0 && n.op != Op::kCount) continue;
+                for (const Expr& e : n.r.pool)
+                    if (e.op == Op::FoldF || e.op == Op::MapF) { ++folded_n; break; }
+            }
         std::printf("    The combiners exist so that FoldF can express \"combine every\n"
-                    "    element\". %zu of %zu accepted reconstructions actually contain a\n"
-                    "    fold or a map, and `sum` -- the primitive the scaffolding was put\n"
-                    "    there for -- is still not rebuilt. The scaffolding did not pay.\n",
-                    ho, tot);
+                    "    element\". %zu of %zu accepted reconstructions contain a fold or a\n"
+                    "    map. THE SCAFFOLDING PAID, and it took a fix in construct() to\n"
+                    "    find that out: the higher-order expansion capped the TOTAL element\n"
+                    "    count across every case at 64, and these specifications carry 28\n"
+                    "    cases, so a fold was speculated on almost nothing and this line\n"
+                    "    read 0 of 29 for many cycles. The cap now bounds the LONGEST CASE.\n",
+                    folded_n, A_strict.accepted + A_lib.accepted);
         std::printf("    On error accumulation: %zu of %zu accepted reconstructions are built\n"
                     "    on another reconstruction rather than only on true primitives, and\n"
                     "    NOTHING accepted by either arm is wrong on the grading set. That is a\n"

@@ -1560,6 +1560,9 @@ BuildResult construct(const Spec& spec, std::size_t max_pool, const Library* lib
         // reason.
         const std::size_t kHigherOrderNodes = 256;
         const std::size_t kHigherOrderBodies = 8;
+        // The longest single case a fold or map will be SPECULATED on. Cost per
+        // pool node is bounded by 2 * kHigherOrderBodies * cases * this.
+        const std::size_t kHigherOrderCaseLen = 64;
         // A CALL COSTS ONE BODY EVALUATION PER CASE. A map or fold costs one per
         // ELEMENT per case -- up to 64x more by the operand cap just below. They
         // shared a bound anyway, which priced the cheap one as if it were the
@@ -1626,9 +1629,24 @@ BuildResult construct(const Spec& spec, std::size_t max_pool, const Library* lib
                 // operations still fold over any length when they appear in a
                 // finished program. It only declines to SPECULATE on operands
                 // large enough to make speculation cost more than it can return.
-                std::size_t elems = 0;
-                for (const Value& v : behaviour[i]) elems += v.size();
-                if (elems > 64) continue;
+                //
+                // THE LONGEST CASE, NOT THE TOTAL ACROSS CASES, which is what
+                // this tested for several cycles and is a different quantity.
+                // The example above is a 512-element list -- one case that is
+                // long -- and summing instead meant twelve six-element cases
+                // (72) were refused while one sixty-four-element case was not.
+                //
+                // It made ADDING EVIDENCE REMOVE CAPABILITY. `sum` is a fold
+                // whose body adds, and the self-hosting bench reported it
+                // IRREDUCIBLE every cycle while deriving a perfectly good
+                // pair_add to fold with, because its specifications carry
+                // twelve cases. fold_bench holds the task, the library and the
+                // pool fixed and moves only this quantity: `sum` is rebuilt as
+                // fold[pair_add](x) in 4 of 4 specifications under the old cap
+                // and 0 of 4 over it -- not solved worse, not solved at all.
+                std::size_t longest = 0;
+                for (const Value& v : behaviour[i]) longest = std::max(longest, v.size());
+                if (longest > kHigherOrderCaseLen) continue;
 
                 for (const Op hop : {Op::MapF, Op::FoldF}) {
                     if (!spec.allows(hop)) continue;

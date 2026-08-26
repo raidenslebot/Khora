@@ -3,6 +3,98 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.148.0 - A cap on the wrong quantity hid the fold, and the fold hid a wrong answer
+
+**Author:** Claude Opus 5
+
+The header has claimed for many cycles that "with FoldF available, `sum` is a
+fold whose body adds". The self-hosting bench has replied, every cycle, that **0
+of 29** accepted reconstructions contain a fold or a map and that `sum` is not
+rebuilt. A claim in a header that the measurements contradict is a defect.
+
+### The cap was on the total across cases, not on the longest case
+
+The higher-order expansion declines to speculate on operands too large to be
+worth folding. Its own comment gives the example -- "a 512-element list built by
+Range" -- which is a statement about ONE case. The code summed list lengths
+across EVERY case and compared that to 64.
+
+The self-hosting bench uses 28 visible cases. The old rule therefore permitted a
+mean list length of **2.3 elements** before the fold stopped being offered at
+all. **Adding evidence to a specification removed capability**, which is
+indefensible on its own terms whatever it does to any score.
+
+`fold_bench` holds the task, the library, the pool and the banned set fixed and
+moves only the total element count. The fold body is derived, not handed over --
+learned with Sum, Max, Min, FoldF and MapF banned so a two-element `sum(x)` cannot
+masquerade as pairwise addition:
+
+| specification | rebuilt as a fold |
+|---|---|
+| at or under 64 total elements | 4 of 4 |
+| over it, before | **0 of 4** |
+| over it, after | **4 of 4** |
+
+Not solved worse above the cap. Not solved at all.
+
+### So `sum` is rebuilt, for the first time
+
+| | before | after |
+|---|---|---|
+| never rebuilt by any arm | 8 | **7** -- `sum` leaves it |
+| arm B (control), jointly held | 14/22 | **15/22** |
+| accepted reconstructions containing a fold | 0 of 29 | 2 of 30 |
+
+```
+sum = append(fold[pair_add](x), drop(0, len(x)))     clean on 252 grading inputs
+```
+
+That second term is the system routing around a limit in the instruction set. A
+fold seeded with A[0] returns {} on the empty list, and `sum([])` is 0 -- so a
+bare fold cannot express any aggregation with an IDENTITY ELEMENT, only ones that
+are undefined on the empty list. It found the length-conditioned correction on
+its own. **The limit is on the operation; the search went around it.**
+
+**Not claimed:** `max` and `min` now come back as folds, but both were already
+rebuilt by other routes. The count moves by one primitive, not three.
+
+### And then the fold produced the first wrong answer this bench has accepted
+
+```
+min = fold[pair_min](x)   WRONG IN THE WILD   135/252
+  where pair_min = sub(pair_add(x), pair_max(x))
+```
+
+(a+b) - max(a,b) is min(a,b) exactly until a+b **saturates**. The proof domain is
+every list of length 0..4 over -2..2, where nothing can saturate, and no entry in
+`default_extremes()` paired two large values OF THE SAME SIGN. The grading set is
+built from magnitudes >= 1000, so it saw it immediately: wrong on 117 of 252.
+
+Three extremes added -- two large positives, two large negatives, three at half
+the cap. Re-run:
+
+| | before | after |
+|---|---|---|
+| accepted and wrong in the wild | 1 | **0** |
+| worst agreement, any arm or depth | 135/252 | **252/252** |
+| arm B depth-1 acceptances | 10 | **11** |
+
+The row was not lost, it was **replaced by a correct one**. And the previous
+cycle recorded that the hardened gate had rejected zero candidates the weaker
+criterion would have taken, so cleanliness could not be attributed to it. Arm B
+now reports **1 extra admit under the single-round criterion, of which 0 clean**.
+The gate earns its keep for the first time, on a case the wild found.
+
+### A defect that could not be named
+
+The depth table reported a wrong acceptance in arm B and the listing printed arm
+A only, so finding out WHICH reconstruction cost a full re-run. Both arms are
+printed now. A summary that reports a defect without naming it is not a summary.
+
+**No regressions.** Ascent 179 carried against 147 empty, ending at tier 42 on
+its stopping rule -- identical to the recorded run. `correct_bench` identical to
+its baseline. 32/32.
+
 ## v0.147.0 - Why self-rebuilding cannot compound, and a fix proven inert where it should be
 
 **Author:** Claude Opus 5
