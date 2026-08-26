@@ -114,3 +114,15 @@ target_link_libraries(forgetting_bench PRIVATE khora::descent khora::lattice)
 
 add_executable(structure_bench structure_bench.cpp)
 target_link_libraries(structure_bench PRIVATE khora::lattice)
+
+add_executable(attention_bench attention_bench.cpp)
+target_link_libraries(attention_bench PRIVATE khora::descent khora::chiasm khora::lattice)
+
+add_executable(adversary_bench adversary_bench.cpp)
+target_link_libraries(adversary_bench PRIVATE khora::lattice)
+
+add_executable(causal_bench causal_bench.cpp)
+target_link_libraries(causal_bench PRIVATE khora::ligature khora::plexus khora::lattice)
+
+add_executable(sequential_bench sequential_bench.cpp)
+target_link_libraries(sequential_bench PRIVATE khora::telos khora::lattice)

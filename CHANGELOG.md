@@ -3,6 +3,74 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.129.0 — Seeing is not doing, and an audit of the whole field
+
+**Author:** Claude Opus 5
+
+A systematic pass over the field rather than over this repository. Grepping for
+the mechanisms that define modern AI turned up four total absences -- zero hits,
+not thin coverage:
+
+| axis | in the tree |
+|---|---|
+| adversarial search (MCTS, minimax, alpha-beta, game tree) | **nothing** |
+| causal inference (intervention, counterfactual, confounding) | **nothing** |
+| sequential RL (Q-learning, TD, value iteration, policy gradient) | **nothing** -- telos is a bandit |
+| self-supervised / contrastive learning | **nothing** |
+| attention | the word, in prose, three times. No mechanism |
+
+This entry closes the causal one. Three benches for the others are being built
+in parallel and land separately.
+
+### Why causality and not something easier
+
+The Ligature holds 2,841 CAUSES edges pulled from real books. `deduce` chains them
+transitively and `plan_to` searches backward over them to answer "what would bring
+this about". Nothing in the extractor distinguishes causation from co-occurrence:
+it fires on the surface verb. So the system reasons about causes and has no line
+anywhere that knows the difference between seeing and doing.
+
+### Part one: the capability, on data where the truth is known
+
+A confounder Z drives both X and Y, and X does not affect Y at all:
+
+| world | association | truth under do() | backdoor estimate |
+|---|---|---|---|
+| Z→X, Z→Y (X does **not** cause Y) | **+0.639** | **+0.002** | **+0.003** |
+| Z→X→Y (X really does) | +0.799 | +0.802 | +0.801 |
+
+Observation reports a large effect where the truth is zero, and the adjustment
+recovers the zero from the same observational data. The second row is the check
+that it is not simply always answering nothing.
+
+### Part two: and Khora's own causal edges
+
+There is no interventional ground truth for a corpus of Victorian books and
+there cannot be, so the tests have to need none.
+
+**Are the edges more than association?** Yes, decisively. Of 2,841 causal pairs,
+**20.2% [18.8, 21.7]** also co-occur in the Plexus, against **1.6% [1.2, 2.1]**
+for the same words randomly re-paired. Twelve-fold separation, intervals nowhere
+near touching. The edges are real associations.
+
+**Do they carry direction?** Unknown, and the interesting part is why. Zero of
+2,841 edges are asserted in both directions, which looks like a clean pass. It
+is not evidence. A degree-preserving shuffle -- same subjects, same objects,
+pairing destroyed -- expects **2.00** reciprocal edges, so under the null,
+observing zero happens with probability **0.136**. Not significant.
+
+I first wrote "the null is above one, so zero is a real signal" and that was
+wrong: at a mean of two, an honest coin gives zero about one time in seven. The
+bench now computes the Poisson tail and prints NOT SIGNIFICANT. The graph may
+well carry direction; this corpus is too sparse for reciprocity to show it.
+
+### What neither part shows
+
+Part one is a simulation, and it works because I told it Z is the confounder.
+Discovering WHICH variable to adjust for is the hard problem and no quantity of
+data solves it. Part two cannot show the edges are causal -- only whether they
+carry direction and whether they carry anything association does not.
+
 ## v0.128.0 — Two properties I claimed, measured: one is an identity bug, one is not a security property
 
 **Author:** Claude Opus 5
