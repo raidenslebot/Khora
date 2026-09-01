@@ -3,6 +3,72 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.176.0 - The FoldS ascent headline was manufactured, and the differential claim was vacuous
+
+**Author:** Claude Fable 5
+
+An adversarial review panel (fifteen agents, three lenses, every finding
+attacked by two refuters) was run against the previous commit. Six findings
+survived, zero were refuted, and the worst one is about my own headline.
+
+### The ascent comparison was against a stale baseline -- WITHDRAWN
+
+v0.175.0 claimed "179/147 tier 42 -> 270/230 tier 92, +51% on the identical
+budget". The 179/147 figure is the **v0.159-era** configuration, fifteen entries
+old. This log records the IMMEDIATE pre-FoldS ascent at the same defaults:
+**median 293 carried over five runs, range 272-331, gaps 47-69** (v0.162), and
+353/294 at v0.166. Against the real baseline, 270 carried with a gap of 40 is
+**no improvement at all** -- on totals it is below the pre-FoldS median.
+
+Worse, the comparison was illegitimate regardless of baseline: the bench prints
+**"read the carried-minus-empty gap within ONE run; never a tier time across
+two"**, because every verified solution becomes an atom and reshapes the
+curriculum -- a different engine generates DIFFERENT TASKS from tier 2 onward.
+v0.160 said this explicitly ("331 against 179 is not a like-for-like"). I quoted
+the rule two entries before breaking it.
+
+And "still producing at tier 92 when the budget calls time" misread the
+stopping condition: the budget check runs before the tier, so tier 92 never
+ran, and the barren counter resets when EITHER arm verifies -- the carried arm
+may have verified nothing for four straight tiers.
+
+**What FoldS is left with is what was measured under controls:** `sum` certified
+as `folds[pair_add](x, 0)` PROVED where every unseeded fold is rejected by the
+proof domain; selfhost single round 13/22 -> 14/22 with `sum` at 1000/1000; and
+within the one ascent run, carried 270 against empty 230. Whether FoldS helps
+or hurts the ascent is **unknown** -- deciding it needs multiple runs of each
+engine compared on gaps, and that measurement has not been done.
+
+### "FoldS fuzzed in" exercised zero of the fourteen helpers -- WITHDRAWN
+
+The differential bench renders through `emit()`, which hardcodes `lib_n = 0` and
+**refuses every recipe containing a higher-order op**. So every FoldS-carrying
+fuzz recipe was dropped from all fourteen files before anything ran, and the
+"14/14 byte-identical, FoldS fuzzed in" line would have printed identically if
+every `kh_folds` helper were sabotaged. The gap is inherited -- `kh_mapf` and
+`kh_foldf` have NEVER been executed by the differential either -- but the claim
+was mine and it said nothing. The fourteen helpers are verified today only by
+one non-executing string match on the Python unit.
+
+### Two real defects the panel found in the wiring
+
+**Emission diverges from the interpreter on nested higher-order bodies.**
+`apply_op` refuses MapF/FoldF/FoldS at depth > 0 (no nesting), but `plan_unit`
+only refuses at `kMaxCallDepth` = 3 -- its "step for step" comment is stale. A
+FoldS whose library body contains a MapF is certified as `{}` by the interpreter
+and emitted as code that computes the nested fold for real. Pre-existing for
+MapF/FoldF; the FoldS arm is new.
+
+**The tape form of FoldS lies to introspection.** `reads_two_operands(FoldS)` is
+true (the recipe form reads its seed from b), but the TAPE form uses b as a
+body selector and reads no second register -- so `live_mask()` records a phantom
+register read that can mark dead instructions live, inflate
+`effective_length()`, and miscount live library calls in the throughput bench.
+
+Both fixes are prepared; they land in the next commit because the build tree is
+held by a running measurement. This entry exists so the wrong claims do not
+stand a moment longer than the review that killed them.
+
 ## v0.175.0 - FoldS: the fold the algebra wanted, and the ascent goes from tier 42 to tier 92
 
 **Author:** Claude Fable 5
