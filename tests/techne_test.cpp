@@ -310,6 +310,28 @@ int main() {
         deep.root = 0; deep.found = true;
         check(emit_unit(deep, Lang::Python, "f", &lib).empty(),
               "and a nesting that reaches kMaxCallDepth refuses the whole unit");
+
+        // --- THE SEEDED FOLD ------------------------------------------------
+        // FoldF proved unable to CERTIFY any aggregation with an identity
+        // element (fold_bench, v0.149): it seeds from a[0], returns {} on the
+        // empty list, and sum([]) is {0} -- one proof-domain input is enough
+        // to reject every candidate. FoldS carries the seed as a REAL OPERAND,
+        // node b, so the identity is part of the program.
+        Recipe sf;
+        Expr z; z.op = Op::Const; z.lit = 0; z.has_lit = true;
+        sf.pool.push_back(z);
+        sf.pool.push_back(Expr{Op::FoldS, -1, 0, 0});
+        sf.root = 1; sf.found = true;
+        check(sf.apply(Value{1, 2, 3, 4}, &lib) == Value{10},
+              "a seeded fold with an adding body sums the list");
+        check(sf.apply(Value{}, &lib) == Value{0},
+              "and the EMPTY list folds to the seed, which FoldF can never say");
+        check(sf.apply(Value{9}, &lib) == Value{9},
+              "a singleton folds to seed-plus-element");
+
+        const std::string sunit = emit_unit(sf, Lang::Python, "f", &lib);
+        check(sunit.find("kh_folds(x, t0, kh_lib0)") != std::string::npos,
+              "emission passes the seed as a real argument, not a baked constant");
     }
 
     // --- THE FOUR OPERATIONS THE TEXT BENCH NAMED ----------------------------

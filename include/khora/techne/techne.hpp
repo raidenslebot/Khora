@@ -201,7 +201,7 @@ enum class Op : std::uint8_t {
     // express "combine every element". That is not a fact about arithmetic, it
     // is a fact about the instruction set having no way to build a LOOP.
     //
-    // These two take a library function as their body, so the system composes
+    // These take a library function as their body, so the system composes
     // control structure rather than only values. With FoldF available, `sum` is
     // a fold whose body adds, `max` is a fold whose body takes the larger, and
     // the system can reach aggregations nobody enumerated -- including ones I
@@ -214,6 +214,19 @@ enum class Op : std::uint8_t {
     MapF,      // dst = [ library[b]([x]) for x in a ]   flattened
     FoldF,     // dst = left fold of library[b] over a, seeded with a[0];
                //       the body receives the pair as a two-element list
+    // THE SEEDED FOLD. FoldF proved unable to CERTIFY any aggregation with an
+    // identity element (fold_bench, v0.149): it seeds from a[0], so it returns
+    // {} on the empty list, sum([]) is {0}, and the bounded proof domain
+    // CONTAINS the empty list -- no specification can dodge it. The search
+    // routed around that with append(fold(x), drop(0, len(x))), which is the
+    // system compensating for its instruction set.
+    //
+    // FoldS removes the limit instead: the seed is a REAL OPERAND -- node b --
+    // so the identity element is part of the program, sum is
+    // folds[pair_add](x, 0), and the accumulator may be ANY value, including a
+    // computed one. An empty input folds to the seed, exactly as the algebra
+    // says it should.
+    FoldS,     // dst = left fold of library[k] over a, seeded with operand b
     kCount
 };
 

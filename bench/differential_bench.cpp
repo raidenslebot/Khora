@@ -146,7 +146,7 @@ std::vector<Named> fuzz_recipes(std::size_t n, std::uint64_t seed) {
                 // For Call, MapF and FoldF this selects the library BODY, so it
                 // is drawn over the library rather than over the constant table.
                 const bool names_body = (e.op == Op::Call || e.op == Op::MapF ||
-                                         e.op == Op::FoldF);
+                                         e.op == Op::FoldF || e.op == Op::FoldS);
                 e.k = static_cast<std::uint8_t>(
                     rnd() % (names_body ? fuzz_lib().size() : 4));
             }

@@ -295,7 +295,8 @@ void collect_ops(const Recipe& r, const Library& lib, std::vector<Op>& out,
         seen[i] = true;
         const Expr& e = r.pool[i];
         if (std::find(out.begin(), out.end(), e.op) == out.end()) out.push_back(e.op);
-        if (e.op == Op::Call || e.op == Op::MapF || e.op == Op::FoldF) {
+        if (e.op == Op::Call || e.op == Op::MapF || e.op == Op::FoldF ||
+            e.op == Op::FoldS) {
             if (lib.size()) {
                 const std::size_t li = e.k % lib.size();
                 collect_ops(lib.at(li).recipe, lib, out, depth + 1);
@@ -380,7 +381,8 @@ Mat materialise(const std::vector<Node>& reg, const std::vector<char>& live) {
         if (!ok) continue;
         Recipe r = reg[i].r;
         for (Expr& e : r.pool) {
-            if (e.op != Op::Call && e.op != Op::MapF && e.op != Op::FoldF) continue;
+            if (e.op != Op::Call && e.op != Op::MapF && e.op != Op::FoldF &&
+                e.op != Op::FoldS) continue;
             if (e.k >= reg[i].deps.size()) { ok = false; break; }
             e.k = static_cast<std::uint8_t>(m.where[reg[i].deps[e.k]]);
         }
@@ -433,7 +435,8 @@ Node make_node(std::string name, Op op, const Recipe& src, const Mat& m,
     n.r = src.compact();
     const std::size_t ls = m.lib.size();
     for (Expr& e : n.r.pool) {
-        if (e.op == Op::Call || e.op == Op::MapF || e.op == Op::FoldF) {
+        if (e.op == Op::Call || e.op == Op::MapF || e.op == Op::FoldF ||
+            e.op == Op::FoldS) {
             const std::size_t li = ls ? (e.k % ls) : 0;
             const std::size_t ri = (li < m.back.size()) ? m.back[li] : kNone;
             std::size_t pos = 0;
@@ -578,8 +581,9 @@ struct Comb {
     std::function<Value(const Value&)> ref;
 };
 std::vector<Comb> combiners() {
-    const std::vector<Op> pairwise = {Op::Sum, Op::Max, Op::Min, Op::FoldF, Op::MapF};
-    const std::vector<Op> reversal = {Op::Rev, Op::FoldF, Op::MapF};
+    const std::vector<Op> pairwise = {Op::Sum, Op::Max, Op::Min, Op::FoldF,
+                                      Op::MapF, Op::FoldS};
+    const std::vector<Op> reversal = {Op::Rev, Op::FoldF, Op::MapF, Op::FoldS};
     return {
         {"pair_add", pairwise, false, [](const Value& v) {
             return v.size() < 2 ? Value{} : Value{cap_value(v[0] + v[1])}; }},
@@ -908,7 +912,9 @@ int main(int argc, char** argv) {
             n.wild_n = wild.size();
             n.wild_clean = (agree == wild.size());
             for (const Expr& e : n.r.pool)
-                if (e.op == Op::MapF || e.op == Op::FoldF) { n.higher_order = true; break; }
+                if (e.op == Op::MapF || e.op == Op::FoldF || e.op == Op::FoldS) {
+                    n.higher_order = true; break;
+                }
             return n;
         };
 
@@ -1366,7 +1372,9 @@ int main(int argc, char** argv) {
             for (const Node& n : arm->reg) {
                 if (n.wild_n == 0 && n.op != Op::kCount) continue;
                 for (const Expr& e : n.r.pool)
-                    if (e.op == Op::FoldF || e.op == Op::MapF) { ++folded_n; break; }
+                    if (e.op == Op::FoldF || e.op == Op::MapF || e.op == Op::FoldS) {
+                        ++folded_n; break;
+                    }
             }
         std::printf("    The combiners exist so that FoldF can express \"combine every\n"
                     "    element\". %zu of %zu accepted reconstructions contain a fold or a\n"

@@ -159,6 +159,12 @@ def kh_foldf(a, f):
         acc = f(acc + [a[i]])
         if not acc: break
     return acc
+def kh_folds(a, s, f):
+    acc = list(s)
+    for x in a:
+        acc = f(acc + [x])
+        if not acc: break
+    return acc
 def kh_lim(a): return list(a[:512])
 )PY";
 
@@ -258,6 +264,15 @@ static V kh_foldf(const V& a, Fn f) {
     }
     return acc;
 }
+static V kh_folds(const V& a, const V& s, Fn f) {
+    V acc = s;                       // the seed IS the initial accumulator
+    for (std::size_t i = 0; i < a.size(); ++i) {
+        V p = acc; p.push_back(a[i]);
+        acc = f(p);
+        if (acc.empty()) break;
+    }
+    return acc;                      // an empty input folds to the seed
+}
 static V kh_lim(const V& a) { return a.size() > 512 ? V(a.begin(), a.begin() + 512) : a; }
 )CPP";
 
@@ -339,6 +354,14 @@ const kh_foldf = (a, f) => {
   if (!a.length) return [];
   let acc = [a[0]];
   for (let i = 1; i < a.length; i++) {
+    acc = f(acc.concat([a[i]]));
+    if (!acc.length) break;
+  }
+  return acc;
+};
+const kh_folds = (a, s, f) => {
+  let acc = s.slice();
+  for (let i = 0; i < a.length; i++) {
     acc = f(acc.concat([a[i]]));
     if (!acc.length) break;
   }
@@ -458,6 +481,16 @@ pub fn kh_foldf(a: &V, f: fn(&V) -> V) -> V {
     if a.is_empty() { return vec![]; }
     let mut acc: V = vec![a[0]];
     for i in 1..a.len() {
+        let mut p = acc.clone();
+        p.push(a[i]);
+        acc = f(&p);
+        if acc.is_empty() { break; }
+    }
+    acc
+}
+pub fn kh_folds(a: &V, s: &V, f: fn(&V) -> V) -> V {
+    let mut acc: V = s.clone();
+    for i in 0..a.len() {
         let mut p = acc.clone();
         p.push(a[i]);
         acc = f(&p);
@@ -836,6 +869,17 @@ func kh_foldf(a V, f func(V) V) V {
 	}
 	return acc
 }
+func kh_folds(a V, s V, f func(V) V) V {
+	acc := append(V{}, s...)
+	for i := 0; i < len(a); i++ {
+		p := append(append(V{}, acc...), a[i])
+		acc = f(p)
+		if len(acc) == 0 {
+			break
+		}
+	}
+	return acc
+}
 func kh_lim(a V) V { if len(a) > 512 { return a[:512] }; return a }
 )GO";
 
@@ -1026,6 +1070,16 @@ class Kh {
         if (a.length == 0) return EMPTY;
         long[] acc = new long[]{ a[0] };
         for (int i = 1; i < a.length; i++) {
+            long[] p = Arrays.copyOf(acc, acc.length + 1);
+            p[acc.length] = a[i];
+            acc = f.apply(p);
+            if (acc.length == 0) break;
+        }
+        return acc;
+    }
+    static long[] kh_folds(long[] a, long[] s, Function<long[], long[]> f) {
+        long[] acc = Arrays.copyOf(s, s.length);
+        for (int i = 0; i < a.length; i++) {
             long[] p = Arrays.copyOf(acc, acc.length + 1);
             p[acc.length] = a[i];
             acc = f.apply(p);
@@ -1227,6 +1281,16 @@ static class Kh {
         }
         return acc;
     }
+    public static long[] kh_folds(long[] a, long[] s, Func<long[], long[]> f) {
+        long[] acc = new long[s.Length];
+        System.Array.Copy(s, acc, s.Length);
+        for (int i = 0; i < a.Length; i++) {
+            long[] p = kh_cat(acc, new long[]{ a[i] });
+            acc = f(p);
+            if (acc.Length == 0) break;
+        }
+        return acc;
+    }
   public static long[] kh_lim(long[] a) { if (a.Length <= 512) return a; var o = new long[512]; System.Array.Copy(a, o, 512); return o; }
 }
 )CS";
@@ -1321,6 +1385,14 @@ const kh_foldf = (a: V, f: (v: V) => V): V => {
   }
   return acc;
 };
+const kh_folds = (a: V, s: V, f: (v: V) => V): V => {
+  let acc: V = s.slice();
+  for (let i = 0; i < a.length; i++) {
+    acc = f(acc.concat([a[i]]));
+    if (!acc.length) break;
+  }
+  return acc;
+};
 const kh_lim = (a: number[]): number[] => a.length > 512 ? a.slice(0, 512) : a;
 )TS";
 
@@ -1397,6 +1469,14 @@ def kh_foldf(a, f)
   acc = [a[0]]
   (1...a.length).each do |i|
     acc = f.call(acc + [a[i]])
+    break if acc.empty?
+  end
+  acc
+end
+def kh_folds(a, s, f)
+  acc = s.dup
+  a.each do |x|
+    acc = f.call(acc + [x])
     break if acc.empty?
   end
   acc
@@ -1653,6 +1733,16 @@ function kh_foldf(a, f)
   end
   return acc
 end
+function kh_folds(a, s, f)
+  local acc = kh_id(s)
+  for i = 1, #a do
+    local p = kh_id(acc)
+    p[#acc + 1] = a[i]
+    acc = f(p)
+    if #acc == 0 then break end
+  end
+  return acc
+end
 function kh_lim(a) if #a <= 512 then return a end local o = {} for i = 1, 512 do o[i] = a[i] end return o end
 )LUA";
 
@@ -1774,6 +1864,13 @@ kh_foldf :: V -> (V -> V) -> V
 kh_foldf a f
   | null a = []
   | otherwise = go [head a] (tail a)
+  where
+    go acc [] = acc
+    go acc (y:ys) =
+      let acc2 = f (acc ++ [y])
+      in if null acc2 then [] else go acc2 ys
+kh_folds :: V -> V -> (V -> V) -> V
+kh_folds a s f = go s a
   where
     go acc [] = acc
     go acc (y:ys) =
@@ -1932,6 +2029,14 @@ func kh_foldf(_ a: V, _ f: (V) -> V) -> V {
     }
     return acc
 }
+func kh_folds(_ a: V, _ s: V, _ f: (V) -> V) -> V {
+    var acc: V = s
+    for x in a {
+        acc = f(acc + [x])
+        if acc.isEmpty { break }
+    }
+    return acc
+}
 func kh_lim(_ a: V) -> V { return a.count > 512 ? Array(a[0..<512]) : a }
 )SWIFT";
 
@@ -2015,6 +2120,14 @@ fun kh_foldf(a: V, f: (V) -> V): V {
     var acc: V = listOf(a[0])
     for (i in 1 until a.size) {
         acc = f(acc + a[i])
+        if (acc.isEmpty()) break
+    }
+    return acc
+}
+fun kh_folds(a: V, s: V, f: (V) -> V): V {
+    var acc: V = s.toList()
+    for (x in a) {
+        acc = f(acc + x)
         if (acc.isEmpty()) break
     }
     return acc
@@ -2174,6 +2287,16 @@ function kh_foldf($a, $f) {
     for ($i = 1; $i < count($a); $i++) {
         $p = $acc;
         $p[] = $a[$i];
+        $acc = $f($p);
+        if (count($acc) === 0) break;
+    }
+    return $acc;
+}
+function kh_folds($a, $s, $f) {
+    $acc = $s;
+    foreach ($a as $x) {
+        $p = $acc;
+        $p[] = $x;
         $acc = $f($p);
         if (count($acc) === 0) break;
     }
@@ -2350,7 +2473,8 @@ static bool plan_unit(const Recipe& r, const Library& lib, std::size_t depth,
     for (std::size_t i = 0; i < r.pool.size(); ++i) {
         if (!live[i]) continue;
         const Expr& e = r.pool[i];
-        if (e.op != Op::MapF && e.op != Op::FoldF && e.op != Op::Call) continue;
+        if (e.op != Op::MapF && e.op != Op::FoldF && e.op != Op::FoldS &&
+            e.op != Op::Call) continue;
         if (lib.size() == 0) return false;
         const std::size_t nd = depth + 1;
         if (nd >= kMaxCallDepth) return false;
@@ -2382,7 +2506,8 @@ std::string emit_unit(const Recipe& r, Lang l, const std::string& fn,
         // With no library the interpreter's own answer for these is an empty
         // list, not an identity, and there is no honest source for that.
         for (const Expr& e : r.pool)
-            if (e.op == Op::MapF || e.op == Op::FoldF || e.op == Op::Call) return {};
+            if (e.op == Op::MapF || e.op == Op::FoldF || e.op == Op::FoldS ||
+                e.op == Op::Call) return {};
     } else {
         std::vector<char> seen(n * kMaxCallDepth, 0);
         std::vector<char> taken(n, 0);
@@ -2461,7 +2586,8 @@ static std::string emit_inlined(const Recipe& r, Lang l, const std::string& fn,
     // from, and emitting the argument in its place is the exact defect above.
     for (const Expr& e : r.pool) {
         if (e.op == Op::Call) return {};
-        if ((e.op == Op::MapF || e.op == Op::FoldF) && lib_n == 0) return {};
+        if ((e.op == Op::MapF || e.op == Op::FoldF || e.op == Op::FoldS) &&
+            lib_n == 0) return {};
         // Gt, Member, Until and Delta used to be refused here for want of a
         // backend. They now have one in all fourteen preludes and a name in
         // fn_of(), so they no longer fall through to kh_id.
@@ -2626,12 +2752,13 @@ static std::string emit_inlined(const Recipe& r, Lang l, const std::string& fn,
                 case Lang::Lua:    rhs = "{" + k + "}"; break;
                 default:           rhs = "[" + k + "]"; break;
             }
-        } else if (e.op == Op::MapF || e.op == Op::FoldF) {
+        } else if (e.op == Op::MapF || e.op == Op::FoldF || e.op == Op::FoldS) {
             // The body is resolved the way the interpreter resolves it and no
             // other way: k % lib->size(). A different modulus is a different
             // function, which is a different program.
             const std::string h = std::string(call_prefix(l)) +
-                                  (e.op == Op::MapF ? "kh_mapf" : "kh_foldf");
+                                  (e.op == Op::MapF  ? "kh_mapf"
+                                 : e.op == Op::FoldF ? "kh_foldf" : "kh_folds");
             const std::string b = "kh_lib" + std::to_string(e.k % lib_n);
             // The body AS A VALUE. Six of the fourteen targets cannot spell that
             // with a bare name, and each refuses differently.
@@ -2651,9 +2778,15 @@ static std::string emit_inlined(const Recipe& r, Lang l, const std::string& fn,
                 case Lang::Kotlin: fv = "::" + b; break;
                 default:           fv = b; break;
             }
-            if (l == Lang::Haskell)   rhs = h + " " + ref(e.a) + " " + fv;
-            else if (l == Lang::Rust) rhs = h + "(&" + ref(e.a) + ", " + fv + ")";
-            else                      rhs = h + "(" + ref(e.a) + ", " + fv + ")";
+            // FoldS carries its seed as a REAL OPERAND, so it is emitted as
+            // one: a third argument, never a constant baked into the helper.
+            const std::string sd = (e.op != Op::FoldS) ? std::string()
+                : (l == Lang::Haskell) ? " " + ref(e.b)
+                : (l == Lang::Rust)    ? ", &" + ref(e.b)
+                                       : ", " + ref(e.b);
+            if (l == Lang::Haskell)   rhs = h + " " + ref(e.a) + sd + " " + fv;
+            else if (l == Lang::Rust) rhs = h + "(&" + ref(e.a) + sd + ", " + fv + ")";
+            else                      rhs = h + "(" + ref(e.a) + sd + ", " + fv + ")";
         } else {
             const std::string f = std::string(call_prefix(l)) + fn_of(e.op);
             if (l == Lang::Haskell) {

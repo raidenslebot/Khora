@@ -40,6 +40,10 @@ using namespace khora::techne;
 
 namespace {
 
+std::int64_t cap_value(std::int64_t x) {
+    return x < -kValueCap ? -kValueCap : (x > kValueCap ? kValueCap : x);
+}
+
 std::uint64_t rng_state = 0x5EEDF01DULL;
 std::uint64_t rnd() {
     rng_state ^= rng_state << 13; rng_state ^= rng_state >> 7;
@@ -56,10 +60,17 @@ struct Agg {
 
 std::vector<Agg> aggregations() {
     return {
+        // SATURATING, because the domain saturates. The raw += oracle disagreed
+        // with every DSL program at the kValueCap extremes, so the hardened path
+        // manufactured a counterexample NO program can satisfy and then reported
+        // "nothing matched" -- the bench blaming the engine for the bench's own
+        // arithmetic. Same defect class as the pair_min saturation miss (v0.148),
+        // caught the same way: from the wrapper's refusal, not from reading.
         {"sum", Op::Sum, "pair_add",
-         [](const Value& v) { std::int64_t s = 0; for (const std::int64_t x : v) s += x;
+         [](const Value& v) { std::int64_t s = 0;
+                              for (const std::int64_t x : v) s = cap_value(s + x);
                               return Value{s}; },
-         [](const Value& v) { return Value{v[0] + v[1]}; }},
+         [](const Value& v) { return Value{cap_value(v[0] + v[1])}; }},
         {"max", Op::Max, "pair_max",
          [](const Value& v) { if (v.empty()) return Value{};
                               std::int64_t m = v[0];
@@ -81,7 +92,8 @@ std::vector<Agg> aggregations() {
 bool derive_body(Library& lib, const Agg& a) {
     Spec s;
     s.name = a.body;
-    for (const Op o : {Op::Sum, Op::Max, Op::Min, Op::FoldF, Op::MapF}) s.banned.push_back(o);
+    for (const Op o : {Op::Sum, Op::Max, Op::Min, Op::FoldF, Op::MapF, Op::FoldS})
+        s.banned.push_back(o);
     for (std::size_t i = 0; i < 12; ++i) {
         Value in{static_cast<std::int64_t>(rnd() % 40) - 18,
                  static_cast<std::int64_t>(rnd() % 40) - 18};
@@ -137,7 +149,7 @@ Row try_agg(const Library& lib, const Agg& a, std::size_t ncase, std::size_t len
     r.folded = false;
     if (b.recipe.found)
         for (const Expr& n : b.recipe.pool)
-            if (n.op == Op::FoldF || n.op == Op::MapF) r.folded = true;
+            if (n.op == Op::FoldF || n.op == Op::MapF || n.op == Op::FoldS) r.folded = true;
     return r;
 }
 // PART THREE asks the same question of the entry point callers actually use.
@@ -173,7 +185,7 @@ Row try_hardened(const Library& lib, const Agg& a, std::size_t ncase,
     r.folded = false;
     if (b.recipe.found)
         for (const Expr& n : b.recipe.pool)
-            if (n.op == Op::FoldF || n.op == Op::MapF) r.folded = true;
+            if (n.op == Op::FoldF || n.op == Op::MapF || n.op == Op::FoldS) r.folded = true;
     return r;
 }
 // PART FOUR. Everything above folds a list down to ONE value, which is what a
@@ -350,19 +362,18 @@ int main() {
     }
     std::printf("\n  THREE DIFFERENT THINGS ARE VISIBLE HERE and only one of them is the\n");
     std::printf("  cap that part one is about.\n\n");
-    std::printf("  sum   -- folds when the empty list is absent and NOTHING matches when\n");
-    std::printf("           it is present. A fold seeded with A[0] returns {} on the\n");
-    std::printf("           empty list; sum([]) is 0. One case is enough to reject a\n");
-    std::printf("           candidate, so this instruction set expresses every\n");
-    std::printf("           aggregation UNDEFINED on the empty list and no aggregation\n");
-    std::printf("           that has an IDENTITY ELEMENT -- NOT that the system cannot\n");
-    std::printf("           rebuild one. Given the same body and a spec that includes\n");
-    std::printf("           the empty list, the self-hosting bench answers with\n");
-    std::printf("           append(fold[pair_add](x), drop(0, len(x))): the fold for the\n");
-    std::printf("           elements and a length-conditioned term for the case the fold\n");
-    std::printf("           cannot reach. It found that composition on its own, and it\n");
-    std::printf("           is clean on all 252 grading inputs. The limit is on the\n");
-    std::printf("           OPERATION, and the search routes around it.\n");
+    std::printf("  sum   -- the unseeded fold answers only when the empty list is\n");
+    std::printf("           absent: FoldF seeds with A[0], returns {} on [], and\n");
+    std::printf("           sum([]) is {0}, so one case rejects it. WITH THE SEED AS AN\n");
+    std::printf("           OPERAND the empty-case row answers folds[pair_add](x, 0):\n");
+    std::printf("           the identity element is part of the program. FoldF alone\n");
+    std::printf("           expresses every aggregation UNDEFINED on the empty list\n");
+    std::printf("           and none with an IDENTITY ELEMENT. Before FoldS existed the\n");
+    std::printf("           search ROUTED AROUND that limit -- the self-hosting bench\n");
+    std::printf("           answered append(fold[pair_add](x), drop(0, len(x))), the\n");
+    std::printf("           fold plus a length-conditioned patch for the case the fold\n");
+    std::printf("           could not reach. FoldS removes the limit instead of routing\n");
+    std::printf("           around it.\n");
     std::printf("\n");
     std::printf("  min   -- generalises both ways, and the empty case makes it BETTER.\n");
     std::printf("           Without it the search takes sub(sum(x), sum(pair_max(x))),\n");
@@ -394,19 +405,19 @@ int main() {
             std::printf("  %-9s | %-10s | %-11s | %s\n", a.name, ec ? "yes" : "no",
                         r.proof, r.prog.c_str());
         }
+
     std::printf("\n  max IS answered here -- fold[pair_max](x), proved -- and overfits in\n");
     std::printf("  part two. So stopping at the first match is a property of the raw\n");
     std::printf("  engine that counterexample refinement already covers. The shipped\n");
     std::printf("  path is not the thing at fault, and part two should not be read as\n");
     std::printf("  saying it is.\n\n");
-    std::printf("  AND `sum` FAILS HERE EVEN WITH NO EMPTY CASE IN THE SPECIFICATION,\n");
-    std::printf("  which is the sharper form of part two. The proof domain is every\n");
-    std::printf("  list of length 0..4 -- and that INCLUDES the empty one. A caller\n");
-    std::printf("  cannot avoid it by leaving it out of the cases, so a bare fold can\n");
-    std::printf("  never be certified for an aggregation with an identity element, no\n");
-    std::printf("  matter what it is asked. That is why the self-hosting bench answers\n");
-    std::printf("  with append(fold[pair_add](x), drop(0, len(x))) rather than a fold:\n");
-    std::printf("  the proof domain forced the composition, and the search found it.\n\n");
+    std::printf("  AND `sum` NOW CERTIFIES AS A BARE SEEDED FOLD. The proof domain is\n");
+    std::printf("  every list of length 0..4 -- INCLUDING the empty one -- plus the\n");
+    std::printf("  extremal inputs, so folds[pair_add](x, 0) is proved on exactly the\n");
+    std::printf("  domain that rejected every unseeded fold. Until v0.150 the only\n");
+    std::printf("  route was append(fold[pair_add](x), drop(0, len(x))) -- the search\n");
+    std::printf("  compensating for its instruction set. The instruction set now says\n");
+    std::printf("  what the algebra says: a fold has a seed.\n\n");
 
     std::printf("\n\n  PART FOUR -- a fold whose ACCUMULATOR IS A LIST.\n\n");
     std::printf("  Everything above folds a list down to one value. FoldF does not\n");

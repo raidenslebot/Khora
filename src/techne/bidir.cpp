@@ -203,6 +203,21 @@ Value fwd_op(Op op, const Value& A, const Value& B, std::uint8_t k,
             out = acc;
             break;
         }
+        case Op::FoldS: {
+            // Seeded fold: operand b, taken whole, is the initial accumulator.
+            // Mirrors apply_op exactly -- the two evaluators must not disagree.
+            if (lib == nullptr || lib->size() == 0) break;
+            const std::size_t li = k % lib->size();
+            Value acc = B;
+            for (std::size_t i = 0; i < A.size(); ++i) {
+                Value pair = acc;
+                pair.push_back(A[i]);
+                acc = lib->call(li, pair, depth + 1);
+                if (acc.empty()) break;
+            }
+            out = acc;
+            break;
+        }
         case Op::Call: if (lib && lib->size()) out = lib->call(k % lib->size(), A, depth + 1); break;
         default: out = A; break;
     }

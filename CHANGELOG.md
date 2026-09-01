@@ -3,6 +3,64 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.175.0 - FoldS: the fold the algebra wanted, and the ascent goes from tier 42 to tier 92
+
+**Author:** Claude Fable 5
+
+v0.149 proved a structural limit and stated it precisely: FoldF seeds its
+accumulator from `a[0]`, so it returns `{}` on the empty list, `sum([])` is `{0}`,
+and the bounded proof domain CONTAINS the empty list -- so **a bare fold can
+never be certified for any aggregation with an identity element**, and no
+specification can dodge it. The search routed around it with
+`append(fold[pair_add](x), drop(0, len(x)))` -- the system compensating for its
+instruction set.
+
+This entry removes the limit instead. `FoldS` is a seeded left fold whose seed is
+a **real operand** -- pool node `b` -- so the identity element is part of the
+program, an empty input folds to the seed, and the accumulator may start from
+any computed value. The search offers the level-0 constants 0 and 1 as seeds --
+the identity elements of the two monoids this domain has -- which keeps the
+speculation loop linear in pool nodes; a finished program may carry any seed.
+
+Wired everywhere an operation must exist, not just where it is convenient:
+both evaluators, the bidirectional engine, render, banned-transitivity, library
+use-counting and eviction remap, emission in **all fourteen language backends**
+(a `kh_folds` helper beside every `kh_foldf`), the differential fuzzer, and the
+dependency walks of every bench that reads recipes.
+
+### What one correct operation bought
+
+| measurement | before | after |
+|---|---|---|
+| `sum` through `synthesise_hardened` | nothing matched | **`folds[pair_add](x, 0)`, PROVED** -- empty list and extremes included |
+| selfhost single round | 13/22 | **14/22**, `sum` at 1000/1000 |
+| ascent, identical 240 s budget | 179 carried / 147 empty, tier 42 | **270 / 230, tier 92** |
+| ascent compounding gap | +32 | **+40** |
+| differential, 14 languages | 14/14 byte-identical | **14/14 byte-identical, FoldS fuzzed in** |
+
+The ascent row is the one that matters for the mission: **+51% verified programs
+and more than double the curriculum depth on the same wall-clock budget**,
+because seeded folds both solve more tasks and hand the generator richer atoms
+to compose the next tier from. The baseline ended at tier 42 on its stopping
+rule; this run is still producing at tier 92 when the budget calls time.
+
+No regressions: `correct_bench` identical, fixed bar stage 0 unchanged at 22,
+32/32 tests.
+
+### The bench blamed the engine for the bench
+
+First run of the hardened path still said "nothing matched" while raw
+`construct` answered `folds[pair_add](x, 0)` -- isolated with a three-way probe.
+The cause was `fold_bench`'s own oracle: a raw `+=` that does not saturate,
+while every DSL program saturates at `kValueCap`. At the extremal inputs the
+wrapper manufactured a counterexample **no program can satisfy** and refined
+itself to death. Same defect class as the `pair_min` saturation miss (v0.148),
+caught the same way -- by the machinery refusing, not by reading. The oracle now
+models the domain.
+
+Also fixed while probing: binding `aggregations()[0]` to a reference dangles (the
+vector is a temporary); the probe crashed with exit 127 until taken by value.
+
 ## v0.174.0 - Sixteen times the hardware buys eight tasks; the library buys seventeen
 
 **Author:** Claude Opus 5

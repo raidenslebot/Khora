@@ -101,6 +101,9 @@ bool reads_two_operands(Op o) {
         case Op::Guard: case Op::Else:
         case Op::Gt: case Op::Eq: case Op::Lt:
         case Op::Member: case Op::Until:
+        // FoldS reads its SEED from b. Saying so here is what makes every
+        // generic walk -- liveness, compaction, emission -- keep that operand.
+        case Op::FoldS:
             return true;
         default: return false;
     }
@@ -129,6 +132,7 @@ const char* op_name(Op o) {
         case Op::ScanMin: return "scanmin";
         case Op::Guard: return "guard";  case Op::Else: return "else";
         case Op::MapF: return "mapf";    case Op::FoldF: return "foldf";
+        case Op::FoldS: return "folds";
         case Op::Gt: return "gt";        case Op::Member: return "member";
         case Op::Until: return "until";  case Op::Delta: return "delta";
         default: return "?";
@@ -336,7 +340,8 @@ bool Library::admit_recipe(std::string name, Recipe r, std::size_t task) {
         for (std::size_t i = 0; i < rr.pool.size(); ++i) {
             if (!live[i]) continue;
             const Expr& e = rr.pool[i];
-            if (e.op == Op::Call || e.op == Op::MapF || e.op == Op::FoldF)
+            if (e.op == Op::Call || e.op == Op::MapF || e.op == Op::FoldF ||
+                e.op == Op::FoldS)
                 note_use(e.k % items_.size());
         }
     }
@@ -498,7 +503,8 @@ std::size_t Library::prune() {
     }
     for (Learned& l : kept) {
         for (Expr& e : l.recipe.pool) {
-            if (e.op != Op::Call && e.op != Op::MapF && e.op != Op::FoldF) continue;
+            if (e.op != Op::Call && e.op != Op::MapF && e.op != Op::FoldF &&
+                e.op != Op::FoldS) continue;
             e.k = static_cast<std::uint8_t>(remap[e.k % was]);
         }
     }
@@ -680,6 +686,24 @@ Value run(const Program& p, const Value& input, const Library* lib, std::size_t 
                     // expresses a binary operation with no second input channel.
                     Value pair = acc;
                     pair.push_back(A[i]);
+                    acc = lib->call(li, pair, depth + 1);
+                    if (acc.empty()) break;
+                }
+                out = acc;
+                break;
+            }
+            case Op::FoldS: {
+                // The tape form has no third field: c.b is the body selector,
+                // exactly as it is for FoldF, so the seed is pinned to {0} --
+                // the additive identity. The recipe form carries the seed as a
+                // real operand and may seed with anything.
+                if (lib == nullptr || lib->size() == 0) break;
+                if (depth > 0) break;             // see MapF: no nesting
+                const std::size_t li = c.b % lib->size();
+                Value acc{0};
+                for (const auto x : A) {
+                    Value pair = acc;
+                    pair.push_back(x);
                     acc = lib->call(li, pair, depth + 1);
                     if (acc.empty()) break;
                 }
@@ -1018,6 +1042,27 @@ Value apply_op(Op op, const Value& A, const Value& B, std::uint8_t k,
             out = acc;
             break;
         }
+        case Op::FoldS: {
+            if (lib == nullptr || lib->size() == 0) break;
+            if (depth > 0) break;                     // see MapF: no nesting
+            const std::size_t li = k % lib->size();
+            // The seed is operand b, TAKEN WHOLE. An empty input folds to the
+            // seed -- sum([]) is {0} -- which is the entire reason this
+            // operation exists: FoldF seeds from a[0] and can therefore never
+            // be certified for an aggregation with an identity element, because
+            // the proof domain contains the empty list (fold_bench, v0.149).
+            // And because the seed is any value, the accumulator may be a LIST
+            // with a computed starting point, not only a scalar.
+            Value acc = B;
+            for (std::size_t i = 0; i < A.size(); ++i) {
+                Value pair = acc;
+                pair.push_back(A[i]);
+                acc = lib->call(li, pair, depth + 1);
+                if (acc.empty()) break;
+            }
+            out = acc;
+            break;
+        }
         case Op::Call:  if (lib && lib->size()) out = lib->call(k % lib->size(), A, depth + 1); break;
         // A leaf: resolved by whoever holds the arguments, never here.
         case Op::Arg:   out = A; break;
@@ -1174,6 +1219,7 @@ std::string Recipe::render() const {
         // produces unreadable.
         if (e.op == Op::MapF)  return "map[lib" + std::to_string(e.k) + "](" + go(e.a) + ")";
         if (e.op == Op::FoldF) return "fold[lib" + std::to_string(e.k) + "](" + go(e.a) + ")";
+        if (e.op == Op::FoldS) return "folds[lib" + std::to_string(e.k) + "](" + go(e.a) + ", " + go(e.b) + ")";
         if (e.op == Op::Mov)   return go(e.a);
         const std::string nm = op_name(e.op);
         for (const Op u : unary_ops()) if (u == e.op) return nm + "(" + go(e.a) + ")";
@@ -1416,7 +1462,8 @@ BuildResult construct(const Spec& spec, std::size_t max_pool, const Library* lib
                 if (depth > 8) return true;          // refuse what cannot be checked
                 for (const Expr& n : r.pool) {
                     if (!spec.allows(n.op)) return true;
-                    if (n.op == Op::Call || n.op == Op::MapF || n.op == Op::FoldF) {
+                    if (n.op == Op::Call || n.op == Op::MapF || n.op == Op::FoldF ||
+                        n.op == Op::FoldS) {
                         const std::size_t j = n.k;
                         if (j >= lib->size()) return true;
                         if (uses_banned(lib->at(j).recipe, depth + 1)) return true;
@@ -1431,6 +1478,16 @@ BuildResult construct(const Spec& spec, std::size_t max_pool, const Library* lib
     const auto usable = [&lib_usable](std::size_t li) {
         return lib_usable.empty() || (li < lib_usable.size() && lib_usable[li]);
     };
+
+    // Seed operands for FoldS: the level-0 constants 0 and 1, found lazily on
+    // first use. Those are the identity elements of the two monoids this value
+    // domain actually has -- addition and multiplication -- and restricting the
+    // seed operand to them keeps the seeded-fold loop linear in pool nodes
+    // where pairing every node with every node would square it. The seed being
+    // a real operand means a FINISHED program may still carry any computed
+    // seed; this only bounds what the search SPECULATES.
+    std::vector<std::size_t> fold_seeds;
+    bool fold_seeds_found = false;
 
     if (lib != nullptr) {
         for (std::size_t li = 0; li < lib->size() && found_at < 0; ++li) {
@@ -1698,6 +1755,40 @@ BuildResult construct(const Spec& spec, std::size_t max_pool, const Library* lib
                         Expr e; e.op = hop; e.a = static_cast<int>(i);
                         e.k = static_cast<std::uint8_t>(li);
                         consider(e, std::move(outs));
+                    }
+                }
+
+                // THE SEEDED FOLD, offered with the identity constants as its
+                // seed operand. sum = folds[pair_add](x, 0) certifies through
+                // the full proof domain INCLUDING the empty list, which no
+                // unseeded fold can (fold_bench, v0.149).
+                if (spec.allows(Op::FoldS)) {
+                    if (!fold_seeds_found) {
+                        fold_seeds_found = true;
+                        for (std::size_t si = 0;
+                             si < pool.size() && fold_seeds.size() < 2; ++si) {
+                            const Expr& se = pool[si];
+                            if (se.op != Op::Const) continue;
+                            const std::int64_t v =
+                                se.has_lit ? se.lit : const_of(se.k);
+                            if (v == 0 || v == 1) fold_seeds.push_back(si);
+                        }
+                    }
+                    for (const std::size_t si : fold_seeds) {
+                        for (std::size_t li = 0; li < body_lim && found_at < 0; ++li) {
+                            if (!usable(li)) continue;
+                            std::vector<Value> outs(ncase);
+                            for (std::size_t c = 0; c < ncase; ++c) {
+                                outs[c] = apply_op(Op::FoldS, behaviour[i][c],
+                                                   behaviour[si][c],
+                                                   static_cast<std::uint8_t>(li),
+                                                   lib, 0);
+                            }
+                            Expr e; e.op = Op::FoldS; e.a = static_cast<int>(i);
+                            e.b = static_cast<int>(si);
+                            e.k = static_cast<std::uint8_t>(li);
+                            consider(e, std::move(outs));
+                        }
                     }
                 }
             }
