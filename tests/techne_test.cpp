@@ -332,6 +332,31 @@ int main() {
         const std::string sunit = emit_unit(sf, Lang::Python, "f", &lib);
         check(sunit.find("kh_folds(x, t0, kh_lib0)") != std::string::npos,
               "emission passes the seed as a real argument, not a baked constant");
+
+        // NO NESTING, in emission as in evaluation. apply_op refuses a
+        // higher-order op at depth > 0, so a fold whose BODY contains a MapF
+        // is certified as {} -- and emission must refuse the unit rather than
+        // emit source whose inner fold actually runs. The panel that found
+        // this (v0.176.0) constructed exactly this recipe.
+        Recipe nest;
+        nest.pool.push_back(z);
+        nest.pool.push_back(Expr{Op::FoldS, -1, 0, 1});  // body 1 = map_pairsum
+        nest.root = 1; nest.found = true;
+        check(nest.apply(Value{1, 2}, &lib).empty(),
+              "a fold body that itself nests evaluates to nothing");
+        check(emit_unit(nest, Lang::Python, "f", &lib).empty(),
+              "and emission refuses it rather than emitting a divergent program");
+
+        // emit_program: two functions over ONE library, bodies emitted once.
+        const std::string prog = emit_program(
+            {{"f1", &sf}, {"f2", &fold}}, Lang::Python, &lib);
+        check(!prog.empty(), "emit_program renders two functions in one unit");
+        check(prog.find("def f1") != std::string::npos &&
+              prog.find("def f2") != std::string::npos,
+              "both functions are present");
+        check(prog.find("def kh_lib0") != std::string::npos &&
+              prog.find("def kh_lib0") == prog.rfind("def kh_lib0"),
+              "and the shared body is defined exactly once");
     }
 
     // --- THE FOUR OPERATIONS THE TEXT BENCH NAMED ----------------------------

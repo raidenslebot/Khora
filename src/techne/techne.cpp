@@ -219,6 +219,17 @@ std::size_t Program::output_register() const {
     return out;
 }
 
+// Whether a TAPE instruction reads register b. Not the same question as
+// reads_two_operands(): FoldS reads its seed from operand b in RECIPE form,
+// but the tape form has no third field, so there b is the body selector --
+// exactly as it is for Call, MapF and FoldF -- and no register is read.
+// Asking reads_two_operands() here recorded a phantom register read, which
+// marked dead instructions live, inflated effective_length(), and let the
+// throughput bench count dead library calls as live ones.
+static bool tape_reads_reg_b(Op o) {
+    return reads_two_operands(o) && o != Op::FoldS;
+}
+
 std::vector<bool> Program::live_mask() const {
     const auto code = decode();
     std::vector<bool> live(code.size(), false);
@@ -229,10 +240,10 @@ std::vector<bool> Program::live_mask() const {
         if (c.op == Op::Nop || !reg[c.dst]) continue;
         live[k] = true;
         const bool reads_dst = (c.a == c.dst) ||
-                               (binary(c.op) && (c.b % kRegisters) == c.dst);
+                               (tape_reads_reg_b(c.op) && (c.b % kRegisters) == c.dst);
         if (!reads_dst) reg[c.dst] = false;
         if (c.op != Op::Const) reg[c.a] = true;
-        if (binary(c.op)) reg[c.b % kRegisters] = true;
+        if (tape_reads_reg_b(c.op)) reg[c.b % kRegisters] = true;
     }
     return live;
 }
@@ -256,6 +267,13 @@ std::string Program::disassemble() const {
                 break;
             case Op::Call:
                 std::snprintf(line, sizeof line, "%2zu  call   r%u <- lib[%u](r%u)",
+                              i, c.dst, c.b, c.a);
+                break;
+            case Op::FoldS:
+                // b names the BODY in tape form; printing it as a register
+                // operand disagreed with what run() does with it.
+                std::snprintf(line, sizeof line,
+                              "%2zu  folds  r%u <- lib[%u](r%u, seed {0})",
                               i, c.dst, c.b, c.a);
                 break;
             case Op::Nop:

@@ -2427,10 +2427,14 @@ Recipe inline_calls(const Recipe& r, const Library& lib) {
 // Which library bodies a unit needs, in dependency order, and whether it can be
 // built at all.
 //
-// THE DEPTH ACCOUNTING IS THE INTERPRETER'S, step for step. A higher-order node
-// evaluated at depth d reaches its body through Library::call(li, .., d + 1),
-// and Library::call returns EMPTY the moment that argument reaches
-// kMaxCallDepth. So bodies live at depth 1 and depth 2, and nothing lives at 3.
+// THE DEPTH ACCOUNTING IS THE INTERPRETER'S -- and the interpreter has TWO
+// bounds, not one. Library::call returns EMPTY when its depth argument reaches
+// kMaxCallDepth, and apply_op separately refuses MapF, FoldF and FoldS at any
+// depth > 0: no nesting, by design. This function used to honour only the
+// first bound, so a fold whose LIBRARY BODY contained another higher-order op
+// was certified as {} by the interpreter and emitted as source whose inner
+// fold actually ran -- the certificate attached to a program that was not the
+// one handed back, found by an adversarial review panel (v0.176.0).
 //
 // Op::Call is WALKED BUT NOT COLLECTED. inline_calls splices it into its caller
 // so it produces no function of its own -- but the spliced body still executes
@@ -2476,6 +2480,11 @@ static bool plan_unit(const Recipe& r, const Library& lib, std::size_t depth,
         if (e.op != Op::MapF && e.op != Op::FoldF && e.op != Op::FoldS &&
             e.op != Op::Call) continue;
         if (lib.size() == 0) return false;
+        // NO NESTING, exactly as apply_op refuses it: a MapF, FoldF or FoldS
+        // inside a library body (depth >= 1) evaluates to {} in the
+        // interpreter, so emitting the body would emit a different program.
+        // Op::Call stays legal below kMaxCallDepth, as it is in evaluation.
+        if (depth >= 1 && e.op != Op::Call) return false;
         const std::size_t nd = depth + 1;
         if (nd >= kMaxCallDepth) return false;
         const std::size_t li = e.k % lib.size();
@@ -2541,6 +2550,56 @@ std::string emit_unit(const Recipe& r, Lang l, const std::string& fn,
     // The prelude is fixed cost and is not counted, exactly as emit() does not
     // count it. Every synthesised body IS counted, bodies included -- they are
     // code this organ wrote and code the unit needs.
+    if (lines) *lines = total;
+    return out;
+}
+
+std::string emit_program(const std::vector<std::pair<std::string, const Recipe*>>& fns,
+                         Lang l, const Library* lib, std::size_t* lines,
+                         bool include_prelude) {
+    if (lines) *lines = 0;
+    const std::size_t n = (lib != nullptr) ? lib->size() : 0;
+
+    // Plan every function against ONE shared body set, so kh_libN is emitted
+    // exactly once however many functions fold over it. emit_unit exists for
+    // one function; concatenating units redefines every shared body, which is
+    // an error in most of the fourteen targets.
+    std::vector<std::size_t> need;
+    std::vector<char> seen(n * kMaxCallDepth, 0), taken(n, 0);
+    for (const auto& [name, r] : fns) {
+        (void)name;
+        if (r == nullptr || !r->found) return {};
+        if (n == 0) {
+            for (const Expr& e : r->pool)
+                if (e.op == Op::MapF || e.op == Op::FoldF || e.op == Op::FoldS ||
+                    e.op == Op::Call) return {};
+        } else if (!plan_unit(*r, *lib, 0, need, seen, taken)) {
+            return {};
+        }
+    }
+
+    std::string out;
+    if (include_prelude) { out = prelude(l); out += "\n"; }
+    std::size_t total = 0;
+    for (const std::size_t li : need) {
+        std::size_t k = 0;
+        const std::string body =
+            emit_inlined(inline_calls(lib->at(li).recipe, *lib), l,
+                         "kh_lib" + std::to_string(li), &k, n);
+        if (body.empty()) return {};
+        out += body;
+        out += "\n";
+        total += k;
+    }
+    for (const auto& [name, r] : fns) {
+        std::size_t k = 0;
+        const std::string top =
+            emit_inlined((lib != nullptr) ? inline_calls(*r, *lib) : *r, l, name, &k, n);
+        if (top.empty()) return {};
+        out += top;
+        out += "\n";
+        total += k;
+    }
     if (lines) *lines = total;
     return out;
 }

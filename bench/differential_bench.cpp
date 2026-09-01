@@ -625,25 +625,39 @@ int main(int argc, char** argv) {
     //
     // A recipe is kept only if every target renders it, so all fourteen files
     // and reference.txt describe the same set. Refusals are counted and printed.
+    // TWO LANES, because emit() CANNOT render a higher-order recipe -- it hands
+    // back one function, and a fold names a body that one function cannot
+    // carry. Every fold-bearing fuzz recipe therefore used to be refused in the
+    // keep-filter below, which meant the fourteen kh_mapf/kh_foldf/kh_folds
+    // prelude helpers were NEVER EXECUTED by this bench: a sabotaged helper
+    // still printed "14/14 byte-identical". Found by an adversarial review
+    // panel (v0.176.0). Lane B renders those recipes through emit_program,
+    // which emits the shared library bodies once and every function beside
+    // them, so the helpers finally run against Recipe::apply like everything
+    // else.
     std::size_t refused = 0;
-    {
-        std::vector<Named> keep;
-        for (const Named& n : rs) {
-            bool all = true;
-            for (const Target& t : targets) {
-                std::size_t ln = 0;
-                if (emit(n.r, t.l, n.name, &ln, &fuzz_lib()).empty()) { all = false; break; }
-            }
-            if (all) keep.push_back(n); else ++refused;
-        }
-        rs = keep;
+    std::vector<Named> rs_a, rs_b;
+    for (const Named& n : rs) {
+        bool a_ok = true;
+        for (const Target& t : targets)
+            if (emit(n.r, t.l, n.name, nullptr, &fuzz_lib()).empty()) { a_ok = false; break; }
+        if (a_ok) { rs_a.push_back(n); continue; }
+        bool b_ok = true;
+        for (const Target& t : targets)
+            if (emit_unit(n.r, t.l, n.name, &fuzz_lib()).empty()) { b_ok = false; break; }
+        if (b_ok) rs_b.push_back(n); else ++refused;
     }
-    if (refused != 0)
-        std::printf("  %zu of %zu recipes are refused by emit() in at least one\n"
-                    "  backend and are excluded from every file, so the comparison is\n"
-                    "  over the same set everywhere. A refusal is a limit, not a defect,\n"
-                    "  and it is not counted as a pass.\n\n",
-                    refused, refused + rs.size());
+    rs = rs_a;
+    rs.insert(rs.end(), rs_b.begin(), rs_b.end());
+    std::printf("  %zu recipes render flat, %zu render as units WITH their library\n"
+                "  bodies -- those are the ones that actually execute kh_mapf,\n"
+                "  kh_foldf and kh_folds -- and %zu are refused everywhere and\n"
+                "  excluded from every file. A refusal is a limit, not a defect,\n"
+                "  and it is not counted as a pass.\n\n",
+                rs_a.size(), rs_b.size(), refused);
+    if (rs_b.empty())
+        std::printf("  WARNING: no higher-order recipe survived, so the fold helpers\n"
+                    "  are NOT exercised by this run and no claim covers them.\n\n");
 
     // THE REFERENCE. Recipe::apply is the thing a certificate is about, so it is
     // the thing the emitted source has to agree with.
@@ -681,9 +695,27 @@ int main(int argc, char** argv) {
         if (t.l == Lang::Rust) src = "#![allow(dead_code, unused_parens)]\n" + src;
 
         std::size_t total_lines = 0;
-        for (const Named& n : rs) {
+        for (const Named& n : rs_a) {
             std::size_t lines = 0;
             src += emit(n.r, t.l, n.name, &lines, &fuzz_lib());
+            total_lines += lines;
+        }
+        if (!rs_b.empty()) {
+            // One block for every higher-order recipe: shared kh_libN bodies
+            // emitted exactly once, prelude suppressed because this file
+            // already carries it.
+            std::vector<std::pair<std::string, const Recipe*>> fns;
+            fns.reserve(rs_b.size());
+            for (const Named& n : rs_b) fns.emplace_back(n.name, &n.r);
+            std::size_t lines = 0;
+            const std::string block =
+                emit_program(fns, t.l, &fuzz_lib(), &lines, false);
+            if (block.empty()) {
+                std::printf("  INTERNAL: emit_program refused a set every target\n"
+                            "  accepted singly -- nothing written for %s\n", t.file);
+                continue;
+            }
+            src += block;
             total_lines += lines;
         }
         src += driver(t.l, rs, ins);

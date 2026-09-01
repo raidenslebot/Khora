@@ -3,6 +3,65 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.177.0 - The panel's defects fixed, and the fold helpers execute for the first time
+
+**Author:** Claude Fable 5
+
+The two wiring defects from the v0.176.0 review, closed and verified.
+
+### Emission now refuses what evaluation refuses
+
+`apply_op` rejects MapF/FoldF/FoldS at depth > 0 -- no nesting -- while `plan_unit`
+only checked `kMaxCallDepth`, so a fold whose library body contained another
+higher-order op was certified as `{}` and emitted as source whose inner fold
+actually ran. `plan_unit` now refuses higher-order nodes inside any library body,
+its "step for step" comment tells the truth about both bounds, and the panel's
+own construction is a regression test: the nested recipe evaluates to nothing
+AND emission refuses the unit.
+
+### The fourteen fold helpers finally run
+
+New entry point `emit_program`: many functions, one source block, shared `kh_libN`
+bodies emitted exactly once (concatenated `emit_unit`s would redefine them). The
+differential bench grew a second lane on it:
+
+| | before | after |
+|---|---|---|
+| higher-order recipes in the executed corpus | **0** -- all silently dropped | **10**, rendered with their bodies |
+| `kh_folds` call sites actually run | 0 | 3, including `kh_folds(x, x, kh_lib2)` -- the input as its own computed seed |
+| `kh_mapf`/`kh_foldf` call sites actually run | 0, since they exist | 7 |
+| verdict | vacuous for folds | **14/14 byte-identical against `Recipe::apply`, 0 refused everywhere** |
+
+That table is what "wired into fourteen backends" should have meant the first
+time.
+
+### And the tape form stops lying to introspection
+
+`live_mask` asked `reads_two_operands()`, which is a RECIPE-form question: tape
+FoldS uses b as a body selector and reads no second register, so a phantom
+read could mark dead instructions live, inflate `effective_length()`, and let
+the throughput bench count dead library calls as live ones. A tape-local
+predicate answers the tape question; `disassemble` prints the selector as a
+selector.
+
+### The 200k training curve, completed to stage 5
+
+| stage | fixed-set score |
+|---|---|
+| 0 | 29 of 96 |
+| 1-3 | 42, 43, 46 |
+| 4 | 47 |
+| 5 | **48**, control flat at 29 |
+
+Still +1 per stage at stage 5 -- decelerating, not done -- and **0 tasks lost**
+to the library where the three-stage run lost one: depth 2 is back to 16/16.
+Depth 7 remains **0 of 16**. The fixed bar permits this cross-run comparison
+because the 96 tasks are the same tasks every time; the trajectory through
+stage 3 (29/42/43/46) is identical with and without FoldS, so on THIS bar the
+new operation is so far neutral.
+
+32/32 pass; `correct_bench` identical to baseline.
+
 ## v0.176.0 - The FoldS ascent headline was manufactured, and the differential claim was vacuous
 
 **Author:** Claude Fable 5

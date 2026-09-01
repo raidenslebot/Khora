@@ -817,6 +817,19 @@ std::string emit(const Recipe& r, Lang l, const std::string& fn,
 std::string emit_unit(const Recipe& r, Lang l, const std::string& fn,
                       const Library* lib, std::size_t* lines = nullptr);
 
+// Many functions, one source block, shared library bodies emitted exactly
+// once. emit_unit hands back a self-contained unit for ONE function;
+// concatenating units redefines every kh_libN they share. This is the entry
+// point for emitting a whole program -- the differential bench uses it to
+// actually EXECUTE higher-order recipes in every backend, and it is what
+// emitting a library as one compilable file will use.
+// `include_prelude` = false leaves the prelude to the caller assembling a
+// larger file.
+std::string emit_program(const std::vector<std::pair<std::string, const Recipe*>>& fns,
+                         Lang l, const Library* lib = nullptr,
+                         std::size_t* lines = nullptr,
+                         bool include_prelude = true);
+
 // ---------------------------------------------------------------------------
 // SOLVING TO FIXPOINT: the loop that makes the system improve itself.
 //
