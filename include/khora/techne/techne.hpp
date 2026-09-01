@@ -922,6 +922,9 @@ struct SolveStats {
 // every time -- empty, singleton, all-equal, sorted, reverse-sorted and extreme
 // inputs are exactly where a program fitted to mid-sized random lists breaks.
 using Oracle = std::function<Value(const Value& in)>;
+// The n-ary form. args.size() is the arity; the unary Oracle is the special
+// case that existed first, and stays, because every caller of it is unary.
+using OracleN = std::function<Value(const std::vector<Value>& args)>;
 using Prober = std::function<Value(std::size_t i)>;
 
 struct Verification {
@@ -945,17 +948,51 @@ struct Verification {
 struct Exhaust {
     bool clean = false;              // agreed with the oracle on every input
     std::size_t checked = 0;         // size of the domain actually enumerated
-    Value counterexample;            // the first disagreement, if any
+    Value counterexample;            // the first disagreement, if any (unary)
+    // The n-ary path records the whole argument tuple instead; empty when the
+    // unary path ran or nothing disagreed.
+    std::vector<Value> counterexample_n;
 };
 
 Exhaust check_exhaustive(const Recipe& r, const Library* lib, const Oracle& oracle,
                          std::int64_t lo, std::int64_t hi, std::size_t max_len);
+
+// The n-ary proof. Every TUPLE of `arity` lists, each of length 0..max_len
+// over lo..hi -- the unary domain materialised once and swept with an
+// arity-digit odometer, so the cost is |domain|^arity evaluations and nothing
+// per tuple beyond them. Until this existed, NO multi-argument function had
+// ever been proved by this module: every two-argument task in every bench
+// topped out at Proof::Generalised, which is six held-out cases, while the
+// unary half of the same bench was getting real bounded proofs.
+Exhaust check_exhaustive_n(const Recipe& r, const Library* lib,
+                           const OracleN& oracle,
+                           std::int64_t lo, std::int64_t hi, std::size_t max_len,
+                           std::size_t arity);
 
 // Synthesise, then refine against counterexamples drawn from the whole finite
 // domain rather than sampled from it. When it returns Proof::Exhaustive, the
 // program has been checked on every input in that domain.
 BuildResult synthesise_exhaustive(Spec spec, std::size_t pool_cap,
                                   const Oracle& oracle,
+                                  std::int64_t lo, std::int64_t hi,
+                                  std::size_t max_len, std::size_t rounds,
+                                  const Library* lib = nullptr,
+                                  Exhaust* out = nullptr);
+
+// The n-ary forms of the exhaustive and hardened pipelines. Arity is taken
+// from the specification's own cases; refinement pushes whole argument tuples
+// back as constraints; the hardened extremes are the cartesian power of
+// default_extremes(), capped -- the cap is printed nowhere because callers see
+// Proof::Exhaustive only when every check ran clean.
+BuildResult synthesise_exhaustive_n(Spec spec, std::size_t pool_cap,
+                                    const OracleN& oracle,
+                                    std::int64_t lo, std::int64_t hi,
+                                    std::size_t max_len, std::size_t rounds,
+                                    const Library* lib = nullptr,
+                                    Exhaust* out = nullptr);
+
+BuildResult synthesise_hardened_n(Spec spec, std::size_t pool_cap,
+                                  const OracleN& oracle,
                                   std::int64_t lo, std::int64_t hi,
                                   std::size_t max_len, std::size_t rounds,
                                   const Library* lib = nullptr,

@@ -1543,21 +1543,52 @@ BuildResult construct(const Spec& spec, std::size_t max_pool, const Library* lib
                 if (found_at >= 0) break;
             }
         }
-        for (std::size_t i = 0; i < end && found_at < 0 && pool.size() < max_pool; ++i) {
-            for (std::size_t j = 0; j < end && found_at < 0 && pool.size() < max_pool; ++j) {
-                if (i < start && j < start) continue;   // this pair already combined
-                for (const Op op : binary_ops()) {
-                    if (!spec.allows(op)) continue;
-                    std::vector<Value> outs(ncase);
-                    for (std::size_t c = 0; c < ncase; ++c) {
-                        outs[c] = apply_op(op, behaviour[i][c], behaviour[j][c], 0, lib, 0);
+        // FRONTIER-MAJOR, and the ordering is not a taste question. This loop
+        // used to run i ascending from ZERO, so when the pool cap landed
+        // mid-level -- which it always does from level 2 on -- the budget had
+        // been spent pairing STALE nodes and no new-frontier node had ever
+        // taken the FIRST-operand role. Depth grows only through candidates
+        // whose operands include the newest level, so the old-major order made
+        // every asymmetric composition op(new, old) unreachable at any pool.
+        //
+        // Found by the dogfood bench, which is the first caller to hand this
+        // engine a genuinely two-argument task: count(sub(x, x1), 0) -- four
+        // nodes, depth two, exhaustively CLEAN on its spec by direct check --
+        // could not be found at a pool of 200,000, because sub(x, x1) sits at
+        // the end of level 1 and i never got there. Every earlier bench is
+        // unary, where the unary loop already walks the frontier first, so
+        // eleven versions of measurements never touched this path.
+        const auto binary_pairs = [&](std::size_t i_lo, std::size_t i_hi,
+                                      std::size_t j_lo, std::size_t j_hi) {
+            for (std::size_t i = i_lo; i < i_hi && found_at < 0 && pool.size() < max_pool; ++i) {
+                for (std::size_t j = j_lo; j < j_hi && found_at < 0 && pool.size() < max_pool; ++j) {
+                    for (const Op op : binary_ops()) {
+                        if (!spec.allows(op)) continue;
+                        std::vector<Value> outs(ncase);
+                        for (std::size_t c = 0; c < ncase; ++c) {
+                            outs[c] = apply_op(op, behaviour[i][c], behaviour[j][c], 0, lib, 0);
+                        }
+                        Expr e; e.op = op; e.a = static_cast<int>(i); e.b = static_cast<int>(j);
+                        consider(e, std::move(outs));
+                        if (found_at >= 0) break;
                     }
-                    Expr e; e.op = op; e.a = static_cast<int>(i); e.b = static_cast<int>(j);
-                    consider(e, std::move(outs));
-                    if (found_at >= 0) break;
                 }
             }
-        }
+        };
+        // Three sweeps in COST order, cheapest depth-carrying pairs first:
+        //   frontier x pre-frontier is LINEAR in the frontier (the old side is
+        //   a fixed small set of arguments, constants and early compositions)
+        //   and is where op(new, old) depth lives -- count(sub(x, x1), 0) is
+        //   (new sub, old const) and under the one-sweep order the cap fell
+        //   before any such pair was tried;
+        //   pre-frontier x frontier is its mirror;
+        //   frontier x frontier is the quadratic tail, and it goes LAST so
+        //   that when the pool cap lands mid-level -- which it always does
+        //   from level 2 on -- what got skipped is the most expensive and
+        //   least depth-efficient class, not the cheapest.
+        binary_pairs(start, end, 0, start);   // frontier x pre-frontier
+        binary_pairs(0, start, start, end);   // pre-frontier x frontier
+        binary_pairs(start, end, start, end); // frontier x frontier, the tail
 
         // THE CLOSING PASS: solve for the operand instead of enumerating it.
         //

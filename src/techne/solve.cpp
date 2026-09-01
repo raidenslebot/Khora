@@ -246,6 +246,65 @@ std::vector<BuildResult> solve_all(const std::vector<Spec>& specs,
 // Counterexample-guided synthesis
 // ---------------------------------------------------------------------------
 
+BuildResult synthesise_hardened_n(Spec spec, std::size_t pool_cap,
+                                  const OracleN& oracle,
+                                  std::int64_t lo, std::int64_t hi,
+                                  std::size_t max_len, std::size_t rounds,
+                                  const Library* lib, Exhaust* out) {
+    const std::vector<Value>& edges = default_extremes();
+    const std::size_t arity = spec.cases.empty() ? 1 : spec.cases[0].arity();
+
+    for (std::size_t round = 0; round <= rounds; ++round) {
+        Exhaust ex;
+        BuildResult b = synthesise_exhaustive_n(spec, pool_cap, oracle, lo, hi,
+                                                max_len, rounds, lib, &ex);
+        if (b.proof != Proof::Exhaustive) {
+            if (out) *out = ex;
+            return b;
+        }
+
+        // Proved on the small domain; now the cartesian power of the extremes.
+        // An arity-digit odometer over default_extremes() -- at arity 2 and
+        // ~29 edges that is ~841 tuples, which is nothing beside the proof
+        // sweep it follows.
+        bool clean = true;
+        std::vector<Value> bad;
+        {
+            std::vector<std::size_t> idx(arity, 0);
+            std::vector<Value> args(arity);
+            for (;;) {
+                for (std::size_t k = 0; k < arity; ++k) args[k] = edges[idx[k]];
+                if (b.recipe.apply_n(args, lib) != oracle(args)) {
+                    clean = false;
+                    bad = args;
+                    break;
+                }
+                std::size_t d = 0;
+                for (; d < arity; ++d) {
+                    if (++idx[d] < edges.size()) break;
+                    idx[d] = 0;
+                }
+                if (d == arity) break;
+            }
+        }
+        if (clean) {
+            if (out) *out = ex;
+            return b;
+        }
+        if (round == rounds) {
+            b.proof = Proof::Tested;
+            if (out) *out = ex;
+            return b;
+        }
+        std::vector<Value> rest(bad.begin() + 1, bad.end());
+        spec.cases.push_back(Case{bad[0], rest, oracle(bad)});
+    }
+
+    BuildResult none;
+    if (out) *out = Exhaust{};
+    return none;
+}
+
 BuildResult synthesise_verified(Spec spec, std::size_t pool_cap,
                                 const Oracle& oracle, const Prober& prober,
                                 std::size_t probes, std::size_t rounds,
@@ -351,6 +410,95 @@ Exhaust check_exhaustive(const Recipe& r, const Library* lib, const Oracle& orac
     }
     e.clean = true;
     return e;
+}
+
+// The unary domain, materialised. 781 Values at (-2..2, len 0..4); the n-ary
+// sweep indexes into this instead of re-enumerating per slot.
+static std::vector<Value> enumerate_domain(std::int64_t lo, std::int64_t hi,
+                                           std::size_t max_len) {
+    std::vector<Value> d;
+    Value in;
+    for (std::size_t len = 0; len <= max_len; ++len) {
+        in.assign(len, lo);
+        for (;;) {
+            d.push_back(in);
+            std::size_t k = 0;
+            for (; k < len; ++k) {
+                if (in[k] < hi) { ++in[k]; break; }
+                in[k] = lo;
+            }
+            if (k == len) break;
+        }
+    }
+    return d;
+}
+
+Exhaust check_exhaustive_n(const Recipe& r, const Library* lib,
+                           const OracleN& oracle,
+                           std::int64_t lo, std::int64_t hi, std::size_t max_len,
+                           std::size_t arity) {
+    Exhaust e;
+    if (!r.found || hi < lo || arity == 0) return e;
+    const std::vector<Value> dom = enumerate_domain(lo, hi, max_len);
+
+    std::vector<std::size_t> idx(arity, 0);
+    std::vector<Value> args(arity);
+    for (;;) {
+        for (std::size_t k = 0; k < arity; ++k) args[k] = dom[idx[k]];
+        ++e.checked;
+        if (r.apply_n(args, lib) != oracle(args)) {
+            e.counterexample_n = args;
+            e.clean = false;
+            return e;
+        }
+        std::size_t d = 0;
+        for (; d < arity; ++d) {
+            if (++idx[d] < dom.size()) break;
+            idx[d] = 0;
+        }
+        if (d == arity) break;
+    }
+    e.clean = true;
+    return e;
+}
+
+BuildResult synthesise_exhaustive_n(Spec spec, std::size_t pool_cap,
+                                    const OracleN& oracle,
+                                    std::int64_t lo, std::int64_t hi,
+                                    std::size_t max_len, std::size_t rounds,
+                                    const Library* lib, Exhaust* out) {
+    BuildResult best;
+    Exhaust last;
+    double cap = static_cast<double>(pool_cap);
+    const std::size_t arity = spec.cases.empty() ? 1 : spec.cases[0].arity();
+
+    for (std::size_t round = 0; round <= rounds; ++round) {
+        BuildResult b = construct(spec, static_cast<std::size_t>(cap), lib, round > 0);
+        if (!b.certified()) {
+            if (out) *out = last;
+            return (b.cases_passed > best.cases_passed) ? b : best;
+        }
+        best = std::move(b);
+
+        last = check_exhaustive_n(best.recipe, lib, oracle, lo, hi, max_len, arity);
+        if (last.clean) {
+            best.proof = Proof::Exhaustive;
+            if (out) *out = last;
+            return best;
+        }
+        if (round == rounds) break;
+
+        // The whole TUPLE becomes the constraint, exactly as the unary path
+        // feeds back its single list.
+        std::vector<Value> rest(last.counterexample_n.begin() + 1,
+                                last.counterexample_n.end());
+        spec.cases.push_back(Case{last.counterexample_n[0], rest,
+                                  oracle(last.counterexample_n)});
+        cap = std::min(cap * 2.0, static_cast<double>(pool_cap) * 8.0);
+    }
+
+    if (out) *out = last;
+    return best;
 }
 
 BuildResult synthesise_exhaustive(Spec spec, std::size_t pool_cap,

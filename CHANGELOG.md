@@ -3,6 +3,79 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.178.0 - Khora rebuilds a function of its own source tree, proved, and the emitted C++ matches the organ
+
+**Author:** Claude Fable 5
+
+The mission benchmark is the system developing itself. Every prior self-hosting
+measurement rebuilt DSL primitives out of other DSL primitives -- the system
+feeding on its own vocabulary. `dogfood_bench` aims the synthesiser at
+**functions from Khora's own source tree**: the lattice algebra in
+`src/lattice/sdr.cpp`, which every organ above it depends on.
+
+```
+overlap_cyc | PROVED            | count(sub(x, x1), 0)
+overlap_cyc | 500/500 agree     | Recipe::apply_n vs the real Sdr::overlap
+overlap_cyc | 500/500 identical | emitted, compiled C++ vs the real organ
+```
+
+Synthesised from an oracle, proved over 609,961 argument tuples plus the
+extremal inputs plus refinement, and the `emit_program` C++ output -- compiled
+with the same toolchain that builds Khora -- **byte-identical to the living
+organ** on 500 random Sdr pairs. Beside it sits the honest contrast: an
+unproved "generalised" attempt at a different total extension of the same
+function scores **44/500** in the wild. The gap between those two rows is the
+entire argument for proofs.
+
+### Getting there took two new capabilities and found one old defect
+
+**N-ary proofs.** `check_exhaustive` enumerated single lists, so **no
+multi-argument function had ever been proved by this module** -- every
+two-argument task in every bench topped out at `Proof::Generalised`, six
+held-out cases. `check_exhaustive_n` / `synthesise_hardened_n` sweep the
+cartesian power of the domain and of the extremes, refine on whole argument
+tuples, and are what PROVED means above.
+
+**The two-argument search never worked, and nothing ever noticed.** The
+hand-built `count(sub(x, x1), 0)` -- four nodes, depth two, exhaustively CLEAN
+on its spec by direct check -- could not be found at a pool of **200,000**. The
+binary sweep ran its first operand ascending from zero, so when the pool cap
+landed mid-level -- which it always does from level 2 on -- the budget had gone
+to pairing stale nodes and no frontier node had ever taken the first-operand
+role. Depth lives exactly there. Every earlier bench is unary, where the unary
+loop already walks the frontier, so eleven versions of measurements never
+touched this path. The sweep now runs in cost order: frontier x pre-frontier
+(linear, carries the depth), its mirror, then frontier x frontier last.
+
+| after the reorder | before | after |
+|---|---|---|
+| dogfood `overlap_cyc` | not found at 200k | **PROVED at 40k** |
+| fixed bar, stage 0, pool 20k | 22 of 96 | **24** |
+| selfhost, never rebuilt by any arm | 7 | **6** -- `mod_3` falls |
+| selfhost arm B | 15/22 | **16/22** |
+| selfhost arm A | 12/22 | 10/22 -- withdrawal cascades are order-sensitive |
+| `correct_bench` | -- | identical |
+| wrong in the wild | 0 | 0 |
+
+### Stated plainly, including what failed
+
+The proved function is `overlap` under the CYCLIC total extension -- the one
+the instruction set's own zip expresses. On the organ's domain (two equal-length
+index vectors) cyclic and shortest-length extensions are the same function, and
+layer 2 pins that; they differ only outside it, and the canonical
+shortest-length spec needs a depth-4 composition the search still cannot reach.
+**Which total extension a spec author picks decides whether the proof machinery
+can help them.** That sentence is a real limitation, in the bench's own output.
+
+`bind_core` and `unbind_core` -- euclidean mod-64 arithmetic -- remain
+unreachable: construct cannot even fit their visible cases. The ladder that
+broke this class of wall for unary `rev` is unavailable here because **the
+library cannot hold multi-argument functions** -- `Op::Call` is unary. That is
+the next structural gap, named.
+
+32/32; the emitted leg compiles and runs under the repo toolchain; probe
+scaffolding for the search defect is kept in the bench as regression evidence.
+
 ## v0.177.0 - The panel's defects fixed, and the fold helpers execute for the first time
 
 **Author:** Claude Fable 5

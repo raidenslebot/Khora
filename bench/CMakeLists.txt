@@ -162,3 +162,6 @@ target_link_libraries(fold_bench PRIVATE khora::techne)
 
 add_executable(split_bench split_bench.cpp)
 target_link_libraries(split_bench PRIVATE khora::techne)
+
+add_executable(dogfood_bench dogfood_bench.cpp)
+target_link_libraries(dogfood_bench PRIVATE khora::techne khora::lattice)
