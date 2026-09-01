@@ -52,3 +52,6 @@ data/techne_library.txt
 *.out
 ts_out.js
 reference.txt
+dogfood_emitted.*
+dogfood_in.txt
+dogfood_out.txt
