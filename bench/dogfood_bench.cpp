@@ -192,6 +192,101 @@ int main(int argc, char** argv) {
     std::printf("  holds the certified recipe against the LIVING ORGAN on 500 random\n");
     std::printf("  Sdr pairs, in process and again through emitted, compiled C++.\n\n");
 
+    // THE LADDER, exactly the technique that broke the unary rev wall: derive
+    // a rung, admit it, and let Call collapse the depth. bind and unbind are
+    // euclidean mod-64 arithmetic -- a depth-4-plus composition the search
+    // cannot reach flat -- but Call is a UNARY OPERATION WHOSE OPERAND NODE
+    // MAY BE BINARY, so bind = call[emod64](add(x, x1)) is depth three with
+    // one proved rung. No multi-argument library entry is needed for this
+    // shape; the Call2 gap is real only for helpers that are genuinely
+    // two-argument themselves.
+    Library ladder(8);
+    {
+        Spec es;
+        es.name = "emod64";
+        const OracleN eo1 = [](const std::vector<Value>& a) {
+            Value o;
+            for (const auto v : a[0]) o.push_back(emod64(v));
+            return o;
+        };
+        const Oracle eo = [&eo1](const Value& v) { return eo1({v}); };
+        const std::vector<Value> eins = {
+            {64}, {-64}, {63, 64, 65}, {0, 1, -1}, {127, 128, -127},
+            {5, 70, -70, 100}, {13}, {-1, -2, -63},
+        };
+        for (const Value& in : eins) es.cases.push_back({in, eo(in)});
+        for (std::size_t c = 0; c < 6; ++c) {
+            Value in;
+            for (std::size_t j = 0; j < 5 + c % 3; ++j)
+                in.push_back(static_cast<std::int64_t>(rnd() % 4000) - 2000);
+            es.holdout.push_back({in, eo(in)});
+        }
+        // PROBE: hand-build mod(add(mod(x, 64), 64), 64), grade it on this
+        // very spec, and ask construct directly with mining forced. Separates
+        // "the program is wrong" from "the search cannot find it" from "a
+        // wrapper loses it".
+        {
+            Recipe er;
+            Expr c64; c64.op = Op::Const; c64.lit = 64; c64.has_lit = true;
+            er.pool.push_back(c64);                          // 0
+            er.pool.push_back(Expr{Op::Mod, -1, 0, 0});      // 1: mod(x, 64)
+            er.pool.push_back(Expr{Op::Add, 1, 0, 0});       // 2: add(.., 64)
+            er.pool.push_back(Expr{Op::Mod, 2, 0, 0});       // 3: mod(.., 64)
+            er.root = 3; er.found = true;
+            std::size_t fit = 0;
+            for (const Case& c : es.cases)
+                if (er.apply_n(c.args(), nullptr) == c.out) ++fit;
+            std::size_t hfit = 0;
+            for (const Case& c : es.holdout)
+                if (er.apply_n(c.args(), nullptr) == c.out) ++hfit;
+            const Exhaust pe = check_exhaustive_n(er, nullptr, eo1, -2, 2, 4, 1);
+            const BuildResult pc = construct(es, pool, nullptr, true);
+            std::printf("  probe: hand emod fits %zu/%zu cases, %zu/%zu holdout,"
+                        " exhaustive %s; construct(mine=true): %s %s proof=%d hold=%zu/%zu\n",
+                        fit, es.cases.size(), hfit, es.holdout.size(),
+                        pe.clean ? "CLEAN" : "dirty",
+                        pc.recipe.found ? "found" : "nothing",
+                        pc.recipe.found ? pc.recipe.render().c_str() : "",
+                        static_cast<int>(pc.proof), pc.holdout_passed, pc.holdout_total);
+            // ...and walk the holdout-restart loop BY HAND, printing each
+            // round, because the wrapper runs the same loop blind and ends at
+            // "nothing" -- somewhere in these rounds the right program stops
+            // being findable and the print below says exactly where.
+            Spec walk = es;
+            BuildResult wb = pc;
+            for (int hr = 0; hr < 4 && wb.recipe.found && wb.proof == Proof::Tested; ++hr) {
+                const Case* bad = nullptr;
+                for (const Case& c : walk.holdout)
+                    if (wb.recipe.apply_n(c.args(), nullptr) != c.out) { bad = &c; break; }
+                if (bad == nullptr) break;
+                std::printf("    restart %d: pushing holdout case of %zu values;"
+                            " hand recipe still fits spec: ", hr,
+                            bad->in.size());
+                walk.cases.push_back(*bad);
+                std::size_t refit = 0;
+                for (const Case& c : walk.cases)
+                    if (er.apply_n(c.args(), nullptr) == c.out) ++refit;
+                wb = construct(walk, pool, nullptr, true);
+                std::printf("%zu/%zu; construct: %s %s (proof %d)\n",
+                            refit, walk.cases.size(),
+                            wb.recipe.found ? "found" : "NOTHING",
+                            wb.recipe.found ? wb.recipe.render().c_str() : "",
+                            static_cast<int>(wb.proof));
+            }
+        }
+        const BuildResult eb = synthesise_hardened(es, pool, eo, -2, 2, 4, rounds);
+        if (eb.proof == Proof::Exhaustive) {
+            ladder.admit_recipe("emod64", eb.recipe, 0);
+            std::printf("  ladder rung: emod64  PROVED  %s\n\n",
+                        eb.recipe.render().c_str());
+        } else {
+            std::printf("  ladder rung: emod64  NOT PROVED (%s) -- bind and unbind\n"
+                        "  will be attempted flat, which has never worked\n\n",
+                        eb.recipe.found ? eb.recipe.render().c_str() : "nothing");
+        }
+    }
+    const Library* lad = ladder.size() ? &ladder : nullptr;
+
     struct Row { std::string name; Recipe r; bool proved; };
     std::vector<Row> rows;
 
@@ -233,7 +328,7 @@ int main(int argc, char** argv) {
         const Spec s = spec_for(t);
         Exhaust ex;
         const BuildResult b =
-            synthesise_hardened_n(s, pool, t.oracle, -2, 2, 4, rounds, nullptr, &ex);
+            synthesise_hardened_n(s, pool, t.oracle, -2, 2, 4, rounds, lad, &ex);
         std::printf("  %-12s | %-13s | %s\n", t.name, proof_name(b.proof),
                     b.recipe.found ? b.recipe.render().c_str() : "--");
         rows.push_back({t.name, b.recipe, b.proof == Proof::Exhaustive});
@@ -251,7 +346,7 @@ int main(int argc, char** argv) {
         if (!rows[ti].r.found) { std::printf("  %-12s | no recipe\n", ts[ti].name); continue; }
         std::size_t ok = 0;
         for (const auto& [x, y] : pairs)
-            if (rows[ti].r.apply_n({x, y}, nullptr) == ts[ti].organ(x, y)) ++ok;
+            if (rows[ti].r.apply_n({x, y}, lad) == ts[ti].organ(x, y)) ++ok;
         std::printf("  %-12s | %zu/500 agree\n", ts[ti].name, ok);
     }
 
@@ -267,7 +362,7 @@ int main(int argc, char** argv) {
     }
     std::vector<std::pair<std::string, const Recipe*>> fns;
     for (const Row& r : rows) if (r.r.found) fns.emplace_back(r.name, &r.r);
-    std::string unit = emit_program(fns, Lang::Cpp, nullptr);
+    std::string unit = emit_program(fns, Lang::Cpp, lad);
     if (unit.empty()) {
         std::printf("\n  emit_program refused the set; the emitted leg did not run.\n");
         return 0;

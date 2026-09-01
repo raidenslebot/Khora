@@ -3,6 +3,65 @@
 Honest log of what actually works. Nothing claimed here unless it has
 been built, run, and observed.
 
+## v0.179.0 - Three wrapper defects the ladder found, and one wall drawn precisely
+
+**Author:** Claude Fable 5
+
+Aiming the dogfood at `bind`/`unbind` -- euclidean mod-64 -- required deriving an
+`emod64` ladder rung, and the rung would not derive. Chasing that through with
+probes found three defects in the proof wrappers, each of which has been
+silently shaping every hardened result since the wrappers existed.
+
+### 1. The mined retry never engaged
+
+Round 0 of every wrapper runs `construct` WITHOUT constant mining, and an
+uncertified round 0 aborted the whole pipeline -- so a task whose answer needs
+a constant only the specification can supply (`emod64` needs the literal 64)
+could never be proved at any budget. Round 0 now retries with mining before
+giving up.
+
+### 2. certified() counts a program that FAILED its holdout
+
+`certified()` is `proof != Proof::None` -- and `Proof::Tested` means "fit the
+visible cases, failed or never saw the holdout". So an overfit waltzed past the
+gate into the domain check and collected `Proof::Exhaustive` whenever the domain
+was too small to catch what the holdout had ALREADY caught:
+`mod(add(x, 128), -64)` -- wrong on every value below -128, holdout 0/6 --
+reached a bounded proof on the -2..2 domain. The restart gate now keys on
+`Proof::Tested` explicitly.
+
+### 3. A failing holdout case is a counterexample the wrapper threw away
+
+`construct` stops at the FIRST program matching the visible cases, so when that
+program is an overfit the holdout refutes, "uncertified" reaching the wrapper
+meant "stopped early", not "nothing exists" -- and the wrapper gave up holding
+the disproof in its pocket. Failing holdout cases are now fed back into the
+visible cases, up to four restarts. The probe walk shows the machinery working:
+
+```
+construct:  mod(add(x, 128), -64)                        holdout 0/6
+restart 0:  add(mul(div(x, 1000), -64), mod(...))        still Tested
+restart 1:  add(mod(add(x, 128), -64), mul(lt(x, -128), 64))   Generalised
+            -- and WRONG at exact multiples of 64 below -128, which the
+            extremes then catch: refinement rejects it too
+```
+
+Three successive wrong programs, each correctly rejected by a gate that before
+these fixes would have accepted or dead-ended on it. 32/32 pass;
+`correct_bench` identical; selfhost 14/22, 0 wrong in the wild; fold_bench
+rows unchanged.
+
+### The wall, drawn precisely
+
+`emod64` still does not derive at pool 200,000 with six rounds. The search finds
+a wrong basin -- trunc-mod plus patches -- and every restart buys another patch
+on the same basin rather than the restructuring to
+`mod(add(mod(x, 64), 64), 64)`, which is four nodes and fits everything. The
+ladder cannot help because its own rung IS the blocked task. This is the
+sharpest capability wall now on record: not depth, not budget -- **basin
+escape**. `bind_core` and `unbind_core` stay unreached behind it, and the
+dogfood prints all of it.
+
 ## v0.178.0 - Khora rebuilds a function of its own source tree, proved, and the emitted C++ matches the organ
 
 **Author:** Claude Fable 5

@@ -327,6 +327,38 @@ BuildResult synthesise_verified(Spec spec, std::size_t pool_cap,
         // refinement round -- while the pool is ALSO doubling each round -- is
         // how this arm went from 176 seconds to not returning.
         BuildResult b = construct(spec, static_cast<std::size_t>(cap), lib, round > 0);
+        // THE MINED RETRY. Round 0 runs without constant mining and an
+        // uncertified round 0 aborts the whole pipeline -- so a task whose
+        // answer needs a constant only the specification can supply (emod64
+        // needs the literal 64) could NEVER be proved by these wrappers at any
+        // budget. The cheap-first-was-worse note in construct() is about
+        // throughput across many tasks; this is a wrapper that gave up before
+        // trying the configuration that works.
+        if (!b.certified() && round == 0)
+            b = construct(spec, static_cast<std::size_t>(cap), lib, true);
+        // HOLDOUT-DRIVEN RESTARTS. construct() stops at the FIRST program that
+        // matches the visible cases, so when that program is an overfit the
+        // holdout refutes, the search never resumes and "uncertified" reaches
+        // here meaning "stopped early", not "nothing exists". But a failing
+        // holdout case IS a counterexample already in hand -- emod64 came back
+        // as mod(add(x, 128), -64), wrong on every holdout value below -128,
+        // and the wrapper gave up with the disproof in its pocket. Feed it
+        // into the visible cases and search again; the overfit no longer
+        // fits, and the search continues to the program that does.
+        // The gate is Proof::Tested, NOT !certified() -- certified() is merely
+        // proof != None, so a program that FAILED its holdout still counts as
+        // certified, waltzes into the domain check, and collects a bounded
+        // proof whenever the domain is too small to catch what the holdout
+        // already caught. That is how mod(add(x, 128), -64) -- wrong on every
+        // value below -128 -- reached Proof::Exhaustive on a domain of -2..2.
+        for (std::size_t hr = 0; hr < 4 && b.recipe.found && b.proof == Proof::Tested; ++hr) {
+            const Case* bad = nullptr;
+            for (const Case& c : spec.holdout)
+                if (b.recipe.apply_n(c.args(), lib) != c.out) { bad = &c; break; }
+            if (bad == nullptr) break;
+            spec.cases.push_back(*bad);
+            b = construct(spec, static_cast<std::size_t>(cap), lib, true);
+        }
         if (!b.certified()) {
             if (out) *out = v;
             return (b.cases_passed > best.cases_passed) ? b : best;
@@ -474,6 +506,38 @@ BuildResult synthesise_exhaustive_n(Spec spec, std::size_t pool_cap,
 
     for (std::size_t round = 0; round <= rounds; ++round) {
         BuildResult b = construct(spec, static_cast<std::size_t>(cap), lib, round > 0);
+        // THE MINED RETRY. Round 0 runs without constant mining and an
+        // uncertified round 0 aborts the whole pipeline -- so a task whose
+        // answer needs a constant only the specification can supply (emod64
+        // needs the literal 64) could NEVER be proved by these wrappers at any
+        // budget. The cheap-first-was-worse note in construct() is about
+        // throughput across many tasks; this is a wrapper that gave up before
+        // trying the configuration that works.
+        if (!b.certified() && round == 0)
+            b = construct(spec, static_cast<std::size_t>(cap), lib, true);
+        // HOLDOUT-DRIVEN RESTARTS. construct() stops at the FIRST program that
+        // matches the visible cases, so when that program is an overfit the
+        // holdout refutes, the search never resumes and "uncertified" reaches
+        // here meaning "stopped early", not "nothing exists". But a failing
+        // holdout case IS a counterexample already in hand -- emod64 came back
+        // as mod(add(x, 128), -64), wrong on every holdout value below -128,
+        // and the wrapper gave up with the disproof in its pocket. Feed it
+        // into the visible cases and search again; the overfit no longer
+        // fits, and the search continues to the program that does.
+        // The gate is Proof::Tested, NOT !certified() -- certified() is merely
+        // proof != None, so a program that FAILED its holdout still counts as
+        // certified, waltzes into the domain check, and collects a bounded
+        // proof whenever the domain is too small to catch what the holdout
+        // already caught. That is how mod(add(x, 128), -64) -- wrong on every
+        // value below -128 -- reached Proof::Exhaustive on a domain of -2..2.
+        for (std::size_t hr = 0; hr < 4 && b.recipe.found && b.proof == Proof::Tested; ++hr) {
+            const Case* bad = nullptr;
+            for (const Case& c : spec.holdout)
+                if (b.recipe.apply_n(c.args(), lib) != c.out) { bad = &c; break; }
+            if (bad == nullptr) break;
+            spec.cases.push_back(*bad);
+            b = construct(spec, static_cast<std::size_t>(cap), lib, true);
+        }
         if (!b.certified()) {
             if (out) *out = last;
             return (b.cases_passed > best.cases_passed) ? b : best;
@@ -512,6 +576,38 @@ BuildResult synthesise_exhaustive(Spec spec, std::size_t pool_cap,
 
     for (std::size_t round = 0; round <= rounds; ++round) {
         BuildResult b = construct(spec, static_cast<std::size_t>(cap), lib, round > 0);
+        // THE MINED RETRY. Round 0 runs without constant mining and an
+        // uncertified round 0 aborts the whole pipeline -- so a task whose
+        // answer needs a constant only the specification can supply (emod64
+        // needs the literal 64) could NEVER be proved by these wrappers at any
+        // budget. The cheap-first-was-worse note in construct() is about
+        // throughput across many tasks; this is a wrapper that gave up before
+        // trying the configuration that works.
+        if (!b.certified() && round == 0)
+            b = construct(spec, static_cast<std::size_t>(cap), lib, true);
+        // HOLDOUT-DRIVEN RESTARTS. construct() stops at the FIRST program that
+        // matches the visible cases, so when that program is an overfit the
+        // holdout refutes, the search never resumes and "uncertified" reaches
+        // here meaning "stopped early", not "nothing exists". But a failing
+        // holdout case IS a counterexample already in hand -- emod64 came back
+        // as mod(add(x, 128), -64), wrong on every holdout value below -128,
+        // and the wrapper gave up with the disproof in its pocket. Feed it
+        // into the visible cases and search again; the overfit no longer
+        // fits, and the search continues to the program that does.
+        // The gate is Proof::Tested, NOT !certified() -- certified() is merely
+        // proof != None, so a program that FAILED its holdout still counts as
+        // certified, waltzes into the domain check, and collects a bounded
+        // proof whenever the domain is too small to catch what the holdout
+        // already caught. That is how mod(add(x, 128), -64) -- wrong on every
+        // value below -128 -- reached Proof::Exhaustive on a domain of -2..2.
+        for (std::size_t hr = 0; hr < 4 && b.recipe.found && b.proof == Proof::Tested; ++hr) {
+            const Case* bad = nullptr;
+            for (const Case& c : spec.holdout)
+                if (b.recipe.apply_n(c.args(), lib) != c.out) { bad = &c; break; }
+            if (bad == nullptr) break;
+            spec.cases.push_back(*bad);
+            b = construct(spec, static_cast<std::size_t>(cap), lib, true);
+        }
         if (!b.certified()) {
             if (out) *out = last;
             return (b.cases_passed > best.cases_passed) ? b : best;
